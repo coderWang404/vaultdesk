@@ -8,4 +8,5 @@ allowBuilds:
   electron-winstaller: false
 
 overrides:
+  # electron-builder 26.18.0 imports ElectronDownloadCacheMode but still declares @electron/get ^3.
   app-builder-lib>@electron/get: 5.1.0

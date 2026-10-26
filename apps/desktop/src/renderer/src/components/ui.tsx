@@ -1,5 +1,62 @@
-import { useEffect, type ButtonHTMLAttributes, type ReactNode } from "react";
+import { useEffect, useRef, type ButtonHTMLAttributes, type ReactNode, type RefObject } from "react";
 import { Icon, type IconName } from "./icons";
+
+const FOCUSABLE =
+  'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
+
+export function useDialogFocus<T extends HTMLElement>(
+  rootRef: RefObject<T | null>,
+  state: { dismissable: boolean; onClose: () => void },
+): void {
+  const stateRef = useRef(state);
+  stateRef.current = state;
+
+  useEffect(() => {
+    const previous = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    const root = rootRef.current;
+    root?.focus({ preventScroll: true });
+    document.body.classList.add("modal-open");
+
+    const focusable = (): HTMLElement[] => {
+      if (!root) return [];
+      return Array.from(root.querySelectorAll<HTMLElement>(FOCUSABLE)).filter(
+        (element) => element.offsetParent !== null || element === document.activeElement,
+      );
+    };
+
+    const onKey = (event: KeyboardEvent): void => {
+      if (event.key === "Escape" && stateRef.current.dismissable) {
+        event.stopPropagation();
+        stateRef.current.onClose();
+        return;
+      }
+      if (event.key !== "Tab") return;
+      const items = focusable();
+      if (items.length === 0) {
+        event.preventDefault();
+        return;
+      }
+      const active = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+      const index = active ? items.indexOf(active) : -1;
+      if (event.shiftKey) {
+        if (index <= 0) {
+          event.preventDefault();
+          items.at(-1)?.focus();
+        }
+      } else if (index === -1 || index === items.length - 1) {
+        event.preventDefault();
+        items[0]?.focus();
+      }
+    };
+
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("keydown", onKey);
+      document.body.classList.remove("modal-open");
+      if (previous?.isConnected) previous.focus({ preventScroll: true });
+    };
+  }, [rootRef]);
+}
 
 export function Button({
   children,
@@ -48,12 +105,18 @@ export function Spinner({ size = 16 }: { size?: number }) {
 
 export function StatusPill({
   tone = "neutral",
+  title,
   children,
 }: {
   tone?: "ok" | "warn" | "danger" | "muted" | "neutral" | "accent";
+  title?: string;
   children: ReactNode;
 }) {
-  return <span className={`pill pill-${tone}`}>{children}</span>;
+  return (
+    <span className={`pill pill-${tone}`} title={title}>
+      {children}
+    </span>
+  );
 }
 
 export function Modal({
@@ -73,20 +136,8 @@ export function Modal({
   width?: "default" | "wide" | "xwide";
   dismissable?: boolean;
 }) {
-  useEffect(() => {
-    const onKey = (event: KeyboardEvent): void => {
-      if (event.key === "Escape" && dismissable) {
-        event.stopPropagation();
-        onClose();
-      }
-    };
-    document.addEventListener("keydown", onKey);
-    document.body.classList.add("modal-open");
-    return () => {
-      document.removeEventListener("keydown", onKey);
-      document.body.classList.remove("modal-open");
-    };
-  }, [onClose, dismissable]);
+  const dialogRef = useRef<HTMLDivElement>(null);
+  useDialogFocus(dialogRef, { dismissable, onClose });
 
   return (
     <div
@@ -95,7 +146,14 @@ export function Modal({
         if (event.target === event.currentTarget && dismissable) onClose();
       }}
     >
-      <div className={`modal modal-${width}`} role="dialog" aria-modal="true" aria-label={typeof title === "string" ? title : undefined}>
+      <div
+        ref={dialogRef}
+        className={`modal modal-${width}`}
+        role="dialog"
+        aria-modal="true"
+        aria-label={typeof title === "string" ? title : undefined}
+        tabIndex={-1}
+      >
         <header className="modal-header">
           <div>
             <h2>{title}</h2>

@@ -146,6 +146,10 @@ export const vaultStateSchema = z.object({
         checked_at: z.string().optional(),
         remote_commit: z.string().optional(),
         applied_at: z.string().optional(),
+        status: z
+          .enum(["current", "update-available", "not-downloaded", "auth-failed", "error", "unknown"])
+          .optional(),
+        error: z.string().optional(),
       }),
     )
     .default({}),

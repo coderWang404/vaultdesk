@@ -24,6 +24,7 @@ export interface InstallOptions {
   backupRoot?: string;
   retention?: number;
   rebuild?: boolean;
+  alreadyLocked?: boolean;
 }
 
 export interface BackupEntry {
@@ -196,7 +197,7 @@ export async function installSkills(inputPath: string, options: InstallOptions):
     };
   }
 
-  return withWriteLock(vaultPath, async () => {
+  const run = async (): Promise<InstallResult> => {
     const journal = Journal.begin(vaultPath, "install", [
       { id: "build", label: "Build skills" },
       { id: "install", label: "Copy skills into destination" },
@@ -301,7 +302,8 @@ export async function installSkills(inputPath: string, options: InstallOptions):
       journal.fail("failed", (error as Error).message);
       throw error;
     }
-  });
+  };
+  return options.alreadyLocked ? run() : withWriteLock(vaultPath, run);
 }
 
 export function verifyTargetRecord(snapshot: VaultSnapshot, targetId: string): InstallResult["verification"] {
@@ -493,7 +495,7 @@ export async function listBackups(targetId?: string, base?: string): Promise<Bac
 export async function reinstallTargets(
   inputPath: string,
   names?: string[],
-  options: { rebuild?: boolean; backupRoot?: string; retention?: number } = {},
+  options: { rebuild?: boolean; backupRoot?: string; retention?: number; alreadyLocked?: boolean } = {},
 ): Promise<InstallResult[]> {
   const vaultPath = canonicalPath(inputPath);
   const snapshot = await openVault(vaultPath);
@@ -523,6 +525,7 @@ export async function reinstallTargets(
         rebuild: options.rebuild,
         backupRoot: options.backupRoot,
         retention: options.retention,
+        alreadyLocked: options.alreadyLocked,
       }),
     );
   }

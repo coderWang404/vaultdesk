@@ -25,7 +25,11 @@ function classifyGitFailure(stderr: string, stdout: string): "auth-failed" | "ne
   ) {
     return "auth-failed";
   }
-  if (/could not resolve host|network is unreachable|connection timed out|connection refused|tls|ssl|proxy/.test(text)) {
+  if (
+    /could not resolve host|network is unreachable|connection timed out|connection refused|connection reset|couldn't connect to server|failed to connect to|operation too slow|the remote end hung up unexpectedly|early eof|tls|ssl|proxy/.test(
+      text,
+    )
+  ) {
     return "network";
   }
   return "git-failed";

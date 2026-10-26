@@ -2,6 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 import {
+  acquireWriteLock,
   installSkills,
   openVault,
   planInstall,
@@ -104,6 +105,46 @@ describe("install slots and backups", () => {
         backupRoot,
       }),
     ).rejects.toMatchObject({ code: "unknown-target" });
+  });
+
+  it("reuses an existing vault lock for update-triggered installs", async () => {
+    const { vaultPath, dest, backupRoot } = scaffold();
+    const lock = acquireWriteLock(vaultPath);
+    try {
+      const result = await installSkills(vaultPath, {
+        names: ["local-notes"],
+        dest,
+        id: "locked-target",
+        backupRoot,
+        alreadyLocked: true,
+      });
+      expect(result.verification.filesInPlace).toBe(true);
+    } finally {
+      lock.release();
+    }
+  });
+
+  it("treats symlinked vault paths as the same lock", async () => {
+    const { vaultPath, dest, backupRoot } = scaffold();
+    const link = path.join(tempDir("lock-link"), "vault");
+    fs.symlinkSync(vaultPath, link, "dir");
+    const previous = process.env.VAULTDESK_LOCK_DIR;
+    process.env.VAULTDESK_LOCK_DIR = tempDir("lock-dir");
+    try {
+      const lock = acquireWriteLock(vaultPath);
+      try {
+        await expect(
+          installSkills(link, { names: ["local-notes"], dest, id: "alias-target", backupRoot }),
+        ).rejects.toMatchObject({ code: "conflict" });
+      } finally {
+        lock.release();
+      }
+      const result = await installSkills(link, { names: ["local-notes"], dest, id: "alias-target", backupRoot });
+      expect(result.verification.filesInPlace).toBe(true);
+    } finally {
+      if (previous === undefined) delete process.env.VAULTDESK_LOCK_DIR;
+      else process.env.VAULTDESK_LOCK_DIR = previous;
+    }
   });
 
   it("keeps the destination outside the vault", async () => {

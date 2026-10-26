@@ -26,6 +26,11 @@ let mainWindow: BrowserWindow | null = null;
 
 app.setName("VaultDesk");
 
+if (process.env.VAULTDESK_USER_DATA) {
+  fs.mkdirSync(process.env.VAULTDESK_USER_DATA, { recursive: true });
+  app.setPath("userData", process.env.VAULTDESK_USER_DATA);
+}
+
 const gotLock = app.requestSingleInstanceLock();
 if (!gotLock) {
   app.quit();
@@ -81,6 +86,15 @@ function registerIpc(): void {
 
   ipcMain.handle("vaultdesk:choose-directory", async (event, raw: unknown): Promise<string | null> => {
     assertTrustedSender(event);
+    const testChoice = process.env.VAULTDESK_TEST_DIRECTORY_FILE;
+    if (testChoice) {
+      try {
+        const selected = fs.readFileSync(testChoice, "utf8").trim();
+        if (selected) return selected;
+      } catch {
+        // No queued test selection.
+      }
+    }
     const options = (raw && typeof raw === "object" ? raw : {}) as DirectoryDialogOptions;
     const owner = BrowserWindow.fromWebContents(event.sender) ?? mainWindow;
     const dialogOptions: OpenDialogOptions = {

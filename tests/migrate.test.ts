@@ -26,6 +26,7 @@ describe("v1 to v2 migration", () => {
       "sources.yml",
     ]);
     expect(first.writes.map((write) => write.path)).toEqual([
+      ".gitignore",
       ".vault/.gitignore",
       "sources/collection-pack.yml",
       "sources/gh-standalone.yml",

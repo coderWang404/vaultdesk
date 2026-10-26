@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboa
 import type { SearchHit } from "@vaultdesk/core";
 import { call, errorMessage } from "../api";
 import { Icon } from "./icons";
-import { Spinner, StatusPill } from "./ui";
+import { Spinner, StatusPill, useDialogFocus } from "./ui";
 
 interface SearchReport {
   hits: SearchHit[];
@@ -24,15 +24,12 @@ export function SearchPalette({
   const [loading, setLoading] = useState(false);
   const [active, setActive] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
+  const paletteRef = useRef<HTMLDivElement>(null);
+  useDialogFocus(paletteRef, { dismissable: true, onClose });
 
   useEffect(() => {
     inputRef.current?.focus();
-    const onKey = (event: KeyboardEvent): void => {
-      if (event.key === "Escape") onClose();
-    };
-    document.addEventListener("keydown", onKey);
-    return () => document.removeEventListener("keydown", onKey);
-  }, [onClose]);
+  }, []);
 
   useEffect(() => {
     const needle = query.trim();
@@ -93,7 +90,7 @@ export function SearchPalette({
         if (event.target === event.currentTarget) onClose();
       }}
     >
-      <div className="palette" role="dialog" aria-modal="true" aria-label="元数据搜索">
+      <div ref={paletteRef} className="palette" role="dialog" aria-modal="true" aria-label="元数据搜索" tabIndex={-1}>
         <div className="palette-input">
           <Icon name="search" size={18} />
           <input

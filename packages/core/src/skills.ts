@@ -3,11 +3,13 @@ import path from "node:path";
 import YAML from "yaml";
 import { sourceFileSchema, type VaultFile } from "@vaultdesk/schema";
 import {
+  canonicalPath,
   copyDirectory,
   ensureDir,
   exists,
   isDirectory,
   isFile,
+  isInside,
   readText,
   removePath,
   writeTextAtomic,
@@ -85,7 +87,7 @@ export async function writeSkillContent(
   skillName: string,
   content: string,
 ): Promise<{ path: string; bytes: number }> {
-  const vaultPath = path.resolve(inputPath);
+  const vaultPath = canonicalPath(inputPath);
   const snapshot = await openVault(vaultPath);
   if (snapshot.format !== "v2") throw new VaultDeskError("not-writable-v1", "Migrate this vault before editing.");
   const { skill, source } = findSkill(snapshot, skillName);
@@ -162,7 +164,7 @@ export async function previewFork(inputPath: string, skillName: string, asName?:
 }
 
 export async function forkSkill(inputPath: string, skillName: string, asName?: string): Promise<ForkPreview> {
-  const vaultPath = path.resolve(inputPath);
+  const vaultPath = canonicalPath(inputPath);
   const preview = await previewFork(vaultPath, skillName, asName);
   if (exists(preview.targetPath)) {
     throw new VaultDeskError("path-conflict", `Target already exists: ${preview.targetPath}`);
@@ -267,12 +269,24 @@ export async function forkSkill(inputPath: string, skillName: string, asName?: s
   });
 }
 
+function pruneEmptySourceDirs(start: string, vaultPath: string, removedPaths: string[]): void {
+  let current = path.dirname(start);
+  while (isInside(current, vaultPath)) {
+    const relative = path.relative(vaultPath, current);
+    if (!relative || relative.split(path.sep).length < 2) return;
+    if (!isDirectory(current) || fs.readdirSync(current).length > 0) return;
+    fs.rmdirSync(current);
+    removedPaths.push(current);
+    current = path.dirname(current);
+  }
+}
+
 export async function removeSource(
   inputPath: string,
   sourceName: string,
   options: { deleteFiles?: boolean } = {},
 ): Promise<{ name: string; removedPaths: string[] }> {
-  const vaultPath = path.resolve(inputPath);
+  const vaultPath = canonicalPath(inputPath);
   const snapshot = await openVault(vaultPath);
   if (snapshot.format !== "v2") throw new VaultDeskError("not-writable-v1", "Migrate this vault before removing sources.");
   const source = snapshot.sources.find((entry) => entry.name === sourceName);
@@ -296,16 +310,20 @@ export async function removeSource(
       journal.start("files");
       const removedPaths: string[] = [];
       if (options.deleteFiles) {
+        const deleted: string[] = [];
         for (const skill of source.skills) {
           if (isDirectory(skill.workingPath)) {
             removePath(skill.workingPath);
             removedPaths.push(skill.workingPath);
+            deleted.push(skill.workingPath);
           }
           if (skill.vendorPath && isDirectory(skill.vendorPath)) {
             removePath(skill.vendorPath);
             removedPaths.push(skill.vendorPath);
+            deleted.push(skill.vendorPath);
           }
         }
+        for (const entry of deleted) pruneEmptySourceDirs(entry, vaultPath, removedPaths);
       } else {
         journal.skipped("files", "workspace copies kept");
       }

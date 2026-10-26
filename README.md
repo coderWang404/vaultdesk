@@ -74,6 +74,23 @@ fixture, and writes `apps/desktop/smoke.png`):
 pnpm --filter @vaultdesk/desktop smoke
 ```
 
+Run the end-to-end suites against the built CLI and the real Electron app:
+
+```bash
+pnpm test:e2e           # CLI + desktop
+pnpm test:e2e:cli
+pnpm test:e2e:desktop
+pnpm test:e2e:dmg       # package and verify the DMG
+```
+
+The suites use isolated temporary vaults, local bare Git remotes, and a local
+HTTP server for auth/network exit codes; they do not touch your real vaults.
+They require a macOS desktop session. Failed runs keep their workspace under
+`$TMPDIR` and print its path.
+
+See [tests/e2e/README.md](tests/e2e/README.md) for the scenario matrix, what is
+real versus simulated, and deliberate coverage limits.
+
 Build the unsigned DMG into `release/`:
 
 ```bash

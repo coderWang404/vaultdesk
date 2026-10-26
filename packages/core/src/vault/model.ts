@@ -193,8 +193,10 @@ function deriveStatus(
   origin: SkillRecord["origin"],
   lockedCommit: string | undefined,
   remoteCommit: string | undefined,
+  persistedStatus: CheckStatus | undefined,
 ): CheckStatus {
   if (origin === "local") return "local";
+  if (persistedStatus === "error" || persistedStatus === "auth-failed") return persistedStatus;
   if (!lockedCommit) return "not-downloaded";
   if (!remoteCommit) return "unknown";
   return lockedCommit === remoteCommit ? "current" : "update-available";
@@ -358,8 +360,9 @@ async function loadV2(vaultPath: string): Promise<{
     for (const skill of sourceSkills) {
       skill.lockedHash = locked?.skills?.[skill.name] ?? locked?.hash;
     }
-    const lastChecked = state?.sources[source.name]?.checked_at;
-    const remoteCommit = state?.sources[source.name]?.remote_commit;
+    const sourceState = state?.sources[source.name];
+    const lastChecked = sourceState?.checked_at;
+    const remoteCommit = sourceState?.remote_commit;
     sources.push({
       name: source.name,
       shape: source.shape,
@@ -385,9 +388,10 @@ async function loadV2(vaultPath: string): Promise<{
       skills: sourceSkills,
       locked,
       lastCheckedAt: lastChecked,
-      lastAppliedAt: state?.sources[source.name]?.applied_at ?? state?.last_applied_at,
+      lastAppliedAt: sourceState?.applied_at ?? state?.last_applied_at,
       remoteCommit,
-      status: deriveStatus(source.origin, locked?.commit, remoteCommit),
+      lastError: sourceState?.error,
+      status: deriveStatus(source.origin, locked?.commit, remoteCommit, sourceState?.status),
     });
   }
 
@@ -576,7 +580,7 @@ async function loadV1(vaultPath: string): Promise<{
       metadataPath: sourcesFile,
       skills: [skill],
       locked,
-      status: deriveStatus(origin, locked.commit, undefined),
+      status: deriveStatus(origin, locked.commit, undefined, undefined),
     });
   }
 
@@ -656,7 +660,7 @@ async function loadV1(vaultPath: string): Promise<{
       scriptDeps: manifest.script_deps,
       skills,
       locked,
-      status: deriveStatus(origin, locked.commit, undefined),
+      status: deriveStatus(origin, locked.commit, undefined, undefined),
     });
   }
 

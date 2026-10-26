@@ -25,6 +25,7 @@ export function TitleBar({
   onCheck: () => void;
   onSettings: () => void;
 }) {
+  const activeVault = vaults.find((vault) => vault.path === activePath);
   return (
     <header className="titlebar">
       <div className="titlebar-brand">
@@ -34,44 +35,65 @@ export function TitleBar({
         <span className="brand-word">VaultDesk</span>
       </div>
 
-      <div className="vault-tabs" role="tablist" aria-label="已打开的仓库">
-        {vaults.map((vault) => (
-          <div
-            key={vault.path}
-            role="tab"
-            aria-selected={vault.path === activePath}
-            className={`vault-tab ${vault.path === activePath ? "is-active" : ""}`}
-            onClick={() => onSelect(vault.path)}
-            title={vault.path}
-          >
-            <span className={`tab-dot ${vault.format === "v1" ? "is-v1" : ""}`} />
-            <span className="tab-name">{vault.name}</span>
+      <div className="vault-tabs-shell">
+        <div className="vault-tabs" role="tablist" aria-label="已打开的仓库">
+          {vaults.map((vault, index) => (
             <button
-              className="tab-close"
-              aria-label={`关闭 ${vault.name}`}
-              onClick={(event) => {
-                event.stopPropagation();
-                onClose(vault.path);
+              key={vault.path}
+              role="tab"
+              aria-selected={vault.path === activePath}
+              tabIndex={vault.path === activePath ? 0 : -1}
+              className={`vault-tab ${vault.path === activePath ? "is-active" : ""}`}
+              onClick={() => onSelect(vault.path)}
+              onKeyDown={(event) => {
+                const delta = event.key === "ArrowRight" ? 1 : event.key === "ArrowLeft" ? -1 : undefined;
+                let next: number | undefined;
+                if (delta !== undefined) next = (index + delta + vaults.length) % vaults.length;
+                else if (event.key === "Home") next = 0;
+                else if (event.key === "End") next = vaults.length - 1;
+                const targetVault = next === undefined ? undefined : vaults[next];
+                if (next === undefined || !targetVault) return;
+                event.preventDefault();
+                const target = event.currentTarget.parentElement?.querySelectorAll<HTMLElement>('[role="tab"]')[next];
+                target?.focus();
+                onSelect(targetVault.path);
               }}
+              title={vault.path}
             >
-              <Icon name="x" size={12} />
+              <span className={`tab-dot ${vault.format === "v1" ? "is-v1" : ""}`} />
+              <span className="tab-name">{vault.name}</span>
+              <span
+                className="tab-close"
+                aria-hidden="true"
+                onClick={(event) => {
+                  event.stopPropagation();
+                  onClose(vault.path);
+                }}
+              >
+                <Icon name="x" size={12} />
+              </span>
             </button>
-          </div>
-        ))}
-        <button className="tab-add" onClick={onOpen} title="打开仓库（⌘O）" aria-label="打开仓库">
-          <Icon name="plus" size={14} />
-        </button>
-        <button className="tab-add" onClick={onNew} title="新建仓库（⌘N）" aria-label="新建仓库">
-          <Icon name="vault" size={14} />
-        </button>
+          ))}
+        </div>
+        <div className="tab-add-group">
+          <button className="tab-add" onClick={onOpen} title="打开仓库（⌘O）" aria-label="打开仓库">
+            <Icon name="plus" size={14} />
+          </button>
+          <button className="tab-add" onClick={onNew} title="新建仓库（⌘N）" aria-label="新建仓库">
+            <Icon name="vault" size={14} />
+          </button>
+        </div>
       </div>
 
       <div className="titlebar-actions">
-        <button className="search-trigger" onClick={onSearch} aria-label="搜索元数据">
+        <button className="search-trigger" onClick={onSearch} aria-keyshortcuts="Meta+K" title="搜索（⌘K）">
           <Icon name="search" size={15} />
           <span>搜索</span>
           <kbd>⌘K</kbd>
         </button>
+        {activeVault ? (
+          <IconButton icon="x" label={`关闭 ${activeVault.name}`} onClick={() => onClose(activeVault.path)} />
+        ) : null}
         <IconButton
           icon={checking ? "refresh" : "refresh"}
           label={checking ? "正在检查更新" : "检查上游更新"}

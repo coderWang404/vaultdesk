@@ -39,6 +39,18 @@ describe("source removal", () => {
     expect((await validateVault(vaultPath)).ok).toBe(true);
   });
 
+  it("prunes empty package and vendor directories", async () => {
+    const vaultPath = copyFixture("v2-basic");
+    const result = await removeSource(vaultPath, "gh-pack", { deleteFiles: true });
+
+    expect(result.removedPaths.some((entry) => entry.endsWith(path.join("packages", "gh-pack")))).toBe(true);
+    expect(fs.existsSync(path.join(vaultPath, "packages", "gh-pack"))).toBe(false);
+    expect(fs.existsSync(path.join(vaultPath, "third_party", "gh-pack"))).toBe(false);
+    expect(fs.existsSync(path.join(vaultPath, "packages"))).toBe(true);
+    expect(fs.existsSync(path.join(vaultPath, "third_party"))).toBe(true);
+    expect((await validateVault(vaultPath)).ok).toBe(true);
+  });
+
   it("requires v2 and an existing source", async () => {
     const v1 = copyFixture("v1-basic");
     await expect(removeSource(v1, "local-notes")).rejects.toMatchObject({ code: "not-writable-v1" });

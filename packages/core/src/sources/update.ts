@@ -1,6 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
-import { hashDirectory, hashText, isDirectory, isInside, relativeSlash, removePath } from "../fsx.js";
+import { canonicalPath, hashDirectory, hashText, isDirectory, isInside, relativeSlash, removePath } from "../fsx.js";
 import { VaultDeskError } from "../errors.js";
 import { commitPaths, isGitRepo, isWorktreeClean } from "../git.js";
 import { openVault, validateVault } from "../vault/validate.js";
@@ -83,7 +83,7 @@ function copyUpstreamSkill(
 }
 
 export async function updateSources(inputPath: string, options: UpdateOptions = {}): Promise<UpdateResult> {
-  const vaultPath = path.resolve(inputPath);
+  const vaultPath = canonicalPath(inputPath);
   const snapshot = await openVault(vaultPath);
   if (snapshot.format !== "v2") {
     throw new VaultDeskError("not-writable-v1", "Updates require a v2 vault. Migrate this vault first.");
@@ -168,8 +168,8 @@ export async function updateSources(inputPath: string, options: UpdateOptions = 
           copyUpstreamSkill(skill, upstream.root);
           skill.contentHash = hashDirectory(skill.workingPath);
           changedSkills.add(skill.name);
-          if (skill.vendorPath) writePaths.add(relativeSlash(vaultPath, skill.vendorPath));
-          writePaths.add(relativeSlash(vaultPath, skill.workingPath));
+          if (skill.vendorPath) writePaths.add(relativeSlash(vaultPath, canonicalPath(skill.vendorPath)));
+          writePaths.add(relativeSlash(vaultPath, canonicalPath(skill.workingPath)));
         }
         source.locked = {
           commit: upstream.commit,
@@ -225,6 +225,7 @@ export async function updateSources(inputPath: string, options: UpdateOptions = 
           rebuild: false,
           backupRoot: options.backupRoot,
           retention: options.retention,
+          alreadyLocked: true,
         });
         journal.done("install", `${install.length} targets`);
       } else {

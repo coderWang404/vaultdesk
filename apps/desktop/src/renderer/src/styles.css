@@ -208,6 +208,20 @@ pre {
   letter-spacing: 0.02em;
 }
 
+.vault-tabs-shell {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  min-width: 0;
+}
+
+.tab-add-group {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  flex: 0 0 auto;
+}
+
 .vault-tabs {
   -webkit-app-region: no-drag;
   display: flex;
@@ -223,17 +237,20 @@ pre {
 }
 
 .vault-tab {
+  -webkit-app-region: no-drag;
+  position: relative;
   display: flex;
   align-items: center;
   gap: 7px;
   height: 30px;
   max-width: 190px;
-  padding: 0 7px 0 10px;
+  padding: 0 24px 0 10px;
   border-radius: 7px;
   color: var(--ink-muted);
   border: 1px solid transparent;
   white-space: nowrap;
   user-select: none;
+  cursor: pointer;
 }
 
 .vault-tab:hover {
@@ -268,6 +285,10 @@ pre {
 }
 
 .tab-close {
+  position: absolute;
+  right: 4px;
+  top: 50%;
+  transform: translateY(-50%);
   width: 17px;
   height: 17px;
   border-radius: 4px;
@@ -275,6 +296,7 @@ pre {
   align-items: center;
   justify-content: center;
   color: var(--ink-faint);
+  cursor: pointer;
   opacity: 0;
   transition: opacity 0.12s ease, background 0.12s ease;
 }
@@ -336,7 +358,7 @@ pre {
 .search-trigger kbd {
   font-family: var(--sans);
   font-size: 10px;
-  color: var(--ink-faint);
+  color: var(--ink-muted);
   border: 1px solid var(--line);
   border-radius: 4px;
   padding: 0 4px;
@@ -1849,6 +1871,15 @@ kbd {
   border: 1px solid var(--line);
   border-radius: 3px;
   padding: 0 4px;
+}
+
+.source-row-error {
+  margin-top: 3px;
+  font-size: 10.5px;
+  color: var(--danger);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .source-row-stats {

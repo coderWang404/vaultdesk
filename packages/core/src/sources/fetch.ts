@@ -86,7 +86,10 @@ export async function fetchUpstream(source: SourceRecord): Promise<FetchResult> 
         .filter((value): value is string => Boolean(value)),
     ),
   ];
-  if (sourcePaths.length > 0) {
+  const fullTree = sourcePaths.length === 0 || sourcePaths.some((value) => value === "." || value === "./");
+  if (fullTree) {
+    await git(["sparse-checkout", "disable"], temp, { allowFailure: true });
+  } else {
     const sparse = await git(["sparse-checkout", "set", ...sourcePaths], temp, { allowFailure: true });
     if (sparse.code !== 0) {
       await git(["sparse-checkout", "disable"], temp, { allowFailure: true });

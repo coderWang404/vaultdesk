@@ -97,6 +97,7 @@ export interface SourceRecord {
   lastCheckedAt?: string;
   lastAppliedAt?: string;
   remoteCommit?: string;
+  lastError?: string;
   status: CheckStatus;
 }
 

@@ -127,7 +127,9 @@ export function SourcesView({
                 <div className="source-row-title">
                   <h3>{source.name}</h3>
                   <StatusPill tone="muted">{sourceShapeLabel(source)}</StatusPill>
-                  <StatusPill tone={statusTone(source.status)}>{statusLabel(source.status)}</StatusPill>
+                  <StatusPill tone={statusTone(source.status)} title={source.lastError}>
+                    {statusLabel(source.status)}
+                  </StatusPill>
                 </div>
                 <p className="source-row-repo">
                   {source.origin === "github" ? (
@@ -139,6 +141,11 @@ export function SourcesView({
                     <span>本地目录 · 不参与上游更新</span>
                   )}
                 </p>
+                {source.lastError ? (
+                  <p className="source-row-error" title={source.lastError}>
+                    {source.lastError}
+                  </p>
+                ) : null}
                 <div className="source-row-stats">
                   <span>
                     <Icon name="skill" size={12} /> {source.skills.length} 个技能

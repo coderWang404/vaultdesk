@@ -86,12 +86,19 @@ export function recordCheck(vaultPath: string, report: CheckReport): void {
   const state = readState(vaultPath);
   state.last_checked_at = report.checkedAt;
   for (const result of report.results) {
-    if (result.origin !== "github") continue;
-    state.sources[result.name] = {
+    if (result.origin !== "github" || result.status === "local") continue;
+    const entry = {
       ...state.sources[result.name],
       checked_at: report.checkedAt,
+      status: result.status,
       ...(result.remoteCommit ? { remote_commit: result.remoteCommit } : {}),
     };
+    if (result.status === "error" || result.status === "auth-failed") {
+      entry.error = result.message ?? "Check failed.";
+    } else {
+      delete entry.error;
+    }
+    state.sources[result.name] = entry;
   }
   writeState(vaultPath, state);
 }

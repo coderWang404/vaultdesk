@@ -1,6 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
-import { ensureDir, expandHome, nowIso, readText, removePath, sha256 } from "../fsx.js";
+import { canonicalPath, ensureDir, expandHome, nowIso, readText, removePath, sha256 } from "../fsx.js";
 import { VaultDeskError } from "../errors.js";
 
 export interface VaultLockHandle {
@@ -12,7 +12,7 @@ export function lockDirectory(): string {
 }
 
 function lockPath(vaultPath: string): string {
-  return path.join(lockDirectory(), `${sha256(path.resolve(vaultPath)).slice(0, 32)}.lock`);
+  return path.join(lockDirectory(), `${sha256(canonicalPath(vaultPath)).slice(0, 32)}.lock`);
 }
 
 export function acquireWriteLock(vaultPath: string): VaultLockHandle {

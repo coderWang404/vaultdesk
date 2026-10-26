@@ -134,6 +134,15 @@ export async function planMigration(inputPath: string): Promise<MigrationPlan> {
   writes.push({ path: "vault.yml", content: vaultYaml(snapshot) });
   writes.push({ path: "vault.lock", content: lockYaml(snapshot) });
   writes.push({ path: ".vault/.gitignore", content: "state.json\noperation.json\n" });
+  const rootIgnore = path.join(snapshot.path, ".gitignore");
+  if (!isFile(rootIgnore)) {
+    writes.push({ path: ".gitignore", content: "build/\n.DS_Store\n" });
+  } else {
+    const lines = oldFileContent(rootIgnore).split(/\r?\n/).map((line) => line.trim());
+    if (!lines.some((line) => line === "build/" || line === "build" || line === "/build/")) {
+      warnings.push("The root .gitignore does not ignore build/; regenerated artifacts will show as untracked.");
+    }
+  }
   writes.sort((a, b) => a.path.localeCompare(b.path));
 
   const deletes = new Set<string>();

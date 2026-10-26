@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
-import { commitPaths, getGitSummary, resolveCommitPaths } from "@vaultdesk/core";
+import { commitPaths, getGitSummary, git as runGit, resolveCommitPaths } from "@vaultdesk/core";
 import { git, tempDir } from "./helpers.js";
 
 function repoWithChanges(): string {
@@ -68,6 +68,13 @@ describe("git safety", () => {
     expect(after.changes.some((change) => change.path === "keep.txt")).toBe(true);
     expect(after.changes.some((change) => change.path === "new.txt")).toBe(true);
     expect(after.changes.some((change) => change.path === "技能.md")).toBe(false);
+  });
+
+  it("classifies unreachable remotes as network failures", async () => {
+    const dir = repoWithChanges();
+    await expect(
+      runGit(["ls-remote", "http://127.0.0.1:1/absent.git", "main"], dir),
+    ).rejects.toMatchObject({ code: "network" });
   });
 
   it("reports a clean repository without inventing changes", async () => {

@@ -109,7 +109,7 @@ export function InstallModal({
       footer={
         <>
           <Button variant="ghost" onClick={onClose} disabled={busy}>
-            {result ? "完成" : "取消"}
+            {result ? "关闭" : "取消"}
           </Button>
           {result ? (
             <Button variant="primary" onClick={() => onDone(`已安装 ${result.installed} 个技能到 ${result.targetId}`)}>

@@ -34,8 +34,9 @@ app requires an explicit confirmation, and the CLI requires `--yes`.
 - Network fetches happen in a cache outside the vault. Nothing is written until
   the preview is confirmed.
 - GitHub-origin skills are read-only until forked.
-- Unmanaged directories are never overwritten. They are moved to a timestamped
-  backup first, and VaultDesk keeps the ten most recent snapshots per target.
+- Unmanaged directories are never discarded: they are moved to a timestamped
+  backup before a managed copy takes the slot. VaultDesk keeps the ten most
+  recent snapshots per target.
 - Git commits include only the paths VaultDesk changed. It never runs
   `git add -A`, and it refuses paths outside the vault or under `.git`.
 - The Electron renderer has no Node access. Filesystem, Git, and network work

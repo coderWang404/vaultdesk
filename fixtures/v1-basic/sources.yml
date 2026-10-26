@@ -1,0 +1,16 @@
+skills:
+  - name: local-notes
+    origin: local
+    target_path: skills/local-notes
+  - name: gh-standalone
+    origin: github
+    repo: example/seed-skills
+    ref: main
+    source_path: skills/gh-standalone
+    vendor_path: third_party/gh-standalone
+    target_path: skills/gh-standalone
+packages:
+  - name: suite-pack
+    manifest: packages/suite-pack/package.yml
+  - name: collection-pack
+    manifest: packages/collection-pack/package.yml

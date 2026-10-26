@@ -1,0 +1,8 @@
+schema: 1
+name: local-notes
+shape: standalone
+origin: local
+update_mode: review-before-apply
+skills:
+  - name: local-notes
+    user_invocable: true

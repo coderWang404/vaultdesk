@@ -1,0 +1,13 @@
+schema: 1
+name: v2-basic
+defaults:
+  ref: main
+  update_mode: review-before-apply
+targets:
+  - id: fixture-agents
+    dest: ~/.vaultdesk-fixtures/v2-agents
+    names:
+      - local-notes
+      - gh-standalone
+      - gh-pack
+    install_after_update: true

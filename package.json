@@ -1,0 +1,32 @@
+{
+  "name": "vaultdesk",
+  "version": "0.6.0",
+  "private": true,
+  "description": "Local-first skill and plugin vault manager for macOS",
+  "license": "Apache-2.0",
+  "author": "coderWang404",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/coderWang404/vaultdesk.git"
+  },
+  "packageManager": "pnpm@11.5.2",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "dev": "pnpm --filter @vaultdesk/desktop dev",
+    "build": "pnpm build:packages && pnpm --filter @vaultdesk/desktop build",
+    "build:packages": "pnpm --filter @vaultdesk/schema build && pnpm --filter @vaultdesk/core build && pnpm --filter @coderWang404/vaultdesk build",
+    "typecheck": "pnpm -r typecheck",
+    "test": "pnpm build:packages && vitest run",
+    "test:watch": "vitest",
+    "cli": "tsx packages/cli/src/index.ts",
+    "package:mac": "pnpm build && pnpm --filter @vaultdesk/desktop package:mac"
+  },
+  "devDependencies": {
+    "@types/node": "^24.10.0",
+    "tsx": "^4.20.6",
+    "typescript": "^5.9.3",
+    "vitest": "^4.0.0"
+  }
+}

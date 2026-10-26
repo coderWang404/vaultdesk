@@ -1,0 +1,19 @@
+name: suite-pack
+version: "0.1.0"
+description: 带入口技能的 suite 测试包。
+kind: suite
+entrypoint: suite-main
+origin: github
+repo: example/suite-pack
+ref: main
+update_mode: review-before-apply
+skills:
+  - name: suite-main
+    source_path: skills/suite-main
+    vendor_path: third_party/suite-pack/suite-main
+    user_invocable: true
+  - name: suite-helper
+    source_path: skills/suite-helper
+    vendor_path: third_party/suite-pack/suite-helper
+    user_invocable: false
+script_deps: {}

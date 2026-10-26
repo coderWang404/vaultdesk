@@ -1,0 +1,286 @@
+import fs from "node:fs";
+import path from "node:path";
+import { hashDirectory, hashText, isDirectory, isInside, relativeSlash, removePath } from "../fsx.js";
+import { VaultDeskError } from "../errors.js";
+import { commitPaths, isGitRepo, isWorktreeClean } from "../git.js";
+import { openVault, validateVault } from "../vault/validate.js";
+import { withWriteLock } from "../vault/lockfile.js";
+import { Journal } from "../journal.js";
+import { buildVault } from "../build.js";
+import { writeLock, recordCheck, recordSourceApplied } from "../vault/state.js";
+import { reinstallTargets } from "../install.js";
+import type { DiffFile, SourceDiff, UpdateChange, UpdateResult, VaultSnapshot } from "../types.js";
+import type { LockFile } from "@vaultdesk/schema";
+import { selectSources } from "./select.js";
+import { fetchUpstream } from "./fetch.js";
+import { diffSourceRecord } from "./diff.js";
+
+export interface UpdateOptions {
+  names?: string[];
+  commit?: boolean;
+  install?: boolean;
+  force?: boolean;
+  commitMessage?: string;
+  backupRoot?: string;
+  retention?: number;
+}
+
+function lockEntry(snapshot: VaultSnapshot, source: VaultSnapshot["sources"][number]): LockFile["sources"][string] {
+  return {
+    ...(source.locked?.commit ? { commit: source.locked.commit } : {}),
+    ...(source.locked?.hash ? { hash: source.locked.hash } : {}),
+    skills: Object.fromEntries(
+      [...source.skills]
+        .sort((a, b) => a.name.localeCompare(b.name))
+        .map((skill) => [skill.name, skill.contentHash]),
+    ),
+  };
+}
+
+function buildLock(snapshot: VaultSnapshot): LockFile {
+  const sources: LockFile["sources"] = {};
+  for (const source of [...snapshot.sources].sort((a, b) => a.name.localeCompare(b.name))) {
+    if (source.origin !== "github") continue;
+    sources[source.name] = lockEntry(snapshot, source);
+  }
+  return { schema: 1, sources };
+}
+
+function modifiedSkills(snapshot: VaultSnapshot, source: VaultSnapshot["sources"][number]): string[] {
+  const modified: string[] = [];
+  for (const skill of source.skills) {
+    const locked = source.locked?.skills?.[skill.name];
+    if (locked && skill.contentHash !== locked) modified.push(skill.name);
+  }
+  return modified;
+}
+
+function copyUpstreamSkill(
+  skill: VaultSnapshot["sources"][number]["skills"][number],
+  fetchedRoot: string,
+): { vendorWritten: boolean; workingWritten: boolean } {
+  if (!skill.sourcePath) {
+    throw new VaultDeskError("source-not-found", `Skill ${skill.name} has no source_path`);
+  }
+  const upstream = path.join(fetchedRoot, skill.sourcePath);
+  if (!isInside(upstream, fetchedRoot)) {
+    throw new VaultDeskError("path-escape", `source_path escapes the upstream checkout for ${skill.name}`);
+  }
+  if (!isDirectory(upstream)) {
+    throw new VaultDeskError("upstream-not-found", `Upstream path not found for ${skill.name}: ${skill.sourcePath}`);
+  }
+  let vendorWritten = false;
+  if (skill.vendorPath) {
+    removePath(skill.vendorPath);
+    fs.mkdirSync(path.dirname(skill.vendorPath), { recursive: true });
+    fs.cpSync(upstream, skill.vendorPath, { recursive: true, dereference: false });
+    vendorWritten = true;
+  }
+  removePath(skill.workingPath);
+  fs.mkdirSync(path.dirname(skill.workingPath), { recursive: true });
+  fs.cpSync(upstream, skill.workingPath, { recursive: true, dereference: false });
+  return { vendorWritten, workingWritten: true };
+}
+
+export async function updateSources(inputPath: string, options: UpdateOptions = {}): Promise<UpdateResult> {
+  const vaultPath = path.resolve(inputPath);
+  const snapshot = await openVault(vaultPath);
+  if (snapshot.format !== "v2") {
+    throw new VaultDeskError("not-writable-v1", "Updates require a v2 vault. Migrate this vault first.");
+  }
+  if (snapshot.issues.some((issue) => issue.severity === "error")) {
+    throw new VaultDeskError("validation-failed", "Fix validation errors before updating.", {
+      details: snapshot.issues.filter((issue) => issue.severity === "error"),
+    });
+  }
+  if (!(await isGitRepo(vaultPath))) {
+    throw new VaultDeskError("git-failed", "Updates require the vault to be a Git repository.");
+  }
+  if (!(await isWorktreeClean(vaultPath))) {
+    throw new VaultDeskError("git-not-clean", "Commit or stash local changes before updating.");
+  }
+
+  const selected = selectSources(snapshot, options.names);
+  const warnings: string[] = [];
+  const github = selected.filter((source) => source.origin === "github");
+  for (const source of selected) {
+    if (source.origin === "local") warnings.push(`${source.name}: local source, nothing to update.`);
+  }
+  if (github.length === 0) {
+    return { applied: false, names: selected.map((source) => source.name), changes: [], warnings };
+  }
+
+  const blocked: string[] = [];
+  for (const source of github) {
+    if (options.force) continue;
+    if (!source.locked?.skills && source.skills.some((skill) => isDirectory(skill.workingPath))) {
+      blocked.push(`${source.name}: no per-skill lock entry`);
+      continue;
+    }
+    const modified = modifiedSkills(snapshot, source);
+    if (modified.length > 0) {
+      blocked.push(`${source.name}: ${modified.join(", ")} modified since the last apply (fork or revert first)`);
+    }
+  }
+  if (blocked.length > 0) {
+    throw new VaultDeskError("conflict", "Working copies have local changes. Use --force to overwrite.", {
+      details: blocked,
+    });
+  }
+
+  const fetched = new Map<string, { root: string; commit: string }>();
+  const changes: UpdateChange[] = [];
+  for (const source of github) {
+    const upstream = await fetchUpstream(source);
+    fetched.set(source.name, { root: upstream.root, commit: upstream.commit });
+    const diff = await diffSourceRecord(source, upstream.root, upstream.commit);
+    if (diff.files.length > 0 || source.locked?.commit !== upstream.commit) {
+      changes.push({ name: source.name, commit: upstream.commit, files: diff.files });
+    }
+  }
+
+  if (changes.length === 0) {
+    return { applied: false, names: github.map((source) => source.name), changes: [], warnings };
+  }
+
+  return withWriteLock(vaultPath, async () => {
+    const journal = Journal.begin(vaultPath, "update", [
+      { id: "write", label: "Write vendor and working copies" },
+      { id: "lock", label: "Update lock file" },
+      { id: "build", label: "Rebuild artifacts" },
+      { id: "validate", label: "Validate vault" },
+      { id: "install", label: "Reinstall affected targets" },
+      { id: "commit", label: "Commit changes" },
+    ]);
+    let active = "write";
+    try {
+      const fresh = await openVault(vaultPath);
+      const freshChanged = new Set(changes.map((change) => change.name));
+      const changedSkills = new Set<string>();
+      const writePaths = new Set<string>();
+
+      journal.start("write");
+      for (const source of fresh.sources) {
+        if (!freshChanged.has(source.name)) continue;
+        const upstream = fetched.get(source.name);
+        if (!upstream) continue;
+        for (const skill of source.skills) {
+          copyUpstreamSkill(skill, upstream.root);
+          skill.contentHash = hashDirectory(skill.workingPath);
+          changedSkills.add(skill.name);
+          if (skill.vendorPath) writePaths.add(relativeSlash(vaultPath, skill.vendorPath));
+          writePaths.add(relativeSlash(vaultPath, skill.workingPath));
+        }
+        source.locked = {
+          commit: upstream.commit,
+          hash: hashText(
+            JSON.stringify(
+              source.skills
+                .map((skill) => [skill.name, skill.contentHash] as const)
+                .sort(([a], [b]) => a.localeCompare(b)),
+            ),
+          ),
+          skills: Object.fromEntries(source.skills.map((skill) => [skill.name, skill.contentHash])),
+        };
+        source.status = "current";
+      }
+      journal.done("write", `${changedSkills.size} skills`);
+
+      journal.start("lock");
+      writeLock(vaultPath, buildLock(fresh));
+      writePaths.add("vault.lock");
+      for (const change of changes) recordSourceApplied(vaultPath, change.name);
+      recordCheck(vaultPath, {
+        checkedAt: new Date().toISOString(),
+        results: changes.map((change) => ({
+          name: change.name,
+          origin: "github",
+          status: "current",
+          remoteCommit: change.commit,
+        })),
+        warnings: [],
+      });
+      journal.done("lock");
+
+      active = "build";
+      journal.start("build");
+      const build = await buildVault(vaultPath);
+      journal.done("build", `${build.skills.length} skills`);
+
+      active = "validate";
+      journal.start("validate");
+      const validation = await validateVault(vaultPath);
+      if (!validation.ok) {
+        throw new VaultDeskError("validation-failed", "Updated vault failed validation.", {
+          details: validation.errors,
+        });
+      }
+      journal.done("validate", `${validation.warnings.length} warnings`);
+
+      let install: UpdateResult["install"];
+      if (options.install) {
+        active = "install";
+        journal.start("install");
+        install = await reinstallTargets(vaultPath, changes.map((change) => change.name), {
+          rebuild: false,
+          backupRoot: options.backupRoot,
+          retention: options.retention,
+        });
+        journal.done("install", `${install.length} targets`);
+      } else {
+        journal.skipped("install");
+      }
+
+      let commit: string | undefined;
+      if (options.commit) {
+        active = "commit";
+        journal.start("commit");
+        const message =
+          options.commitMessage?.trim() ||
+          `chore: update ${changes.map((change) => change.name).join(", ")}`;
+        commit = await commitPaths(vaultPath, [...writePaths], message);
+        journal.done("commit", commit);
+      } else {
+        journal.skipped("commit");
+      }
+
+      journal.finish();
+      return {
+        applied: true,
+        names: changes.map((change) => change.name),
+        changes,
+        validation,
+        build: { skills: build.skills },
+        install,
+        commit,
+        warnings,
+      };
+    } catch (error) {
+      journal.fail(active, (error as Error).message);
+      throw error;
+    }
+  });
+}
+
+export async function previewUpdate(
+  inputPath: string,
+  names?: string[],
+): Promise<{ changes: { name: string; commit: string; diff: SourceDiff }[]; warnings: string[] }> {
+  const snapshot = await openVault(inputPath);
+  const selected = selectSources(snapshot, names).filter((source) => source.origin === "github");
+  const changes: { name: string; commit: string; diff: SourceDiff }[] = [];
+  const warnings: string[] = [];
+  for (const source of selected) {
+    const upstream = await fetchUpstream(source);
+    const diff = await diffSourceRecord(source, upstream.root, upstream.commit);
+    if (diff.files.length > 0 || source.locked?.commit !== upstream.commit) {
+      changes.push({ name: source.name, commit: upstream.commit, diff });
+    }
+  }
+  return { changes, warnings };
+}
+
+export function updateSummary(changes: UpdateChange[]): { files: number; binary: number } {
+  const files = changes.flatMap((change) => change.files as DiffFile[]);
+  return { files: files.length, binary: files.filter((file) => file.binary).length };
+}

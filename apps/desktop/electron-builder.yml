@@ -1,0 +1,29 @@
+appId: com.coderwang404.vaultdesk
+productName: VaultDesk
+copyright: Copyright © 2026 coderWang404
+directories:
+  output: ../../release
+  buildResources: build
+files:
+  - out/**/*
+  - package.json
+asar: true
+mac:
+  category: public.app-category.developer-tools
+  identity: null
+  target:
+    - dmg
+  icon: build/icon.icns
+  extendInfo:
+    NSHumanReadableCopyright: Copyright © 2026 coderWang404
+dmg:
+  title: VaultDesk ${version}
+  artifactName: VaultDesk-${version}-${arch}.${ext}
+  contents:
+    - x: 140
+      y: 180
+      type: file
+    - x: 400
+      y: 180
+      type: link
+      path: /Applications

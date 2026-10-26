@@ -1,0 +1,849 @@
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import type {
+  AppSettings,
+  CheckReport,
+  SearchHit,
+  SkillRecord,
+  SourceRecord,
+  ValidationReport,
+  VaultSnapshot,
+} from "@vaultdesk/core";
+import type { ToolPreset } from "@vaultdesk/schema";
+import { call, errorMessage } from "./api";
+import { GitView } from "./components/GitView";
+import { Icon } from "./components/icons";
+import { Inspector } from "./components/Inspector";
+import { Overview } from "./components/Overview";
+import { SearchPalette } from "./components/SearchPalette";
+import { SettingsView } from "./components/SettingsView";
+import { Sidebar } from "./components/Sidebar";
+import { SkillsView } from "./components/SkillsView";
+import { SourcesView } from "./components/SourcesView";
+import { TargetsView } from "./components/TargetsView";
+import { TitleBar } from "./components/TitleBar";
+import { Welcome } from "./components/Welcome";
+import { BackupsModal } from "./components/modals/BackupsModal";
+import { DiffModal } from "./components/modals/DiffModal";
+import { EditorModal } from "./components/modals/EditorModal";
+import { ForkModal } from "./components/modals/ForkModal";
+import { ImportModal } from "./components/modals/ImportModal";
+import { InstallModal } from "./components/modals/InstallModal";
+import { MigrationModal } from "./components/modals/MigrationModal";
+import { NewVaultModal } from "./components/modals/NewVaultModal";
+import { RemoveSourceModal } from "./components/modals/RemoveSourceModal";
+import { UpdateModal } from "./components/modals/UpdateModal";
+import { ValidationModal } from "./components/modals/ValidationModal";
+import { Button, ConfirmDialog, Spinner } from "./components/ui";
+import type { AppInfo, ModalState, Section, Selection, ToastItem } from "./types";
+
+interface RecentEntry {
+  path: string;
+  name: string;
+  openedAt: string;
+  exists?: boolean;
+}
+
+interface RemoveTargetResult {
+  removed: string;
+  backupPath?: string;
+  filesMoved: string[];
+}
+
+const EMPTY_SELECTION: Selection = { kind: null, name: null };
+const DEFAULT_SETTINGS: AppSettings = { checkIntervalHours: 24, backupRetention: 10 };
+
+export function App() {
+  const [vaults, setVaults] = useState<VaultSnapshot[]>([]);
+  const [activePath, setActivePath] = useState<string | null>(null);
+  const [section, setSection] = useState<Section>("overview");
+  const [selection, setSelection] = useState<Selection>(EMPTY_SELECTION);
+  const [modal, setModal] = useState<ModalState | null>(null);
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [toasts, setToasts] = useState<ToastItem[]>([]);
+  const [settings, setSettings] = useState<AppSettings>(DEFAULT_SETTINGS);
+  const [presets, setPresets] = useState<ToolPreset[]>([]);
+  const [info, setInfo] = useState<AppInfo | null>(null);
+  const [recents, setRecents] = useState<RecentEntry[]>([]);
+  const [recentsLoading, setRecentsLoading] = useState(true);
+  const [booted, setBooted] = useState(false);
+  const [opening, setOpening] = useState<string | null>(null);
+  const [checking, setChecking] = useState<string | null>(null);
+  const [targetToRemove, setTargetToRemove] = useState<string | null>(null);
+  const [removingTarget, setRemovingTarget] = useState(false);
+
+  const toastId = useRef(0);
+  const vaultsRef = useRef(vaults);
+  vaultsRef.current = vaults;
+  const bootStarted = useRef(false);
+  const autoChecked = useRef<Set<string>>(new Set());
+
+  const activeVault = useMemo(
+    () => vaults.find((vault) => vault.path === activePath) ?? null,
+    [vaults, activePath],
+  );
+  const readOnly = activeVault?.format === "v1";
+  const activeChecking = checking !== null && checking === activeVault?.path;
+
+  const notify = useCallback((message: string, tone: ToastItem["tone"] = "info") => {
+    const id = ++toastId.current;
+    setToasts((current) => [...current.slice(-4), { id, tone, message }]);
+    window.setTimeout(() => {
+      setToasts((current) => current.filter((toast) => toast.id !== id));
+    }, tone === "danger" ? 7000 : 4200);
+  }, []);
+
+  const dismissToast = useCallback((id: number) => {
+    setToasts((current) => current.filter((toast) => toast.id !== id));
+  }, []);
+
+  const upsert = useCallback((snapshot: VaultSnapshot, activate = false) => {
+    setVaults((current) => {
+      const index = current.findIndex((entry) => entry.path === snapshot.path);
+      if (index === -1) return [...current, snapshot];
+      const next = [...current];
+      next[index] = snapshot;
+      return next;
+    });
+    if (activate) setActivePath(snapshot.path);
+  }, []);
+
+  const refreshRecents = useCallback(async () => {
+    try {
+      const entries = await call<RecentEntry[]>("app.recents", {});
+      setRecents(entries);
+    } catch {
+      // Recents are a convenience; failure must not block opening a vault.
+    } finally {
+      setRecentsLoading(false);
+    }
+  }, []);
+
+  const reloadVault = useCallback(
+    async (path: string): Promise<VaultSnapshot | null> => {
+      try {
+        const snapshot = await call<VaultSnapshot>("vault.reload", { vaultPath: path });
+        upsert(snapshot);
+        return snapshot;
+      } catch (reason) {
+        notify(errorMessage(reason), "danger");
+        return null;
+      }
+    },
+    [notify, upsert],
+  );
+
+  const openVault = useCallback(
+    async (input: string): Promise<void> => {
+      const existing = vaultsRef.current.find((vault) => vault.path === input);
+      if (existing) {
+        setActivePath(existing.path);
+        setSection("overview");
+        return;
+      }
+      setOpening(input);
+      try {
+        const snapshot = await call<VaultSnapshot>("vault.open", { path: input });
+        upsert(snapshot, true);
+        setSection("overview");
+        setSelection(EMPTY_SELECTION);
+        notify(`已打开 ${snapshot.name}`, "ok");
+        await refreshRecents();
+      } catch (reason) {
+        notify(errorMessage(reason), "danger");
+      } finally {
+        setOpening(null);
+      }
+    },
+    [notify, refreshRecents, upsert],
+  );
+
+  const browseVault = useCallback(async (): Promise<void> => {
+    const selected = await window.vaultdesk.chooseDirectory({ title: "选择 VaultDesk 仓库目录" });
+    if (selected) await openVault(selected);
+  }, [openVault]);
+
+  const closeVault = useCallback(
+    (path: string): void => {
+      const current = vaultsRef.current;
+      const index = current.findIndex((vault) => vault.path === path);
+      const rest = current.filter((vault) => vault.path !== path);
+      setVaults(rest);
+      setActivePath((active) => {
+        if (active !== path) return active;
+        return rest[Math.min(Math.max(index, 0), rest.length - 1)]?.path ?? null;
+      });
+      setSelection(EMPTY_SELECTION);
+      void call("vault.close", { path }).catch(() => undefined);
+    },
+    [],
+  );
+
+  const checkVault = useCallback(
+    async (path: string, quiet: boolean): Promise<void> => {
+      setChecking(path);
+      try {
+        const report = await call<CheckReport>("source.check", { vaultPath: path });
+        await reloadVault(path);
+        const updates = report.results.filter((result) => result.status === "update-available").length;
+        const failures = report.results.filter(
+          (result) => result.status === "error" || result.status === "auth-failed",
+        ).length;
+        if (updates > 0) {
+          notify(`发现 ${updates} 个来源有可用更新`, "info");
+        } else if (failures > 0) {
+          notify(`${failures} 个来源检查失败，详情见来源状态`, "warn");
+        } else if (!quiet) {
+          notify("所有已检查来源都是最新", "ok");
+        }
+      } catch (reason) {
+        if (!quiet) notify(errorMessage(reason), "danger");
+      } finally {
+        setChecking(null);
+      }
+    },
+    [notify, reloadVault],
+  );
+
+  const reveal = useCallback(
+    (target: string): void => {
+      void call("app.reveal", { path: target }).catch((reason) => notify(errorMessage(reason), "danger"));
+    },
+    [notify],
+  );
+
+  const guardWritable = useCallback((): boolean => {
+    if (readOnly) {
+      notify("v1 仓库以只读方式打开。先完成迁移，再执行写入操作。", "warn");
+      return false;
+    }
+    return true;
+  }, [notify, readOnly]);
+
+  const openInstall = useCallback(
+    (targetId?: string): void => {
+      if (!activeVault || !guardWritable()) return;
+      setModal({ kind: "install", vaultPath: activeVault.path, ...(targetId ? { targetId } : {}) });
+    },
+    [activeVault, guardWritable],
+  );
+
+  const openBackups = useCallback(
+    (targetId?: string): void => {
+      if (!activeVault) return;
+      setModal({ kind: "backups", vaultPath: activeVault.path, ...(targetId ? { targetId } : {}) });
+    },
+    [activeVault],
+  );
+
+  const openImport = useCallback((): void => {
+    if (!activeVault || !guardWritable()) return;
+    setModal({ kind: "import", vaultPath: activeVault.path });
+  }, [activeVault, guardWritable]);
+
+  const openFork = useCallback(
+    (skill: SkillRecord): void => {
+      if (!activeVault || !guardWritable()) return;
+      setModal({ kind: "fork", vaultPath: activeVault.path, skill: skill.name });
+    },
+    [activeVault, guardWritable],
+  );
+
+  const openEditor = useCallback(
+    (skill: SkillRecord): void => {
+      if (!activeVault || !guardWritable()) return;
+      if (skill.origin === "github") {
+        setModal({ kind: "fork", vaultPath: activeVault.path, skill: skill.name });
+        return;
+      }
+      setModal({ kind: "editor", vaultPath: activeVault.path, skill: skill.name });
+    },
+    [activeVault, guardWritable],
+  );
+
+  const openUpdate = useCallback(
+    (source?: string): void => {
+      if (!activeVault) return;
+      if (readOnly) {
+        if (source) {
+          setModal({ kind: "diff", vaultPath: activeVault.path, source });
+        } else {
+          notify("v1 仓库只读。逐个来源查看差异，或先迁移到 v2。", "warn");
+        }
+        return;
+      }
+      setModal({ kind: "update", vaultPath: activeVault.path, ...(source ? { source } : {}) });
+    },
+    [activeVault, notify, readOnly],
+  );
+
+  const openRemoveSource = useCallback(
+    (source: string): void => {
+      if (!activeVault || !guardWritable()) return;
+      setModal({ kind: "remove-source", vaultPath: activeVault.path, source });
+    },
+    [activeVault, guardWritable],
+  );
+
+  const selectSource = useCallback((source: SourceRecord): void => {
+    setSelection({ kind: "source", name: source.name });
+  }, []);
+
+  const selectSkill = useCallback((skill: SkillRecord): void => {
+    setSelection({ kind: "skill", name: skill.name });
+  }, []);
+
+  const handleSearchHit = useCallback(
+    async (hit: SearchHit): Promise<void> => {
+      setSearchOpen(false);
+      if (!vaultsRef.current.some((vault) => vault.path === hit.vaultPath)) {
+        await openVault(hit.vaultPath);
+      }
+      setActivePath(hit.vaultPath);
+      setSection("skills");
+      setSelection({ kind: "skill", name: hit.skill });
+    },
+    [openVault],
+  );
+
+  const removeRecent = useCallback(
+    async (path: string): Promise<void> => {
+      try {
+        await call("app.removeRecent", { path });
+        await refreshRecents();
+      } catch (reason) {
+        notify(errorMessage(reason), "danger");
+      }
+    },
+    [notify, refreshRecents],
+  );
+
+  const confirmRemoveTarget = useCallback(async (): Promise<void> => {
+    if (!activeVault || !targetToRemove) return;
+    const vaultPath = activeVault.path;
+    const id = targetToRemove;
+    setRemovingTarget(true);
+    try {
+      const result = await call<RemoveTargetResult>("target.remove", {
+        vaultPath,
+        id,
+        deleteFiles: true,
+        confirm: true,
+      });
+      setTargetToRemove(null);
+      notify(
+        `已注销目标 ${result.removed}${result.filesMoved.length > 0 ? `，${result.filesMoved.length} 个受管目录已移入备份` : ""}`,
+        "ok",
+      );
+      await reloadVault(vaultPath);
+    } catch (reason) {
+      notify(errorMessage(reason), "danger");
+    } finally {
+      setRemovingTarget(false);
+    }
+  }, [activeVault, notify, reloadVault, targetToRemove]);
+
+  useEffect(() => {
+    if (bootStarted.current) return;
+    bootStarted.current = true;
+    void (async () => {
+      const [infoResult, settingsResult, presetsResult, recentsResult] = await Promise.allSettled([
+        call<AppInfo>("app.info", {}),
+        call<AppSettings>("app.settings", {}),
+        call<ToolPreset[]>("presets.list", {}),
+        call<RecentEntry[]>("app.recents", {}),
+      ]);
+      if (infoResult.status === "fulfilled") setInfo(infoResult.value);
+      if (settingsResult.status === "fulfilled") setSettings(settingsResult.value);
+      if (presetsResult.status === "fulfilled") setPresets(presetsResult.value);
+      if (recentsResult.status === "fulfilled") setRecents(recentsResult.value);
+      setRecentsLoading(false);
+
+      const initial = window.vaultdesk.initialVault;
+      if (initial) {
+        try {
+          const snapshot = await call<VaultSnapshot>("vault.open", { path: initial });
+          setVaults([snapshot]);
+          setActivePath(snapshot.path);
+          const entries = await call<RecentEntry[]>("app.recents", {});
+          setRecents(entries);
+        } catch (reason) {
+          notify(errorMessage(reason), "danger");
+        }
+      }
+      setBooted(true);
+    })();
+  }, [notify]);
+
+  useEffect(() => {
+    if (!activeVault) {
+      setSelection(EMPTY_SELECTION);
+      return;
+    }
+    setSelection((current) => {
+      if (!current.kind || !current.name) return current;
+      const exists =
+        current.kind === "source"
+          ? activeVault.sources.some((source) => source.name === current.name)
+          : activeVault.skills.some((skill) => skill.name === current.name);
+      return exists ? current : EMPTY_SELECTION;
+    });
+  }, [activeVault]);
+
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent): void => {
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
+        event.preventDefault();
+        setSearchOpen((open) => !open);
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
+
+  const actionsRef = useRef({
+    browse: browseVault,
+    newVault: () => setModal({ kind: "new-vault" }),
+    search: () => setSearchOpen(true),
+    reload: () => {
+      if (activePath) void reloadVault(activePath);
+    },
+    check: () => {
+      if (activePath) void checkVault(activePath, false);
+    },
+    settings: () => setSection("settings"),
+    close: () => {
+      if (activePath) closeVault(activePath);
+    },
+  });
+  actionsRef.current = {
+    browse: browseVault,
+    newVault: () => setModal({ kind: "new-vault" }),
+    search: () => setSearchOpen(true),
+    reload: () => {
+      if (activePath) void reloadVault(activePath);
+    },
+    check: () => {
+      if (activePath) void checkVault(activePath, false);
+    },
+    settings: () => setSection("settings"),
+    close: () => {
+      if (activePath) closeVault(activePath);
+    },
+  };
+
+  useEffect(() => {
+    return window.vaultdesk.onMenuAction((action) => {
+      const actions = actionsRef.current;
+      switch (action) {
+        case "open-vault":
+          void actions.browse();
+          break;
+        case "new-vault":
+          actions.newVault();
+          break;
+        case "search":
+          actions.search();
+          break;
+        case "refresh":
+          actions.reload();
+          break;
+        case "check":
+          actions.check();
+          break;
+        case "settings":
+          actions.settings();
+          break;
+        case "close-vault":
+          actions.close();
+          break;
+      }
+    });
+  }, []);
+
+  useEffect(() => {
+    if (!activeVault || activeVault.format !== "v2") return;
+    if (settings.checkIntervalHours <= 0) return;
+    if (autoChecked.current.has(activeVault.path)) return;
+    autoChecked.current.add(activeVault.path);
+    const last = activeVault.state?.last_checked_at;
+    if (last) {
+      const age = Date.now() - new Date(last).getTime();
+      if (Number.isFinite(age) && age >= 0 && age < settings.checkIntervalHours * 3_600_000) return;
+    }
+    void checkVault(activeVault.path, true);
+  }, [activeVault, settings.checkIntervalHours, checkVault]);
+
+  const modalVault =
+    modal && modal.kind !== "new-vault"
+      ? vaults.find((vault) => vault.path === modal.vaultPath) ?? null
+      : null;
+
+  function renderView(): ReactNode {
+    if (!activeVault) return null;
+    switch (section) {
+      case "overview":
+        return (
+          <Overview
+            vault={activeVault}
+            checking={activeChecking}
+            onCheck={() => void checkVault(activeVault.path, false)}
+            onSource={selectSource}
+            onSkill={selectSkill}
+            onValidate={() => setModal({ kind: "validation", vaultPath: activeVault.path })}
+            onMigration={() => setModal({ kind: "migration", vaultPath: activeVault.path })}
+            onDiff={(source) => setModal({ kind: "diff", vaultPath: activeVault.path, source })}
+            onUpdate={openUpdate}
+            onInstall={() => openInstall()}
+            onImport={openImport}
+            onSettings={() => setSection("settings")}
+          />
+        );
+      case "sources":
+        return (
+          <SourcesView
+            vault={activeVault}
+            selected={selection.kind === "source" ? selection.name : null}
+            checking={activeChecking}
+            onSelect={selectSource}
+            onCheck={() => void checkVault(activeVault.path, false)}
+            onDiff={(source) => setModal({ kind: "diff", vaultPath: activeVault.path, source })}
+            onUpdate={openUpdate}
+            onImport={openImport}
+            onRemove={openRemoveSource}
+          />
+        );
+      case "skills":
+        return (
+          <SkillsView
+            vault={activeVault}
+            selected={selection.kind === "skill" ? selection.name : null}
+            onSelect={selectSkill}
+            onImport={openImport}
+            onEditor={openEditor}
+            onFork={openFork}
+          />
+        );
+      case "targets":
+        return (
+          <TargetsView
+            vault={activeVault}
+            onInstall={openInstall}
+            onBackups={openBackups}
+            onRemove={(id) => {
+              if (!guardWritable()) return;
+              setTargetToRemove(id);
+            }}
+            onReveal={reveal}
+            onError={(message) => notify(message, "danger")}
+          />
+        );
+      case "git":
+        return (
+          <GitView
+            vault={activeVault}
+            readOnly={readOnly}
+            onRefresh={() => reloadVault(activeVault.path).then(() => undefined)}
+            onReveal={reveal}
+            onError={(message) => notify(message, "danger")}
+            onNotify={(message) => notify(message, "ok")}
+          />
+        );
+      case "settings":
+        return (
+          <SettingsView
+            vault={activeVault}
+            settings={settings}
+            info={info}
+            presets={presets}
+            onSaved={(saved) => {
+              setSettings(saved);
+              notify("设置已保存", "ok");
+            }}
+            onReveal={reveal}
+            onError={(message) => notify(message, "danger")}
+          />
+        );
+      default:
+        return null;
+    }
+  }
+
+  const showInspector = Boolean(activeVault) && (section === "overview" || section === "sources" || section === "skills");
+
+  return (
+    <div className="app-shell">
+      <TitleBar
+        vaults={vaults}
+        activePath={activePath}
+        checking={activeChecking}
+        onSelect={(path) => {
+          setActivePath(path);
+          setSection("overview");
+        }}
+        onClose={closeVault}
+        onOpen={() => void browseVault()}
+        onNew={() => setModal({ kind: "new-vault" })}
+        onSearch={() => setSearchOpen(true)}
+        onCheck={() => {
+          if (activePath) void checkVault(activePath, false);
+        }}
+        onSettings={() => setSection("settings")}
+      />
+
+      {!booted ? (
+        <div className="boot-screen">
+          <span className="brand-mark xl">
+            <Icon name="vault" size={30} strokeWidth={1.6} />
+          </span>
+          <h1>VaultDesk</h1>
+          <p>正在准备本地仓库…</p>
+          <Spinner size={18} />
+        </div>
+      ) : activeVault ? (
+        <div className="workspace">
+          <Sidebar
+            vault={activeVault}
+            section={section}
+            checking={activeChecking}
+            onSection={setSection}
+            onCheck={() => void checkVault(activeVault.path, false)}
+            onReveal={() => reveal(activeVault.path)}
+            onMigration={() => setModal({ kind: "migration", vaultPath: activeVault.path })}
+          />
+
+          <div className="main-pane">
+            {activeVault.operation ? (
+              <div className="recovery-banner">
+                <Icon name="alert" size={16} />
+                <div>
+                  <strong>上次操作未正常结束</strong>
+                  <span>
+                    {activeVault.operation.kind} 停在进行中的步骤。VaultDesk 不会自动回滚；请用 Git
+                    状态与安装备份核对后继续。
+                  </span>
+                </div>
+                <Button size="sm" variant="quiet" icon="refresh" onClick={() => void reloadVault(activeVault.path)}>
+                  刷新状态
+                </Button>
+              </div>
+            ) : null}
+            <div className={`workspace-body ${showInspector ? "with-inspector" : ""}`}>
+              <main className="content-pane">{renderView()}</main>
+              {showInspector ? (
+                <Inspector
+                  vault={activeVault}
+                  selection={selection}
+                  onClose={() => setSelection(EMPTY_SELECTION)}
+                  onReveal={reveal}
+                  onDiff={(source) => setModal({ kind: "diff", vaultPath: activeVault.path, source })}
+                  onUpdate={openUpdate}
+                  onRemoveSource={openRemoveSource}
+                  onEdit={openEditor}
+                  onFork={openFork}
+                  onInstall={openInstall}
+                  onSkill={selectSkill}
+                  onBackups={openBackups}
+                />
+              ) : null}
+            </div>
+          </div>
+        </div>
+      ) : (
+        <Welcome
+          recents={recents}
+          loading={recentsLoading}
+          info={info}
+          opening={opening}
+          onOpen={(path) => void openVault(path)}
+          onBrowse={() => void browseVault()}
+          onNew={() => setModal({ kind: "new-vault" })}
+          onRemoveRecent={(path) => void removeRecent(path)}
+        />
+      )}
+
+      {modal?.kind === "new-vault" ? (
+        <NewVaultModal
+          onClose={() => setModal(null)}
+          onCreated={(path) => {
+            setModal(null);
+            void openVault(path);
+          }}
+        />
+      ) : null}
+
+      {modal?.kind === "migration" ? (
+        <MigrationModal
+          vaultPath={modal.vaultPath}
+          onClose={() => setModal(null)}
+          onDone={(message) => {
+            const path = modal.vaultPath;
+            setModal(null);
+            notify(message, "ok");
+            void reloadVault(path);
+          }}
+        />
+      ) : null}
+
+      {modal?.kind === "validation" ? (
+        <ValidationModal
+          vaultPath={modal.vaultPath}
+          onClose={() => setModal(null)}
+          onValidated={(report: ValidationReport) => {
+            if (!report.ok) notify(`校验发现 ${report.errors.length} 个错误`, "warn");
+          }}
+        />
+      ) : null}
+
+      {modal?.kind === "diff" ? (
+        <DiffModal
+          vaultPath={modal.vaultPath}
+          source={modal.source}
+          onClose={() => setModal(null)}
+        />
+      ) : null}
+
+      {modal?.kind === "update" && modalVault ? (
+        <UpdateModal
+          vault={modalVault}
+          source={modal.source}
+          onClose={() => setModal(null)}
+          onDone={(message) => {
+            const path = modal.vaultPath;
+            setModal(null);
+            notify(message, "ok");
+            void reloadVault(path);
+          }}
+        />
+      ) : null}
+
+      {modal?.kind === "install" && modalVault ? (
+        <InstallModal
+          vault={modalVault}
+          targetId={modal.targetId}
+          presets={presets}
+          onClose={() => setModal(null)}
+          onDone={(message) => {
+            const path = modal.vaultPath;
+            setModal(null);
+            notify(message, "ok");
+            void reloadVault(path);
+          }}
+        />
+      ) : null}
+
+      {modal?.kind === "import" ? (
+        <ImportModal
+          vaultPath={modal.vaultPath}
+          onClose={() => setModal(null)}
+          onDone={(message) => {
+            const path = modal.vaultPath;
+            setModal(null);
+            notify(message, "ok");
+            void reloadVault(path);
+          }}
+        />
+      ) : null}
+
+      {modal?.kind === "fork" ? (
+        <ForkModal
+          vaultPath={modal.vaultPath}
+          skill={modal.skill}
+          onClose={() => setModal(null)}
+          onDone={(message) => {
+            const path = modal.vaultPath;
+            setModal(null);
+            notify(message, "ok");
+            void reloadVault(path);
+          }}
+        />
+      ) : null}
+
+      {modal?.kind === "editor" ? (
+        <EditorModal
+          vaultPath={modal.vaultPath}
+          skill={modal.skill}
+          onClose={() => setModal(null)}
+          onDone={(message) => {
+            const path = modal.vaultPath;
+            setModal(null);
+            notify(message, "ok");
+            void reloadVault(path);
+          }}
+          onFork={() => {
+            const target = { path: modal.vaultPath, skill: modal.skill };
+            setModal({ kind: "fork", vaultPath: target.path, skill: target.skill });
+          }}
+        />
+      ) : null}
+
+      {modal?.kind === "remove-source" && modalVault ? (
+        <RemoveSourceModal
+          vault={modalVault}
+          source={modal.source}
+          onClose={() => setModal(null)}
+          onDone={(message) => {
+            const path = modal.vaultPath;
+            setModal(null);
+            setSelection(EMPTY_SELECTION);
+            notify(message, "ok");
+            void reloadVault(path);
+          }}
+        />
+      ) : null}
+
+      {modal?.kind === "backups" ? (
+        <BackupsModal
+          vaultPath={modal.vaultPath}
+          targetId={modal.targetId}
+          targets={modalVault?.targets ?? []}
+          onClose={() => setModal(null)}
+          onReveal={reveal}
+          onRestored={(message) => {
+            notify(message, "ok");
+            void reloadVault(modal.vaultPath);
+          }}
+        />
+      ) : null}
+
+      {targetToRemove ? (
+        <ConfirmDialog
+          title={`注销安装目标 ${targetToRemove}？`}
+          message={
+            <>
+              从 <strong>{activeVault?.name}</strong> 的 vault.yml 中移除这个安装目标。
+            </>
+          }
+          detail="这个仓库安装的受管目录会移动到备份目录，不会直接删除；未受管目录保持原样。"
+          confirmLabel="注销目标"
+          danger
+          busy={removingTarget}
+          onCancel={() => setTargetToRemove(null)}
+          onConfirm={() => void confirmRemoveTarget()}
+        />
+      ) : null}
+
+      {searchOpen ? (
+        <SearchPalette
+          vaults={vaults.map((vault) => ({ path: vault.path, name: vault.name }))}
+          onClose={() => setSearchOpen(false)}
+          onPick={(hit) => void handleSearchHit(hit)}
+        />
+      ) : null}
+
+      <div className="toasts" aria-live="polite">
+        {toasts.map((toast) => (
+          <div className={`toast toast-${toast.tone}`} key={toast.id}>
+            <Icon
+              name={toast.tone === "ok" ? "check" : toast.tone === "danger" || toast.tone === "warn" ? "alert" : "info"}
+              size={15}
+            />
+            <span>{toast.message}</span>
+            <button className="toast-close" onClick={() => dismissToast(toast.id)} aria-label="关闭提示">
+              <Icon name="x" size={12} />
+            </button>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}

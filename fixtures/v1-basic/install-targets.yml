@@ -1,0 +1,8 @@
+targets:
+  - id: fixture-agents
+    dest: ~/.vaultdesk-fixtures/v1-agents
+    names:
+      - local-notes
+      - gh-standalone
+      - suite-pack
+    install_after_update: true

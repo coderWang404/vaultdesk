@@ -1,0 +1,11 @@
+node_modules/
+dist/
+out/
+release/
+coverage/
+*.tsbuildinfo
+.DS_Store
+.vite/
+tmp/
+*.log
+apps/desktop/smoke.png

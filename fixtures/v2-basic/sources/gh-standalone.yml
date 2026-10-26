@@ -1,0 +1,12 @@
+schema: 1
+name: gh-standalone
+shape: standalone
+origin: github
+repo: example/seed-skills
+ref: main
+update_mode: review-before-apply
+skills:
+  - name: gh-standalone
+    source_path: skills/gh-standalone
+    vendor_path: third_party/gh-standalone
+    user_invocable: true

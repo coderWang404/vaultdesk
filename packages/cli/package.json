@@ -1,0 +1,35 @@
+{
+  "name": "@coderWang404/vaultdesk",
+  "version": "0.6.0",
+  "description": "Local-first skill and plugin vault manager for macOS",
+  "license": "Apache-2.0",
+  "author": "coderWang404",
+  "type": "module",
+  "bin": {
+    "vaultdesk": "./dist/index.js"
+  },
+  "files": [
+    "dist"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/coderWang404/vaultdesk.git",
+    "directory": "packages/cli"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "build": "tsup",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@vaultdesk/core": "workspace:*",
+    "@vaultdesk/schema": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "^24.10.0",
+    "tsup": "^8.5.0",
+    "typescript": "^5.9.3"
+  }
+}

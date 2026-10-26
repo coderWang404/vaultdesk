@@ -1,0 +1,10 @@
+name: collection-pack
+version: "0.1.0"
+description: 本地维护的 collection 测试包。
+kind: collection
+origin: local
+skills:
+  - name: collect-alpha
+    user_invocable: true
+  - name: collect-beta
+    user_invocable: true

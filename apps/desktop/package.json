@@ -1,0 +1,33 @@
+{
+  "name": "@vaultdesk/desktop",
+  "version": "0.6.0",
+  "private": true,
+  "type": "module",
+  "main": "./out/main/index.cjs",
+  "description": "VaultDesk desktop app",
+  "author": "coderWang404",
+  "license": "Apache-2.0",
+  "scripts": {
+    "dev": "electron-vite dev",
+    "build": "electron-vite build",
+    "preview": "electron-vite preview",
+    "typecheck": "tsc --noEmit -p tsconfig.node.json && tsc --noEmit -p tsconfig.web.json",
+    "smoke": "electron-vite build && node scripts/smoke.mjs",
+    "package:mac": "electron-vite build && electron-builder --mac dmg --config electron-builder.yml"
+  },
+  "devDependencies": {
+    "@types/node": "^24.10.0",
+    "@types/react": "^19.2.0",
+    "@types/react-dom": "^19.2.0",
+    "@vaultdesk/core": "workspace:*",
+    "@vaultdesk/schema": "workspace:*",
+    "@vitejs/plugin-react": "^6.1.2",
+    "electron": "^45.0.0",
+    "electron-builder": "^26.18.0",
+    "electron-vite": "^6.0.0",
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1",
+    "typescript": "^5.9.3",
+    "vite": "^8.3.5"
+  }
+}

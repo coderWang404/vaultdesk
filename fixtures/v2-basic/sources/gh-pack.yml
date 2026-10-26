@@ -1,0 +1,20 @@
+schema: 1
+name: gh-pack
+shape: package
+kind: collection
+origin: github
+repo: example/gh-pack
+ref: main
+content_path: packages/gh-pack
+version: "0.1.0"
+description: GitHub collection 测试包。
+update_mode: review-before-apply
+skills:
+  - name: gh-pack-alpha
+    source_path: skills/gh-pack-alpha
+    vendor_path: third_party/gh-pack/gh-pack-alpha
+    user_invocable: true
+  - name: gh-pack-beta
+    source_path: skills/gh-pack-beta
+    vendor_path: third_party/gh-pack/gh-pack-beta
+    user_invocable: true

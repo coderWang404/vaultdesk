@@ -1,0 +1,14 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "composite": false,
+    "noEmit": true,
+    "types": ["node", "electron"],
+    "baseUrl": ".",
+    "paths": {
+      "@vaultdesk/core": ["../../packages/core/src/index.ts"],
+      "@vaultdesk/schema": ["../../packages/schema/src/index.ts"]
+    }
+  },
+  "include": ["electron.vite.config.ts", "src/main/**/*.ts", "src/preload/**/*.ts"]
+}

@@ -135,7 +135,11 @@ export async function lockForVault(vaultPath: string): Promise<LockFile> {
     sources[source.name] = {
       commit: source.locked?.commit,
       hash: source.locked?.hash,
-      skills: Object.fromEntries(source.skills.map((skill) => [skill.name, skill.contentHash])),
+      skills: Object.fromEntries(
+        source.shape === "plugin"
+          ? Object.entries(source.locked?.skills ?? {})
+          : source.skills.map((skill) => [skill.name, skill.contentHash]),
+      ),
     };
   }
   return { schema: 1, sources };

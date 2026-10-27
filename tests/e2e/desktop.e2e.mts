@@ -620,7 +620,87 @@ async function pluginsFlow(suite: Suite): Promise<void> {
   await waitFor(async () => (await page.locator(".plugin-row").count()) === 1, "GitHub plugin filter");
   assert(!fs.existsSync(targetDest), "GitHub plugin import wrote nothing to the agent target");
 
-  console.log("      plugin page, filters, search routing, hooks warning, local and GitHub imports OK");
+  commitAll(vaultPath, "chore: commit plugin imports");
+  const pluginV2Commit = advanceUpstreamRepo(workspace, "plugin-kit", (source) => {
+    fs.writeFileSync(
+      path.join(source, ".claude-plugin", "plugin.json"),
+      `${JSON.stringify({ name: "plugin-kit", version: "2.1.0", description: "Upstream kit plugin", license: "MIT" }, null, 2)}\n`,
+      "utf8",
+    );
+    writeSkill(path.join(source, "skills", "kit-review"), "kit-review", "Kit review skill.", "KIT-REVIEW-V2.");
+    fs.mkdirSync(path.join(source, "commands"), { recursive: true });
+    fs.writeFileSync(path.join(source, "commands", "hello.md"), "# hello\n", "utf8");
+  });
+
+  await openSection(page, "来源");
+  const pluginSourceRow = page.locator(".source-row").filter({ hasText: "plugin-kit" });
+  await pluginSourceRow.getByText("1 个技能").waitFor();
+  await page.getByRole("button", { name: "检查", exact: true }).click();
+  await pluginSourceRow.getByText("有更新").waitFor({ timeout: 60_000 });
+
+  await pluginSourceRow.getByRole("button", { name: "差异" }).click();
+  const diffModal = await dialog(page);
+  await diffModal.locator(".diff-layout").waitFor({ state: "visible", timeout: 60_000 });
+  const diffText = await diffModal.locator(".diff-files").innerText();
+  assert(diffText.includes(".claude-plugin/plugin.json"), "plugin diff shows the whole-root manifest");
+  assert(diffText.includes("skills/kit-review/SKILL.md"), "plugin diff shows the contained skill");
+  assert(diffText.includes("commands/hello.md"), "plugin diff shows newly added assets");
+  await diffModal.getByRole("button", { name: "关闭" }).click();
+  await diffModal.waitFor({ state: "hidden" });
+
+  await pluginSourceRow.getByRole("button", { name: "更新" }).click();
+  const updateModal = await dialog(page);
+  await updateModal.locator(".update-diff-layout").waitFor({ state: "visible", timeout: 60_000 });
+  const updateText = await updateModal.locator(".update-diff-layout").innerText();
+  assert(updateText.includes(".claude-plugin/plugin.json"), "plugin update preview lists the manifest");
+  assert(updateText.includes("skills/kit-review/SKILL.md"), "plugin update preview lists the skill");
+  await updateModal.locator(".confirm-check input").check();
+  await updateModal.locator(".toggle-row").filter({ hasText: "同时创建 Git 提交" }).click();
+  await updateModal.getByPlaceholder("chore: update plugin-kit").fill("chore: e2e plugin update");
+  await updateModal.getByRole("button", { name: "应用更新" }).click();
+  await waitForText(page, "已应用 1 个来源", 60_000);
+  await updateModal.waitFor({ state: "hidden" });
+
+  for (const root of ["plugins", "third_party"]) {
+    assert(
+      read(path.join(vaultPath, root, "plugin-kit", "skills", "kit-review", "SKILL.md")).includes("KIT-REVIEW-V2."),
+      `${root} plugin skill updated`,
+    );
+    assert(
+      fs.existsSync(path.join(vaultPath, root, "plugin-kit", "commands", "hello.md")),
+      `${root} plugin asset added`,
+    );
+  }
+  assert(
+    read(path.join(vaultPath, "plugins/plugin-kit/.claude-plugin/plugin.json")).includes('"version": "2.1.0"'),
+    "plugin working manifest updated",
+  );
+  assert(read(path.join(vaultPath, "vault.lock")).includes(pluginV2Commit), "plugin update pinned commit");
+  equal(git(vaultPath, ["status", "--porcelain"]).trim(), "", "plugin update left a clean worktree");
+  equal(git(vaultPath, ["log", "-1", "--pretty=%s"]).trim(), "chore: e2e plugin update", "plugin update commit message");
+  assert(!fs.existsSync(targetDest), "plugin update wrote nothing to the agent target");
+
+  await openSection(page, "插件");
+  await page.getByLabel("筛选插件").fill("plugin-kit");
+  await waitFor(async () => (await page.locator(".plugin-row").count()) === 1, "plugin filter after update");
+  const updatedRow = await page.locator(".plugin-row").innerText();
+  assert(updatedRow.includes("v2.1.0"), `plugin page shows the updated version: ${updatedRow}`);
+
+  await openSection(page, "来源");
+  await pluginSourceRow.getByRole("button", { name: "移除来源 plugin-kit" }).click();
+  const removeModal = await dialog(page);
+  await removeModal.locator(".toggle-row").filter({ hasText: "同时删除仓库内的工作副本与 vendor 目录" }).click();
+  await removeModal.getByPlaceholder("plugin-kit").fill("plugin-kit");
+  await removeModal.getByRole("button", { name: "移除来源" }).click();
+  await waitForText(page, "已移除来源 plugin-kit", 60_000);
+  await removeModal.waitFor({ state: "hidden" });
+  assert(!fs.existsSync(path.join(vaultPath, "sources/plugin-kit.yml")), "plugin metadata removed via UI");
+  assert(!fs.existsSync(path.join(vaultPath, "plugins/plugin-kit")), "plugin working copy removed via UI");
+  assert(!fs.existsSync(path.join(vaultPath, "third_party/plugin-kit")), "plugin vendor removed via UI");
+  await openSection(page, "插件");
+  await waitFor(async () => (await page.locator(".plugin-row").count()) === 6, "plugin row removed", 30_000);
+
+  console.log("      plugin page, filters, search routing, hooks warning, imports, diff, update, remove OK");
 }
 
 async function autoCheckThrottle(suite: Suite): Promise<void> {

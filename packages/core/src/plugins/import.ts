@@ -280,6 +280,30 @@ function manifestDescription(manifests: PluginManifest[]): string | undefined {
   return undefined;
 }
 
+export function refreshPluginSourceMetadata(
+  vaultPath: string,
+  source: SourceRecord,
+  manifests: PluginManifest[],
+): void {
+  if (!source.metadataPath) return;
+  writeTextAtomic(
+    source.metadataPath,
+    YAML.stringify(
+      sourceMetadata({
+        name: source.name,
+        origin: source.origin,
+        repo: source.repo,
+        remoteUrl: source.remoteUrl,
+        ref: source.ref,
+        version: manifestVersion(manifests),
+        description: manifestDescription(manifests),
+        contentPath: source.contentPath,
+      }),
+      { lineWidth: 0 },
+    ),
+  );
+}
+
 async function assertImportable(vaultPath: string): Promise<void> {
   const snapshot = await openVault(vaultPath);
   if (snapshot.format !== "v2") throw new VaultDeskError("not-writable-v1", "Migrate this vault before importing.");

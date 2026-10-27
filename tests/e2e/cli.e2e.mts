@@ -790,6 +790,267 @@ async function githubLifecycle(suite: CliSuite): Promise<void> {
   console.log("      GitHub preview/apply, check, diff, dirty guard, update+commit, fork, remove OK");
 }
 
+async function pluginLifecycle(suite: CliSuite): Promise<void> {
+  const workspace = suite.workspace("cli-plugin");
+  const repoName = "cli-plugin-kit";
+  const upstream = path.join(workspace.root, `upstream-${repoName}`);
+  const hookMarker = path.join(workspace.root, "hook-executed.marker");
+  const writeManifest = (dir: string, version: string): void => {
+    fs.mkdirSync(path.join(dir, ".claude-plugin"), { recursive: true });
+    fs.writeFileSync(
+      path.join(dir, ".claude-plugin", "plugin.json"),
+      `${JSON.stringify({ name: repoName, version, description: `CLI plugin ${version}` }, null, 2)}\n`,
+      "utf8",
+    );
+  };
+  writeManifest(upstream, "1.0.0");
+  writeSkill(path.join(upstream, "skills", "guide"), "guide", "CLI plugin guide skill.", "PLUGIN-GUIDE-V1.");
+  fs.mkdirSync(path.join(upstream, "commands"), { recursive: true });
+  fs.writeFileSync(path.join(upstream, "commands", "hello.md"), "# hello\n", "utf8");
+  fs.mkdirSync(path.join(upstream, "hooks"), { recursive: true });
+  fs.writeFileSync(
+    path.join(upstream, "hooks", "on-start.sh"),
+    `#!/bin/sh\ntouch "${hookMarker}"\n`,
+    "utf8",
+  );
+  fs.writeFileSync(path.join(upstream, "LICENSE"), "MIT\n", "utf8");
+  initGitRepo(upstream);
+  const bare = path.join(workspace.remotes, `${repoName}.git`);
+  git(workspace.root, ["clone", "--bare", upstream, bare]);
+  const initialCommit = git(bare, ["rev-parse", "HEAD"]).trim();
+
+  const vaultPath = initVault(workspace, "plugin-vault");
+  const preview = ok<Payload>(
+    runCli(["source", "add", "--repo", `e2e/${repoName}`, "--vault", vaultPath, "--json"], { workspace }),
+    "plugin import preview",
+  );
+  equal(preview.shape, "plugin", "plugin preview shape");
+  equal(preview.suggestedName, repoName, "plugin preview name");
+  assert(!fs.existsSync(path.join(vaultPath, "plugins", repoName)), "plugin preview wrote nothing");
+
+  const imported = ok<Payload>(
+    runCli(["source", "add", "--repo", `e2e/${repoName}`, "--vault", vaultPath, "--yes", "--json"], { workspace }),
+    "plugin import apply",
+  );
+  equal(imported.shape, "plugin", "plugin import shape");
+  equal(imported.sourceName, repoName, "plugin import name");
+  assert(fs.existsSync(path.join(vaultPath, "plugins", repoName, "hooks", "on-start.sh")), "plugin working copy stored");
+  assert(
+    fs.existsSync(path.join(vaultPath, "third_party", repoName, ".claude-plugin", "plugin.json")),
+    "plugin vendor copy stored",
+  );
+  assert(!fs.existsSync(hookMarker), "import never executed plugin hooks");
+  commitAll(vaultPath, "chore: import cli plugin");
+
+  const listed = ok<Payload[]>(
+    runCli(["plugin", "list", "--vault", vaultPath, "--json"], { workspace }),
+    "plugin list",
+  );
+  equal(listed.length, 1, "plugin list count");
+  equal(listed[0].name, repoName, "plugin list name");
+  equal(listed[0].hasHooks, true, "plugin list hooks flag");
+  equal(listed[0].containedSkills.length, 1, "plugin list contained skills");
+  const shown = ok<Payload>(
+    runCli(["plugin", "show", repoName, "--vault", vaultPath, "--json"], { workspace }),
+    "plugin show",
+  );
+  equal(shown.version, "1.0.0", "plugin show version");
+  equal(shown.locked.commit, initialCommit, "plugin show pinned commit");
+  assert(!fs.existsSync(hookMarker), "plugin show never executed hooks");
+
+  failure(
+    runCli(
+      [
+        "target",
+        "install",
+        "guide",
+        "--vault",
+        vaultPath,
+        "--dest",
+        path.join(workspace.root, "agents"),
+        "--id",
+        "plugin-target",
+        "--yes",
+        "--json",
+      ],
+      { workspace },
+    ),
+    2,
+    "plugin-not-installable",
+    "contained skill install refused",
+  );
+
+  const current = ok<Payload>(
+    runCli(["source", "check", repoName, "--vault", vaultPath, "--json"], { workspace }),
+    "plugin check current",
+  );
+  equal(current.results[0].status, "current", "plugin check current");
+
+  const secondCommit = advanceUpstreamRepo(workspace, repoName, (dir) => {
+    writeManifest(dir, "2.0.0");
+    writeSkill(path.join(dir, "skills", "guide"), "guide", "CLI plugin guide skill.", "PLUGIN-GUIDE-V2.");
+    fs.writeFileSync(path.join(dir, "commands", "hello.md"), "# hello v2\n", "utf8");
+    writeSkill(path.join(dir, "skills", "extra"), "extra", "CLI plugin extra skill.", "EXTRA-V1.");
+    fs.rmSync(path.join(dir, "LICENSE"));
+  });
+  const updateCheck = ok<Payload>(
+    runCli(["source", "check", repoName, "--vault", vaultPath, "--json"], { workspace }),
+    "plugin check update",
+  );
+  equal(updateCheck.results[0].status, "update-available", "plugin check detects update");
+  equal(updateCheck.results[0].remoteCommit, secondCommit, "plugin check remote commit");
+
+  const diff = ok<Payload>(
+    runCli(["source", "diff", repoName, "--vault", vaultPath, "--json"], { workspace }),
+    "plugin diff",
+  );
+  const diffFiles = diff.files as Payload[];
+  const diffPaths = diffFiles.map((file) => file.path);
+  assert(diffPaths.includes(".claude-plugin/plugin.json"), "plugin diff manifest");
+  assert(diffPaths.includes("skills/guide/SKILL.md"), "plugin diff whole-root skill path");
+  assert(diffPaths.includes("skills/extra/SKILL.md"), "plugin diff added skill");
+  assert(diffPaths.includes("LICENSE"), "plugin diff deleted license");
+  equal(diffFiles.find((file) => file.path === "LICENSE")?.status, "deleted", "plugin diff deleted status");
+  assert(
+    diffFiles.some((file) => String(file.patch ?? "").includes("PLUGIN-GUIDE-V2.")),
+    "plugin diff patch content",
+  );
+
+  const updatePreview = ok<Payload>(
+    runCli(["source", "update", repoName, "--vault", vaultPath, "--json"], { workspace }),
+    "plugin update preview",
+  );
+  equal(updatePreview.changes.length, 1, "plugin update preview count");
+  assert(
+    readFile(vaultPath, `plugins/${repoName}/skills/guide/SKILL.md`).includes("PLUGIN-GUIDE-V1."),
+    "plugin update preview wrote nothing",
+  );
+
+  const updated = ok<Payload>(
+    runCli(
+      [
+        "source",
+        "update",
+        repoName,
+        "--commit",
+        "--message",
+        "chore: cli plugin v2",
+        "--yes",
+        "--vault",
+        vaultPath,
+        "--json",
+      ],
+      { workspace },
+    ),
+    "plugin update apply",
+  );
+  equal(updated.applied, true, "plugin update applied");
+  assert(updated.commit, "plugin update commit returned");
+  equal(updated.build.skills.length, 0, "plugin-only update skipped build");
+  equal(updated.install, undefined, "plugin-only update installed nothing");
+  for (const root of ["plugins", "third_party"]) {
+    assert(
+      readFile(vaultPath, `${root}/${repoName}/skills/guide/SKILL.md`).includes("PLUGIN-GUIDE-V2."),
+      `${root} plugin guide updated`,
+    );
+    assert(
+      readFile(vaultPath, `${root}/${repoName}/skills/extra/SKILL.md`).includes("EXTRA-V1."),
+      `${root} plugin added skill copied`,
+    );
+    assert(!fs.existsSync(path.join(vaultPath, root, repoName, "LICENSE")), `${root} plugin deleted file removed`);
+  }
+  assert(readFile(vaultPath, "vault.lock").includes(secondCommit), "plugin update pinned commit");
+  assert(!fs.existsSync(hookMarker), "plugin update never executed hooks");
+  equal(git(vaultPath, ["status", "--porcelain"]).trim(), "", "plugin update commit left clean worktree");
+  equal(git(vaultPath, ["log", "-1", "--pretty=%s"]).trim(), "chore: cli plugin v2", "plugin update commit message");
+
+  const refreshed = ok<Payload>(
+    runCli(["plugin", "show", repoName, "--vault", vaultPath, "--json"], { workspace }),
+    "plugin show after update",
+  );
+  equal(refreshed.version, "2.0.0", "plugin version updated");
+  equal(refreshed.locked.commit, secondCommit, "plugin lock commit updated");
+  equal(
+    (refreshed.containedSkills as Payload[]).map((skill) => skill.name).sort().join(","),
+    "extra,guide",
+    "plugin contained skills updated",
+  );
+  const cleanDiff = ok<Payload>(
+    runCli(["source", "diff", repoName, "--vault", vaultPath, "--json"], { workspace }),
+    "plugin diff after update",
+  );
+  equal(cleanDiff.files.length, 0, "plugin diff after update empty");
+
+  fs.appendFileSync(path.join(vaultPath, "plugins", repoName, "skills", "guide", "SKILL.md"), "\nlocal edit\n", "utf8");
+  commitAll(vaultPath, "chore: local plugin edit");
+  advanceUpstreamRepo(workspace, repoName, (dir) => {
+    writeManifest(dir, "3.0.0");
+    writeSkill(path.join(dir, "skills", "guide"), "guide", "CLI plugin guide skill.", "PLUGIN-GUIDE-V3.");
+  });
+  failure(
+    runCli(["source", "update", repoName, "--yes", "--vault", vaultPath, "--json"], { workspace }),
+    1,
+    "conflict",
+    "plugin update modified-root guard",
+  );
+  assert(
+    readFile(vaultPath, `plugins/${repoName}/skills/guide/SKILL.md`).includes("local edit"),
+    "guarded plugin update kept local edit",
+  );
+  const forced = ok<Payload>(
+    runCli(
+      [
+        "source",
+        "update",
+        repoName,
+        "--force",
+        "--commit",
+        "--message",
+        "chore: force cli plugin v3",
+        "--yes",
+        "--vault",
+        vaultPath,
+        "--json",
+      ],
+      { workspace },
+    ),
+    "plugin update force",
+  );
+  equal(forced.applied, true, "forced plugin update applied");
+  assert(
+    readFile(vaultPath, `plugins/${repoName}/skills/guide/SKILL.md`).includes("PLUGIN-GUIDE-V3."),
+    "forced plugin update overwrote local edit",
+  );
+
+  const removePreview = ok<Payload>(
+    runCli(["source", "remove", repoName, "--vault", vaultPath, "--json"], { workspace }),
+    "plugin remove preview",
+  );
+  equal(removePreview.source.name, repoName, "plugin remove preview name");
+  assert(fs.existsSync(path.join(vaultPath, "plugins", repoName)), "plugin remove preview kept files");
+  const removed = ok<Payload>(
+    runCli(["source", "remove", repoName, "--delete-files", "--yes", "--vault", vaultPath, "--json"], { workspace }),
+    "plugin remove apply",
+  );
+  equal(removed.name, repoName, "plugin removed name");
+  assert(!fs.existsSync(path.join(vaultPath, "sources", `${repoName}.yml`)), "plugin source metadata removed");
+  assert(!fs.existsSync(path.join(vaultPath, "plugins", repoName)), "plugin working copy removed");
+  assert(!fs.existsSync(path.join(vaultPath, "third_party", repoName)), "plugin vendor copy removed");
+  assert(!readFile(vaultPath, "vault.lock").includes(repoName), "plugin lock entry removed");
+  const remainingPlugins = ok<Payload[]>(
+    runCli(["plugin", "list", "--vault", vaultPath, "--json"], { workspace }),
+    "plugin list after remove",
+  );
+  equal(remainingPlugins.length, 0, "plugin list empty after remove");
+  equal(
+    ok<Payload>(runCli(["vault", "validate", "--vault", vaultPath, "--json"], { workspace }), "plugin vault validate").ok,
+    true,
+    "vault validates after plugin removal",
+  );
+  assert(!fs.existsSync(hookMarker), "plugin lifecycle never executed hooks");
+  console.log("      plugin preview/apply, list/show, install guard, check, diff, update+force, remove OK");
+}
+
 function readFile(vaultPath: string, relative: string): string {
   return fs.readFileSync(path.join(vaultPath, relative), "utf8");
 }
@@ -1423,6 +1684,7 @@ async function main(): Promise<void> {
   await run("CLI target install, verify, remove, restore", targetLifecycle);
   await run("CLI git status, explicit-path commit and push", gitLifecycle);
   await run("CLI GitHub add, check, diff, update, fork, remove", githubLifecycle);
+  await run("CLI plugin add, list, show, check, diff, update, remove", pluginLifecycle);
   await run("CLI v1 read-only guards and migration", v1Migration);
   await run("CLI network and auth exit codes", networkAndAuth);
   await run("CLI locks, stale reclaim and journal recovery state", locksAndJournal);

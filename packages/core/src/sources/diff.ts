@@ -7,6 +7,7 @@ import { loadVault } from "../vault/model.js";
 import type { DiffFile, SourceDiff, SourceRecord, VaultSnapshot } from "../types.js";
 import { findSource } from "./select.js";
 import { fetchUpstream } from "./fetch.js";
+import { resolvePluginUpstreamRoot } from "../plugins/upstream.js";
 
 const MAX_PATCH_BYTES = 400_000;
 
@@ -36,36 +37,18 @@ function readEntry(root: string, relative: string): ContentEntry | null {
   }
 }
 
-function compareSkill(
-  source: SourceRecord,
-  skill: SourceRecord["skills"][number],
-  upstreamRoot: string,
-  onlySkill: boolean,
-): DiffFile[] {
-  if (!skill.sourcePath) {
-    throw new VaultDeskError("source-not-found", `Skill ${skill.name} has no source_path`);
-  }
-  const upstreamPath = path.join(upstreamRoot, skill.sourcePath);
-  if (!isDirectory(upstreamPath)) {
-    throw new VaultDeskError("upstream-not-found", `Upstream path not found for ${skill.name}: ${skill.sourcePath}`, {
-      details: { source: source.name, sourcePath: skill.sourcePath },
-    });
-  }
-  if (!isDirectory(skill.workingPath)) {
-    throw new VaultDeskError("source-not-found", `Working copy not found for ${skill.name}: ${skill.workingPath}`);
-  }
-
-  const beforeFiles = new Map(walkFiles(skill.workingPath).map((entry) => [entry.rel, entry]));
-  const afterFiles = new Map(walkFiles(upstreamPath).map((entry) => [entry.rel, entry]));
+function compareTrees(beforeRoot: string, afterRoot: string, displayPrefix: string): DiffFile[] {
+  const beforeFiles = new Map(walkFiles(beforeRoot).map((entry) => [entry.rel, entry]));
+  const afterFiles = new Map(walkFiles(afterRoot).map((entry) => [entry.rel, entry]));
   const allPaths = [...new Set([...beforeFiles.keys(), ...afterFiles.keys()])].sort();
   const files: DiffFile[] = [];
 
   for (const relative of allPaths) {
-    const beforeEntry = beforeFiles.has(relative) ? readEntry(skill.workingPath, relative) : null;
-    const afterEntry = afterFiles.has(relative) ? readEntry(upstreamPath, relative) : null;
+    const beforeEntry = beforeFiles.has(relative) ? readEntry(beforeRoot, relative) : null;
+    const afterEntry = afterFiles.has(relative) ? readEntry(afterRoot, relative) : null;
     if (!beforeEntry && !afterEntry) continue;
 
-    const displayPath = onlySkill ? relative : `${skill.name}/${relative}`;
+    const displayPath = displayPrefix ? `${displayPrefix}/${relative}` : relative;
     let status: DiffFile["status"];
     if (!beforeEntry) status = "added";
     else if (!afterEntry) status = "deleted";
@@ -117,15 +100,47 @@ function compareSkill(
   return files;
 }
 
+function compareSkill(
+  source: SourceRecord,
+  skill: SourceRecord["skills"][number],
+  upstreamRoot: string,
+  onlySkill: boolean,
+): DiffFile[] {
+  if (!skill.sourcePath) {
+    throw new VaultDeskError("source-not-found", `Skill ${skill.name} has no source_path`);
+  }
+  const upstreamPath = path.join(upstreamRoot, skill.sourcePath);
+  if (!isDirectory(upstreamPath)) {
+    throw new VaultDeskError("upstream-not-found", `Upstream path not found for ${skill.name}: ${skill.sourcePath}`, {
+      details: { source: source.name, sourcePath: skill.sourcePath },
+    });
+  }
+  if (!isDirectory(skill.workingPath)) {
+    throw new VaultDeskError("source-not-found", `Working copy not found for ${skill.name}: ${skill.workingPath}`);
+  }
+  return compareTrees(skill.workingPath, upstreamPath, onlySkill ? "" : skill.name);
+}
+
 export async function diffSourceRecord(
   source: SourceRecord,
   fetchedRoot: string,
   commit: string,
 ): Promise<SourceDiff> {
-  const onlySkill = source.skills.length === 1;
+  const upstreamPath =
+    source.shape === "plugin" ? resolvePluginUpstreamRoot(source, fetchedRoot) : fetchedRoot;
   const files: DiffFile[] = [];
-  for (const skill of source.skills) {
-    files.push(...compareSkill(source, skill, fetchedRoot, onlySkill));
+  if (source.shape === "plugin") {
+    const beforeRoot =
+      source.vendorRoot && isDirectory(source.vendorRoot) ? source.vendorRoot : source.workingPath;
+    if (!isDirectory(beforeRoot)) {
+      throw new VaultDeskError("source-not-found", `Plugin copy not found for ${source.name}: ${beforeRoot}`);
+    }
+    files.push(...compareTrees(beforeRoot, upstreamPath, ""));
+  } else {
+    const onlySkill = source.skills.length === 1;
+    for (const skill of source.skills) {
+      files.push(...compareSkill(source, skill, upstreamPath, onlySkill));
+    }
   }
   const warnings: string[] = [];
   if (source.updateMode === "auto") {
@@ -140,7 +155,7 @@ export async function diffSourceRecord(
   return {
     name: source.name,
     workingPath: source.workingPath,
-    upstreamPath: fetchedRoot,
+    upstreamPath,
     fromCommit: source.locked?.commit,
     toCommit: commit,
     files,

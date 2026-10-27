@@ -1,6 +1,6 @@
 # VaultDesk 设计定稿
 
-- 状态：0.1–1.0 的实现依据；截至 2026-10-27，0.1–0.7 已实现，0.8 部分实现；插件登记设计见 `docs/PLUGINS.md`
+- 状态：0.1–1.0 的实现依据；截至 2026-10-27，0.1–0.8 已实现，0.9 部分实现；插件登记设计见 `docs/PLUGINS.md`
 - 日期：2026-10-27
 - 产品名：VaultDesk（0.1 发布前仍可改名）
 - CLI：`vaultdesk`
@@ -20,8 +20,8 @@
 - 0.6 Git 提交/推送（仅限应用改动路径）与跨库元数据搜索已实现。SkillDeck 互操作、preset `verify_command`、打包 agent skill 未实现，顺延至 1.0 前，不在 0.6.0 中宣称。
 - 0.6.x 技能页类型筛选与来源分组、suite 成员引用 warning 已实现。
 - 0.7 插件登记已实现：`shape: plugin` source、整根导入与存储、manifest/资产/contained skills 校验、`plugin list/show`（含稳定 agent 契约）、插件页、插件搜索、安装 guard、fixture 与桌面 E2E。hooks 只展示、不执行。
-- 0.8 部分实现：插件搜索、总览计数与安装 guard 已完成；插件更新、整根 diff 与删除清理待完成。
-- 验证证据：43 个 vitest 测试通过（11 个文件）；Electron 生产构建 smoke 通过并产出截图；插件桌面 E2E 覆盖计数、筛选、详情、hooks 警告、本地/GitHub 导入与搜索跳转；`VaultDesk-0.6.0-arm64.dmg` 通过 `hdiutil verify`，包内应用可启动并打开 v2 fixture。
+- 0.8 已实现：插件整根 diff、review-before-apply 更新、source 元数据刷新、conflict/--force guard、纯插件更新跳过 build 与 install、删除清理；搜索与总览、安装 guard 同前。
+- 验证证据：47 个 vitest 测试通过（12 个文件）；插件集成测试覆盖整根 diff、更新、force guard、content_path 与删除清理；CLI 与桌面 E2E 覆盖插件导入、检查、diff、更新、删除与 hooks 不执行；Electron 生产构建 smoke 通过并产出截图；`VaultDesk-0.6.0-arm64.dmg` 通过 `hdiutil verify`，包内应用可启动并打开 v2 fixture。
 - 真实 v1 仓库只读验收：6 个来源、27 个技能、8 个安装目标，`vault validate` 无错误；迁移预览生成 9 个写入与 5 个删除；验收前后 `git status` 完全一致，未创建 `.vault/`。该仓库因已有未跟踪文件而 `cleanWorktree: false`，迁移按设计被阻止。
 - 插件边界：VaultDesk 只存储、校验、展示；不安装、不启用、不适配、不生成 marketplace/adapter manifest、不写 agent 注册表。agent 通过 vault-manager skill 自行安装。
 
@@ -209,7 +209,7 @@ sources:
 
 ### 4.6 插件登记
 
-插件是 `shape: plugin` 的 source，占用 `plugins/<name>/` 作为工作根；GitHub 插件另存一份 pristine 副本到 `third_party/<name>/`。成员技能在读取时从插件根发现，不写进 `skills` 字段。`vault.lock` 记录整根 hash，用于发现 commands、agents、hooks、MCP 等资产变化。
+插件是 `shape: plugin` 的 source，占用 `plugins/<name>/` 作为工作根；GitHub 插件另存一份 pristine 副本到 `third_party/<name>/`。成员技能在读取时从插件根发现，不写进 `skills` 字段。`vault.lock` 记录整根 hash，用于发现 commands、agents、hooks、MCP 等资产变化。GitHub 插件支持整根 diff 与 review-before-apply 更新：同步两份副本，更新 lock 与 source 元数据，纯插件更新不触发 build/install。
 
 插件只进 vault，不进 `build/skills/`，不进入安装目标解析。完整规则、manifest 检测、资产清单和校验项见 `docs/PLUGINS.md`。
 
@@ -240,7 +240,7 @@ sources:
 - 不自动删除目标中多余的技能。卸载必须显式调用。
 - 每目标保留最近 10 份备份，更早的由用户手动清理。0.1 只读，备份功能从 0.3 生效。
 - 验证只到文件层面：期望文件存在且哈希匹配，文案为「files in place」，不声称工具已识别。
-- 插件不参与安装。`target install` 遇到插件 source 或插件内技能时返回 `plugin-skill-not-installable`。
+- 插件不参与安装。`target install` 遇到插件 source 或插件内技能时返回 `plugin-not-installable`。
 
 ### 5.4 编辑与 fork
 
@@ -317,8 +317,8 @@ vaultdesk presets list
 | 0.6 | Git 提交/推送、跨 vault 搜索强化、SkillDeck 互操作 spike、preset verify_command、agent skill | 部分实现：Git 与搜索已完成，其余顺延 |
 | 0.6.x | 技能页类型筛选与来源分组；suite 成员引用 warning | 已实现 |
 | 0.7 | 插件登记：`shape: plugin` source、导入、存储、校验、`plugin list/show`、插件页、CLI JSON、vault-manager 契约、fixture | 已实现 |
-| 0.8 | 插件更新、整根 diff、搜索与总览、安装 guard、边界测试 | 部分实现：搜索、总览、guard 已完成；更新、整根 diff、删除清理待完成 |
-| 0.9 | 插件 E2E、DMG、文档、硬化 | 部分实现：插件桌面 E2E 已加入；DMG 与硬化待完成 |
+| 0.8 | 插件更新、整根 diff、搜索与总览、安装 guard、边界测试 | 已实现 |
+| 0.9 | 插件 E2E、DMG、文档、硬化 | 部分实现：插件 CLI/桌面 E2E 已加入；DMG 重新打包与硬化待完成 |
 | 1.0 | 收口、完成延期 0.6 项、稳定化、Homebrew、按需公证 | 未开始 |
 
 ### 0.1 验收

@@ -1,6 +1,6 @@
 # VaultDesk 插件登记设计
 
-- 状态：0.7 与 0.8 的搜索/总览/安装 guard 已实现；更新、整根 diff、删除清理待完成
+- 状态：0.7 与 0.8 已实现；插件导入、整根 diff、更新、删除清理、搜索、总览与安装 guard 均有单元/集成/CLI/桌面 E2E 覆盖
 - 日期：2026-10-27
 - 范围：Qoder、Claude Code、Codex 的插件登记与展示
 - 非范围：OpenCode 插件、插件安装、marketplace 生成、adapter manifest 生成、agent registry 写入
@@ -252,8 +252,9 @@ mcp.json
 
 现有逐技能 diff 不适用于插件。插件 source 增加整根 diff：
 
-- 比较 `third_party/<name>/` 与上游缓存中的插件根。
-- 展示逐文件 unified diff，包含 commands、agents、hooks、MCP 和技能。
+- 比较 `third_party/<name>/` 与上游缓存中的插件根；`third_party/<name>/` 缺失时回退到 `plugins/<name>/`。
+- `content_path` 非空时，上游根解析为该子目录，且必须留在检出目录内。
+- 展示逐文件 unified diff，路径相对插件根，包含 commands、agents、hooks、MCP 和技能。
 - 二进制文件只报大小变化。
 - 0 个技能的插件仍能产生 diff。
 
@@ -266,9 +267,12 @@ mcp.json
 3. 先写 `third_party/<name>/`。
 4. 同步 `plugins/<name>/`。
 5. 重新发现插件内技能。
-6. 更新 lock 的 commit、整根 hash、技能哈希。
-7. 校验。
-8. 不构建、不安装。
+6. 用新 manifest 刷新 source 元数据里的 version 与 description。
+7. 更新 lock 的 commit、整根 hash、技能哈希。
+8. 校验。
+9. 不构建、不安装。
+
+默认拒绝覆盖本地改动；`--force` 才能用上游内容覆盖整根。纯插件更新会跳过 build 与 install，返回空的 build 结果。
 
 插件更新不会触碰 agent 侧已安装的副本。vault-manager skill 必须提示 agent 在更新后重新安装。
 
@@ -278,6 +282,7 @@ mcp.json
 
 - 删除 source 元数据、lock 和 state 条目。
 - 可选删除 `plugins/<name>/` 和 `third_party/<name>/`。
+- 删除后重新校验；插件的 contained skills 从技能页、搜索和安装解析中同时消失。
 - 不删除任何 agent 安装目录中的插件副本。
 - 不删除安装备份。
 
@@ -364,6 +369,8 @@ vaultdesk plugin show <name> [--json]
 其他命令：
 
 - `source list` 和 `source show` 包含 `shape: plugin` 条目。
+- `source diff <plugin>` 返回整根 diff，`files[].path` 相对插件根。
+- `source update [<plugin>]` 支持插件；纯插件更新返回 `build.skills: []`，且不产生 install 结果。
 - `vault status` 的 counts 增加 `plugins` 和 `pluginSkills`。
 - `target install` 遇到插件 source 或插件内技能返回 `plugin-not-installable`。
 - 退出码沿用 0/1/2/3。

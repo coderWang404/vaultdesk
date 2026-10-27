@@ -848,26 +848,11 @@ async function dispatch(parsed: Parsed): Promise<CommandResult> {
       if (action === "diff") {
         const name = rest[0];
         if (!name) throw new VaultDeskError("invalid-input", "source diff requires a source name.");
-        const snapshot = await openVault(vaultPath);
-        if (snapshot.plugins.some((plugin) => plugin.name === name)) {
-          throw new VaultDeskError("unsupported", "Plugin diff is not available yet. Use plugin show to inspect the stored root.");
-        }
         const diff = await sourceDiff(vaultPath, name);
         return { data: diff, warnings: diff.warnings, human: printDiff(diff) };
       }
       if (action === "update") {
-        let names = rest.length > 0 ? rest : undefined;
-        const snapshot = await openVault(vaultPath);
-        if (names) {
-          const plugin = names.find((name) => snapshot.plugins.some((entry) => entry.name === name));
-          if (plugin) throw new VaultDeskError("unsupported", `Plugin updates are not available yet: ${plugin}`);
-        } else {
-          const skipped = snapshot.plugins.map((plugin) => plugin.name);
-          names = snapshot.sources.filter((source) => source.shape !== "plugin").map((source) => source.name);
-          if (skipped.length > 0) {
-            process.stderr.write(yellow(`Skipping plugins (not updateable yet): ${skipped.join(", ")}\n`));
-          }
-        }
+        const names = rest.length > 0 ? rest : undefined;
         if (!parsed.yes || hasFlag(options, "dry-run")) {
           const preview = await previewUpdate(vaultPath, names);
           const lines: string[] = [];

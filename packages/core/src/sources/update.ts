@@ -1,6 +1,15 @@
 import fs from "node:fs";
 import path from "node:path";
-import { canonicalPath, hashDirectory, hashText, isDirectory, isInside, relativeSlash, removePath } from "../fsx.js";
+import {
+  canonicalPath,
+  copyDirectory,
+  hashDirectory,
+  hashText,
+  isDirectory,
+  isInside,
+  relativeSlash,
+  removePath,
+} from "../fsx.js";
 import { VaultDeskError } from "../errors.js";
 import { commitPaths, isGitRepo, isWorktreeClean } from "../git.js";
 import { openVault, validateVault } from "../vault/validate.js";
@@ -14,6 +23,9 @@ import type { LockFile } from "@vaultdesk/schema";
 import { selectSources } from "./select.js";
 import { fetchUpstream } from "./fetch.js";
 import { diffSourceRecord } from "./diff.js";
+import { inspectPlugin } from "../plugins/discover.js";
+import { refreshPluginSourceMetadata } from "../plugins/import.js";
+import { resolvePluginUpstreamRoot } from "../plugins/upstream.js";
 
 export interface UpdateOptions {
   names?: string[];
@@ -26,6 +38,15 @@ export interface UpdateOptions {
 }
 
 function lockEntry(snapshot: VaultSnapshot, source: VaultSnapshot["sources"][number]): LockFile["sources"][string] {
+  if (source.shape === "plugin") {
+    return {
+      ...(source.locked?.commit ? { commit: source.locked.commit } : {}),
+      ...(isDirectory(source.workingPath) ? { hash: hashDirectory(source.workingPath) } : {}),
+      skills: Object.fromEntries(
+        Object.entries(source.locked?.skills ?? {}).sort(([a], [b]) => a.localeCompare(b)),
+      ),
+    };
+  }
   return {
     ...(source.locked?.commit ? { commit: source.locked.commit } : {}),
     ...(source.locked?.hash ? { hash: source.locked.hash } : {}),
@@ -82,6 +103,20 @@ function copyUpstreamSkill(
   return { vendorWritten, workingWritten: true };
 }
 
+function copyUpstreamPlugin(
+  source: VaultSnapshot["sources"][number],
+  upstreamRoot: string,
+): void {
+  if (source.vendorRoot) {
+    removePath(source.vendorRoot);
+    fs.mkdirSync(path.dirname(source.vendorRoot), { recursive: true });
+    copyDirectory(upstreamRoot, source.vendorRoot);
+  }
+  removePath(source.workingPath);
+  fs.mkdirSync(path.dirname(source.workingPath), { recursive: true });
+  copyDirectory(upstreamRoot, source.workingPath);
+}
+
 export async function updateSources(inputPath: string, options: UpdateOptions = {}): Promise<UpdateResult> {
   const vaultPath = canonicalPath(inputPath);
   const snapshot = await openVault(vaultPath);
@@ -113,6 +148,20 @@ export async function updateSources(inputPath: string, options: UpdateOptions = 
   const blocked: string[] = [];
   for (const source of github) {
     if (options.force) continue;
+    if (source.shape === "plugin") {
+      const pluginRoots = [source.workingPath, source.vendorRoot].filter(
+        (root): root is string => typeof root === "string" && isDirectory(root),
+      );
+      if (!source.locked?.hash && pluginRoots.length > 0) {
+        blocked.push(`${source.name}: no plugin lock hash`);
+      } else if (
+        source.locked?.hash &&
+        pluginRoots.some((root) => hashDirectory(root) !== source.locked?.hash)
+      ) {
+        blocked.push(`${source.name}: plugin root modified since the last apply (copy or revert first)`);
+      }
+      continue;
+    }
     if (!source.locked?.skills && source.skills.some((skill) => isDirectory(skill.workingPath))) {
       blocked.push(`${source.name}: no per-skill lock entry`);
       continue;
@@ -157,6 +206,7 @@ export async function updateSources(inputPath: string, options: UpdateOptions = 
       const fresh = await openVault(vaultPath);
       const freshChanged = new Set(changes.map((change) => change.name));
       const changedSkills = new Set<string>();
+      const changedPlugins = new Set<string>();
       const writePaths = new Set<string>();
 
       journal.start("write");
@@ -164,6 +214,31 @@ export async function updateSources(inputPath: string, options: UpdateOptions = 
         if (!freshChanged.has(source.name)) continue;
         const upstream = fetched.get(source.name);
         if (!upstream) continue;
+        if (source.shape === "plugin") {
+          const upstreamRoot = resolvePluginUpstreamRoot(source, upstream.root);
+          copyUpstreamPlugin(source, upstreamRoot);
+          const inspected = inspectPlugin({
+            root: source.workingPath,
+            vaultPath,
+            sourceName: source.name,
+            origin: "github",
+            repo: source.repo,
+            ref: source.ref,
+            warnings: [],
+          });
+          source.locked = {
+            commit: upstream.commit,
+            hash: hashDirectory(source.workingPath),
+            skills: Object.fromEntries(inspected.skills.map((skill) => [skill.name, skill.contentHash])),
+          };
+          source.status = "current";
+          refreshPluginSourceMetadata(vaultPath, source, inspected.manifests);
+          changedPlugins.add(source.name);
+          if (source.vendorRoot) writePaths.add(relativeSlash(vaultPath, canonicalPath(source.vendorRoot)));
+          writePaths.add(relativeSlash(vaultPath, canonicalPath(source.workingPath)));
+          if (source.metadataPath) writePaths.add(relativeSlash(vaultPath, canonicalPath(source.metadataPath)));
+          continue;
+        }
         for (const skill of source.skills) {
           copyUpstreamSkill(skill, upstream.root);
           skill.contentHash = hashDirectory(skill.workingPath);
@@ -184,7 +259,7 @@ export async function updateSources(inputPath: string, options: UpdateOptions = 
         };
         source.status = "current";
       }
-      journal.done("write", `${changedSkills.size} skills`);
+      journal.done("write", `${changedSkills.size} skills, ${changedPlugins.size} plugins`);
 
       journal.start("lock");
       writeLock(vaultPath, buildLock(fresh));
@@ -202,10 +277,19 @@ export async function updateSources(inputPath: string, options: UpdateOptions = 
       });
       journal.done("lock");
 
+      const hasSkillChanges = fresh.sources.some(
+        (source) => freshChanged.has(source.name) && source.shape !== "plugin",
+      );
       active = "build";
-      journal.start("build");
-      const build = await buildVault(vaultPath);
-      journal.done("build", `${build.skills.length} skills`);
+      let buildSkills: string[] = [];
+      if (hasSkillChanges) {
+        journal.start("build");
+        const build = await buildVault(vaultPath);
+        buildSkills = build.skills;
+        journal.done("build", `${buildSkills.length} skills`);
+      } else {
+        journal.skipped("build", "plugin-only update");
+      }
 
       active = "validate";
       journal.start("validate");
@@ -218,10 +302,13 @@ export async function updateSources(inputPath: string, options: UpdateOptions = 
       journal.done("validate", `${validation.warnings.length} warnings`);
 
       let install: UpdateResult["install"];
-      if (options.install) {
+      const installNames = changes
+        .map((change) => change.name)
+        .filter((name) => fresh.sources.find((source) => source.name === name)?.shape !== "plugin");
+      if (options.install && installNames.length > 0) {
         active = "install";
         journal.start("install");
-        install = await reinstallTargets(vaultPath, changes.map((change) => change.name), {
+        install = await reinstallTargets(vaultPath, installNames, {
           rebuild: false,
           backupRoot: options.backupRoot,
           retention: options.retention,
@@ -229,7 +316,7 @@ export async function updateSources(inputPath: string, options: UpdateOptions = 
         });
         journal.done("install", `${install.length} targets`);
       } else {
-        journal.skipped("install");
+        journal.skipped("install", options.install ? "no installable changes" : undefined);
       }
 
       let commit: string | undefined;
@@ -251,7 +338,7 @@ export async function updateSources(inputPath: string, options: UpdateOptions = 
         names: changes.map((change) => change.name),
         changes,
         validation,
-        build: { skills: build.skills },
+        build: { skills: buildSkills },
         install,
         commit,
         warnings,

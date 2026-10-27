@@ -148,7 +148,11 @@ export function SourcesView({
                 ) : null}
                 <div className="source-row-stats">
                   <span>
-                    <Icon name="skill" size={12} /> {source.skills.length} 个技能
+                    <Icon name="skill" size={12} />{" "}
+                    {source.shape === "plugin"
+                      ? (vault.plugins.find((plugin) => plugin.name === source.name)?.skills.length ?? 0)
+                      : source.skills.length}{" "}
+                    个技能
                   </span>
                   <span>
                     <Icon name="clock" size={12} /> 检查 {relativeTime(source.lastCheckedAt)}

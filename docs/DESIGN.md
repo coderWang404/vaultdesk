@@ -1,7 +1,7 @@
 # VaultDesk 设计定稿
 
-- 状态：0.1–0.6 的实现依据；截至 2026-10-26，0.1–0.5 与 0.6 的 Git/跨库搜索部分已实现，详见「实现状态」
-- 日期：2026-10-26
+- 状态：0.1–1.0 的实现依据；截至 2026-10-26，0.1–0.5 与 0.6 的 Git/跨库搜索部分已实现；0.7 起插件登记设计见 `docs/PLUGINS.md`
+- 日期：2026-10-27
 - 产品名：VaultDesk（0.1 发布前仍可改名）
 - CLI：`vaultdesk`
 - 仓库：`github.com/coderWang404/vaultdesk`
@@ -10,7 +10,7 @@
 - 平台：macOS（Apple Silicon + Intel）
 - 技术栈：Electron + React + TypeScript，pnpm monorepo
 
-## 实现状态（2026-10-26）
+## 实现状态（2026-10-27）
 
 - 0.1 只读浏览、校验、上游检查与 diff、迁移预览、多 tab、跨库 Cmd+K 已实现。
 - 0.2 迁移写盘（独立分支、要求干净工作区、提交不推送）已实现。
@@ -20,11 +20,18 @@
 - 0.6 Git 提交/推送（仅限应用改动路径）与跨库元数据搜索已实现。SkillDeck 互操作、preset `verify_command`、打包 agent skill 未实现，顺延至 1.0 前，不在 0.6.0 中宣称。
 - 验证证据：26 个自动化测试通过；Electron 生产构建 smoke 通过并产出截图；`VaultDesk-0.6.0-arm64.dmg` 通过 `hdiutil verify`，包内应用可启动并打开 v2 fixture。
 - 真实 v1 仓库只读验收：6 个来源、27 个技能、8 个安装目标，`vault validate` 无错误；迁移预览生成 9 个写入与 5 个删除；验收前后 `git status` 完全一致，未创建 `.vault/`。该仓库因已有未跟踪文件而 `cleanWorktree: false`，迁移按设计被阻止。
+- 插件登记：设计已确认（`docs/PLUGINS.md`），0.7 起实现。技能与插件的职责边界已定；插件只存储、校验、展示，不安装、不适配。
 
 
 ## 1. 产品定义
 
 VaultDesk 是一个本地优先的 skill / plugin 资产管理器。它把一个以 Git 仓库为载体的技能库变成可浏览、可校验、可更新、可安装的桌面应用，同时提供同一套核心能力的 CLI。
+
+技能与插件采用不同边界：
+
+- 技能：VaultDesk 负责构建、安装、校验、备份和恢复。SKILL.md 是跨 agent 的稳定格式。
+- 插件：VaultDesk 负责登记、存储、校验和展示；实际安装与适配由 agent 在使用时自行完成，接口是 vault-manager skill。
+- VaultDesk 不生成 marketplace 或 adapter manifest，不写入 agent 的插件注册表，不显示 agent 侧的 installed/enabled 状态。
 
 目标用户：同时使用多个 agent 工具、自己维护技能库、需要知道「装了什么、来自哪里、哪个版本、装到哪、有没有更新」的个人开发者。
 
@@ -35,10 +42,12 @@ VaultDesk 是一个本地优先的 skill / plugin 资产管理器。它把一个
 3. 可复现。锁文件记录每个上游来源的 commit 与内容哈希。
 4. 不替用户删除。安装、更新、迁移都不自动清理未识别的内容。
 5. 桌面与 CLI 共用一套 TypeScript core，行为一致，JSON 输出稳定。
+6. 技能归 VaultDesk 管，插件归 agent 管。VaultDesk 只保证插件在 vault 内完整、可读、可追溯。
 
 非目标：
 
 - 不做 12 个 agent 工具的 symlink 分发农场。VaultDesk 只向用户指定的目录复制产物，工具发现规则由 agent 自己核实。
+- 不做插件安装器、marketplace 生成器或 adapter manifest 生成器；不写 agent 插件注册表。
 - 不做技能市场、评分、云同步。
 - 不追求原生 SwiftUI 手感。
 - 不读取或改写其他管理器（如 SkillDeck）的私有锁文件。
@@ -87,6 +96,7 @@ vault.lock
 sources/<name>.yml
 skills/<name>/
 packages/<pkg>/skills/<skill>/
+plugins/<name>/
 third_party/
 build/skills/<name>/
 .vault/state.json
@@ -140,6 +150,7 @@ script_deps: {}
 - `origin: local` 不写 `repo`、`ref`、`source_path`、`vendor_path`，不参与上游更新。
 - `kind: suite` 必须提供 `entrypoint`，且该名字在 skills 中声明。
 - `kind: collection` 禁止 `entrypoint`。
+- `shape: plugin` 的规则见 4.6 与 `docs/PLUGINS.md`，`skills` 固定为空。
 - fork 记录：
 
 ```yaml
@@ -193,6 +204,12 @@ sources:
 
 多步写操作开始前写 `.vault/operation.json`，每一步更新状态，成功后删除。应用启动或 CLI 打开 vault 时若发现残留，显示恢复提示。不做自动回滚，依赖 Git 与安装备份恢复。
 
+### 4.6 插件登记
+
+插件是 `shape: plugin` 的 source，占用 `plugins/<name>/` 作为工作根；GitHub 插件另存一份 pristine 副本到 `third_party/<name>/`。成员技能在读取时从插件根发现，不写进 `skills` 字段。`vault.lock` 记录整根 hash，用于发现 commands、agents、hooks、MCP 等资产变化。
+
+插件只进 vault，不进 `build/skills/`，不进入安装目标解析。完整规则、manifest 检测、资产清单和校验项见 `docs/PLUGINS.md`。
+
 ## 5. 更新与安装语义
 
 ### 5.1 检查
@@ -220,6 +237,7 @@ sources:
 - 不自动删除目标中多余的技能。卸载必须显式调用。
 - 每目标保留最近 10 份备份，更早的由用户手动清理。0.1 只读，备份功能从 0.3 生效。
 - 验证只到文件层面：期望文件存在且哈希匹配，文案为「files in place」，不声称工具已识别。
+- 插件不参与安装。`target install` 遇到插件 source 或插件内技能时返回 `plugin-skill-not-installable`。
 
 ### 5.4 编辑与 fork
 
@@ -230,6 +248,7 @@ sources:
 ### 5.5 导入
 
 - 检测输入目录中的 `SKILL.md`：一个为 standalone，多个为 collection，suite 需用户显式指定入口。
+- 检测到插件 manifest 时按插件登记导入，规则见 `docs/PLUGINS.md`，不构建、不安装。
 - 预览分类、名称、目标路径、冲突项，用户确认后复制并写元数据。
 - 不做 AI 推断，不静默改分类。
 
@@ -245,6 +264,7 @@ sources:
 ```text
 vaultdesk vault status|init|migrate|validate
 vaultdesk source list|show|check|diff|update|add|remove|fork
+vaultdesk plugin list|show
 vaultdesk build
 vaultdesk target list|install|remove|verify|restore
 vaultdesk git status|commit|push
@@ -279,7 +299,7 @@ vaultdesk presets list
 - 不启动本地 HTTP 服务。
 - 外部链接交给系统浏览器，拒绝 `file://` 与未知协议。
 - 多 vault 用 tab 打开，各自持有独立锁；同一 vault 不重复打开。
-- 搜索为 Cmd+K 元数据搜索（名称、描述、来源、包、origin），不做全文搜索。
+- 搜索为 Cmd+K 元数据搜索（名称、描述、来源、包、origin、插件 manifest），不做全文搜索。
 - 打开、检查、diff 在 0.1 阶段全部只读。0.2 起新增写入口，但一律先预览、再显式确认，CLI 需要 `--yes`。
 
 ## 8. 版本路线
@@ -292,7 +312,11 @@ vaultdesk presets list
 | 0.4 | 编辑、fork-to-local | 已实现 |
 | 0.5 | 导入向导（本地目录与 GitHub 来源） | 已实现 |
 | 0.6 | Git 提交/推送、跨 vault 搜索强化、SkillDeck 互操作 spike、preset verify_command、agent skill | 部分实现：Git 与搜索已完成，其余顺延 |
-| 1.0 | 稳定化、Homebrew、按需公证 | 未开始 |
+| 0.6.x | 技能页类型筛选与来源分组；suite 成员引用 warning | 未开始 |
+| 0.7 | 插件登记：`shape: plugin` source、导入、存储、校验、`plugin list/show`、插件页、CLI JSON、vault-manager 契约、fixture | 未开始 |
+| 0.8 | 插件更新、整根 diff、搜索与总览、安装 guard、边界测试 | 未开始 |
+| 0.9 | 插件 E2E、DMG、文档、硬化 | 未开始 |
+| 1.0 | 收口、完成延期 0.6 项、稳定化、Homebrew、按需公证 | 未开始 |
 
 ### 0.1 验收
 
@@ -315,8 +339,8 @@ vaultdesk presets list
 
 ## 9. 测试与发布门槛
 
-- core 单元测试：schema、路径、哈希、校验规则、迁移、安装槽位、fork、导入检测、搜索、Git 路径过滤。
-- fixture 集成测试：v1 与 v2 各一套，覆盖 local/GitHub、standalone/package/suite/collection。
+- core 单元测试：schema、路径、哈希、校验规则、迁移、安装槽位、fork、导入检测、搜索、Git 路径过滤、插件发现与校验。
+- fixture 集成测试：v1 与 v2 各一套，覆盖 local/GitHub、standalone/package/suite/collection；插件 fixture 覆盖 Claude/Codex/Qoder/manifest 冲突/hooks/路径逃逸。
 - 迁移 golden：固定 fixture 的 dry-run 输出与 golden 文件一致，重复调用结果稳定。
 - CLI 测试：JSON 信封、退出码、`--yes` 门禁、只读命令不写盘。
 - Electron smoke：本地脚本启动生产构建，打开临时 fixture，校验渲染文本并截图；CI 的 macOS 任务运行同一脚本。
@@ -326,7 +350,7 @@ vaultdesk presets list
 ## 10. 发布
 
 - 0.6.0 提供未签名 DMG，README 说明首次打开需右键或「隐私与安全性」放行。
-- 版本遵循 SemVer；当前为 0.6.0。
+- 版本遵循 SemVer；当前为 0.6.0，1.0 前依次发布 0.6.x、0.7、0.8、0.9。
 - Homebrew cask 与公证在 1.0 视使用情况决定。
 
 ## 11. 关键决策记录
@@ -353,3 +377,11 @@ vaultdesk presets list
 | 18 | 0.1 只读发布 |
 | 19 | 迁移在独立分支完成，不推送 |
 | 20 | 不做技能市场、云同步、原生重写 |
+| 21 | 插件按 `shape: plugin` 的 source 存储，复用来源、更新和 lock 流程 |
+| 22 | 插件完整复制进 vault，保证 vault 自包含 |
+| 23 | 插件内技能可搜索、可展示，不可安装 |
+| 24 | VaultDesk 不生成 marketplace、adapter manifest，不写 agent registry |
+| 25 | 插件页不显示 agent 侧 installed/enabled |
+| 26 | 插件安装交给 agent，vault-manager skill 是接口 |
+| 27 | OpenCode 不在插件适配范围 |
+| 28 | suite 成员关系用校验 warning 维护，不生成额外技能 |

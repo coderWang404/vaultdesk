@@ -150,6 +150,38 @@ export function frontmatterIssues(skill: SourceRecord["skills"][number], vaultPa
   return issues;
 }
 
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function suiteReferenceIssues(source: SourceRecord): ValidationIssue[] {
+  const issues: ValidationIssue[] = [];
+  const entrypoint = source.skills.find((skill) => skill.name === source.entrypoint);
+  if (!entrypoint) return issues;
+  const entryFile = path.join(entrypoint.workingPath, "SKILL.md");
+  if (!isFile(entryFile)) return issues;
+  let content: string;
+  try {
+    content = readText(entryFile);
+  } catch {
+    return issues;
+  }
+  for (const member of source.skills) {
+    if (member.name === entrypoint.name) continue;
+    const pattern = new RegExp(`(^|[^A-Za-z0-9_-])${escapeRegExp(member.name)}([^A-Za-z0-9_-]|$)`, "i");
+    if (!pattern.test(content)) {
+      push(
+        issues,
+        "warning",
+        "suite.member-unreferenced",
+        `Suite ${source.name} entrypoint ${entrypoint.name} does not mention member ${member.name}`,
+        entrypoint.relativePath,
+      );
+    }
+  }
+  return issues;
+}
+
 function checkTargets(snapshot: VaultSnapshot, issues: ValidationIssue[]): void {
   const ids = new Set<string>();
   const knownNames = new Set<string>([
@@ -201,6 +233,8 @@ function checkSourceCommon(source: SourceRecord, vaultPath: string, issues: Vali
           `Suite ${source.name} entrypoint ${source.entrypoint} is not a declared skill`,
           source.metadataPath,
         );
+      } else {
+        issues.push(...suiteReferenceIssues(source));
       }
     }
     if (source.kind === "collection" && source.entrypoint) {

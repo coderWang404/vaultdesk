@@ -2026,6 +2026,132 @@ kbd {
   color: var(--ink-faint);
 }
 
+.skills-toolbar {
+  flex-wrap: wrap;
+  row-gap: 8px;
+}
+
+.filter-chip {
+  height: 29px;
+  padding: 0 10px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  font-size: 11px;
+  color: var(--ink-muted);
+  background: rgba(255, 255, 255, 0.34);
+  white-space: nowrap;
+}
+
+.filter-chip:hover {
+  color: var(--ink);
+  border-color: var(--line-strong);
+}
+
+.filter-chip.is-active {
+  color: var(--moss);
+  border-color: rgba(77, 104, 73, 0.35);
+  background: var(--moss-wash);
+}
+
+.skill-groups {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.skill-group {
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  overflow: hidden;
+  background: rgba(255, 255, 255, 0.32);
+}
+
+.skill-group-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 13px;
+  background: rgba(32, 29, 23, 0.035);
+  border-bottom: 1px solid var(--line);
+  min-width: 0;
+}
+
+.skill-group-name {
+  font-family: var(--serif);
+  font-size: 13px;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.skill-group-entry {
+  font-family: var(--mono);
+  font-size: 9.5px;
+  color: var(--accent);
+  border: 1px solid rgba(176, 69, 48, 0.24);
+  border-radius: 3px;
+  padding: 0 4px;
+  white-space: nowrap;
+}
+
+.skill-group-meta {
+  font-size: 10px;
+  color: var(--ink-faint);
+  white-space: nowrap;
+}
+
+.skill-group-origin {
+  font-size: 10px;
+  color: var(--ink-muted);
+  white-space: nowrap;
+}
+
+.skill-group-warning {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  margin-left: auto;
+  font-size: 10px;
+  color: var(--warn);
+}
+
+.skill-table-grouped {
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+}
+
+.skill-table-grouped .skill-table-head,
+.skill-table-grouped .skill-table-row {
+  grid-template-columns: minmax(0, 1fr) 96px 155px 70px;
+}
+
+.skill-table-grouped .skill-table-row:first-of-type {
+  border-top: 0;
+}
+
+.skill-cell-role {
+  display: flex;
+  align-items: center;
+}
+
+.type-chip {
+  font-size: 9.5px;
+  letter-spacing: 0.02em;
+  color: var(--ink-muted);
+  border: 1px solid var(--line);
+  border-radius: 3px;
+  padding: 0 5px;
+  white-space: nowrap;
+}
+
+.type-chip.is-entry {
+  color: var(--accent);
+  border-color: rgba(176, 69, 48, 0.26);
+  background: var(--accent-wash);
+}
+
 .target-list {
   display: flex;
   flex-direction: column;

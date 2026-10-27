@@ -66,4 +66,23 @@ describe("local import", () => {
       previewImport(suite, vaultPath, "no-entry", { kind: "suite" }),
     ).rejects.toMatchObject({ code: "invalid-input" });
   });
+
+  it("warns when a suite entrypoint never mentions a member skill", async () => {
+    const vaultPath = path.join(tempDir("import-vault"), "vault");
+    await initVault(vaultPath, { name: "imports" });
+    const suite = path.join(tempDir("import-suite"), "suite");
+    writeSkill(path.join(suite, "runner"), "runner", "Entry skill");
+    writeSkill(path.join(suite, "helper"), "helper", "Helper skill");
+    await applyImport(suite, vaultPath, { name: "ops-suite", kind: "suite", entrypoint: "runner" });
+
+    const before = await validateVault(vaultPath);
+    expect(before.warnings.map((issue) => issue.code)).toContain("suite.member-unreferenced");
+
+    fs.appendFileSync(
+      path.join(vaultPath, "packages", "ops-suite", "skills", "runner", "SKILL.md"),
+      "\n调用 helper 处理细节。\n",
+    );
+    const after = await validateVault(vaultPath);
+    expect(after.warnings.map((issue) => issue.code)).not.toContain("suite.member-unreferenced");
+  });
 });

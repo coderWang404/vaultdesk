@@ -2,12 +2,15 @@ import fs from "node:fs";
 import path from "node:path";
 import { shell } from "electron";
 import {
+  addGithubPlugin,
   addGithubSource,
   applyImport,
   applyMigration,
+  applyPluginImport,
   buildVault,
   checkSources,
   commitPaths,
+  detectLocalPlugin,
   forkSkill,
   getGitSummary,
   initVault,
@@ -18,7 +21,9 @@ import {
   planMigration,
   previewAddGithub,
   previewFork,
+  previewGithubPlugin,
   previewImport,
+  previewPluginImport,
   previewUpdate,
   push,
   readSettings,
@@ -34,6 +39,7 @@ import {
   verifyTarget,
   writeSkillContent,
   writeSettings,
+  VaultDeskError,
   type BackupEntry,
 } from "@vaultdesk/core";
 import { ipcCommands, type IpcCommand, type IpcPayload } from "@vaultdesk/schema";
@@ -84,10 +90,25 @@ const handlers: { [K in IpcCommand]: Handler<K> } = {
   "source.forkPreview": ({ vaultPath, skill, as }) => previewFork(vaultPath, skill, as),
   "source.fork": ({ vaultPath, skill, as }) => forkSkill(vaultPath, skill, as),
   "source.addLocal": async ({ vaultPath, path: inputPath, name, kind, entrypoint, confirm }) => {
+    if (detectLocalPlugin(inputPath)) {
+      if (!confirm) return previewPluginImport(inputPath, vaultPath, { name });
+      return applyPluginImport(inputPath, vaultPath, { name });
+    }
     if (!confirm) return previewImport(inputPath, vaultPath, name, { kind, entrypoint });
     return applyImport(inputPath, vaultPath, { name, kind, entrypoint });
   },
   "source.addGithub": async ({ vaultPath, repo, ref, path: contentPath, name, kind, entrypoint, confirm }) => {
+    const pluginInput = { repo, ref, path: contentPath, name };
+    let plugin: Awaited<ReturnType<typeof previewGithubPlugin>> | null = null;
+    try {
+      plugin = await previewGithubPlugin(vaultPath, pluginInput);
+    } catch (error) {
+      if (!(error instanceof VaultDeskError) || error.code !== "not-a-plugin") throw error;
+    }
+    if (plugin) {
+      if (!confirm) return plugin;
+      return addGithubPlugin(vaultPath, pluginInput);
+    }
     if (!confirm) return previewAddGithub(vaultPath, { repo, ref, path: contentPath, name, kind, entrypoint });
     return addGithubSource(vaultPath, { repo, ref, path: contentPath, name, kind, entrypoint });
   },
@@ -134,9 +155,14 @@ const handlers: { [K in IpcCommand]: Handler<K> } = {
   "skill.read": ({ vaultPath, skill }) => readSkillContent(vaultPath, skill),
   "skill.write": ({ vaultPath, skill, content }) => writeSkillContent(vaultPath, skill, content),
 
-  "import.preview": ({ vaultPath, path: inputPath, name }) => previewImport(inputPath, vaultPath, name),
+  "import.preview": ({ vaultPath, path: inputPath, name }) =>
+    detectLocalPlugin(inputPath)
+      ? previewPluginImport(inputPath, vaultPath, { name })
+      : previewImport(inputPath, vaultPath, name),
   "import.apply": ({ vaultPath, path: inputPath, name, kind, entrypoint }) =>
-    applyImport(inputPath, vaultPath, { name, kind, entrypoint }),
+    detectLocalPlugin(inputPath)
+      ? applyPluginImport(inputPath, vaultPath, { name })
+      : applyImport(inputPath, vaultPath, { name, kind, entrypoint }),
 
   "git.status": ({ vaultPath }) => getGitSummary(vaultPath),
   "git.commit": async ({ vaultPath, paths, message }) => {

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } fro
 import type {
   AppSettings,
   CheckReport,
+  PluginRecord,
   SearchHit,
   SkillRecord,
   SourceRecord,
@@ -14,6 +15,7 @@ import { GitView } from "./components/GitView";
 import { Icon } from "./components/icons";
 import { Inspector } from "./components/Inspector";
 import { Overview } from "./components/Overview";
+import { PluginsView } from "./components/PluginsView";
 import { SearchPalette } from "./components/SearchPalette";
 import { SettingsView } from "./components/SettingsView";
 import { Sidebar } from "./components/Sidebar";
@@ -292,6 +294,10 @@ export function App() {
     setSelection({ kind: "skill", name: skill.name });
   }, []);
 
+  const selectPlugin = useCallback((plugin: PluginRecord): void => {
+    setSelection({ kind: "plugin", name: plugin.name });
+  }, []);
+
   const handleSearchHit = useCallback(
     async (hit: SearchHit): Promise<void> => {
       setSearchOpen(false);
@@ -299,6 +305,16 @@ export function App() {
         await openVault(hit.vaultPath);
       }
       setActivePath(hit.vaultPath);
+      if (hit.shape === "plugin") {
+        setSection("plugins");
+        setSelection({ kind: "plugin", name: hit.skill });
+        return;
+      }
+      if (hit.shape === "plugin-skill" && hit.pluginName) {
+        setSection("plugins");
+        setSelection({ kind: "plugin", name: hit.pluginName });
+        return;
+      }
       setSection("skills");
       setSelection({ kind: "skill", name: hit.skill });
     },
@@ -384,7 +400,9 @@ export function App() {
       const exists =
         current.kind === "source"
           ? activeVault.sources.some((source) => source.name === current.name)
-          : activeVault.skills.some((skill) => skill.name === current.name);
+          : current.kind === "plugin"
+            ? activeVault.plugins.some((plugin) => plugin.name === current.name)
+            : activeVault.skills.some((skill) => skill.name === current.name);
       return exists ? current : EMPTY_SELECTION;
     });
   }, [activeVault]);
@@ -523,6 +541,15 @@ export function App() {
             onFork={openFork}
           />
         );
+      case "plugins":
+        return (
+          <PluginsView
+            vault={activeVault}
+            selected={selection.kind === "plugin" ? selection.name : null}
+            onSelect={selectPlugin}
+            onImport={openImport}
+          />
+        );
       case "targets":
         return (
           <TargetsView
@@ -568,7 +595,9 @@ export function App() {
     }
   }
 
-  const showInspector = Boolean(activeVault) && (section === "overview" || section === "sources" || section === "skills");
+  const showInspector =
+    Boolean(activeVault) &&
+    (section === "overview" || section === "sources" || section === "skills" || section === "plugins");
 
   return (
     <div className="app-shell">

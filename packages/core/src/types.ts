@@ -361,8 +361,9 @@ export interface SearchHit {
   vaultName: string;
   skill: string;
   sourceName: string;
+  pluginName?: string;
   origin: Origin;
-  shape: "standalone" | "package-skill" | "plugin-skill";
+  shape: "standalone" | "package-skill" | "plugin-skill" | "plugin";
   description?: string;
   relativePath: string;
   installedTargets: string[];

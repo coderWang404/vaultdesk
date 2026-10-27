@@ -1380,7 +1380,7 @@ kbd {
 
 .overview .stat-grid {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(128px, 1fr));
   gap: 11px;
   margin-bottom: 16px;
 }
@@ -4467,4 +4467,159 @@ kbd {
     transition-duration: 0.01ms !important;
     scroll-behavior: auto !important;
   }
+}
+
+.plugin-row-copy {
+  margin-top: 3px;
+  font-size: 11px;
+  color: var(--ink-muted);
+  line-height: 1.55;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.plugin-issue-count {
+  color: var(--danger);
+}
+
+.plugin-issue-count svg {
+  color: var(--danger);
+}
+
+.plugin-manifest-list,
+.plugin-asset-list,
+.plugin-skill-list,
+.plugin-issue-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.plugin-manifest {
+  display: flex;
+  align-items: flex-start;
+  gap: 7px;
+  padding: 5px 0;
+  border-bottom: 1px dashed rgba(32, 29, 23, 0.08);
+}
+
+.plugin-manifest:last-child {
+  border-bottom: 0;
+}
+
+.plugin-manifest > div {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+  flex: 1;
+}
+
+.plugin-manifest .mono {
+  font-size: 9.5px;
+  color: var(--ink-muted);
+  overflow-wrap: anywhere;
+}
+
+.plugin-manifest.is-error .mono {
+  color: var(--danger);
+}
+
+.plugin-asset-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-bottom: 6px;
+}
+
+.plugin-asset {
+  display: flex;
+  gap: 8px;
+  padding: 2px 0;
+  font-size: 9.5px;
+  color: var(--ink-muted);
+}
+
+.plugin-asset > span:first-child {
+  flex: 0 0 44px;
+  color: var(--ink-faint);
+}
+
+.plugin-asset .mono {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.plugin-skill {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  padding: 5px 0;
+  border-bottom: 1px dashed rgba(32, 29, 23, 0.08);
+}
+
+.plugin-skill:last-child {
+  border-bottom: 0;
+}
+
+.plugin-skill > div {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+  flex: 1;
+}
+
+.plugin-skill strong {
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.plugin-skill .muted-small {
+  font-size: 10px;
+}
+
+.plugin-issue {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  padding: 5px 0;
+  font-size: 10.5px;
+  color: var(--ink-muted);
+  border-bottom: 1px dashed rgba(32, 29, 23, 0.08);
+}
+
+.plugin-issue:last-child {
+  border-bottom: 0;
+}
+
+.plugin-issue.is-error {
+  color: var(--danger);
+}
+
+.import-plugin-summary {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  margin-bottom: 10px;
+}
+
+.import-plugin-facts {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  font-size: 10px;
+  color: var(--ink-faint);
+}
+
+.import-plugin-assets {
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+
+.import-plugin-summary .callout {
+  margin: 0;
 }

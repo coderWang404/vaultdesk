@@ -9,3 +9,4 @@ coverage/
 tmp/
 *.log
 apps/desktop/smoke.png
+tests/e2e/artifacts/

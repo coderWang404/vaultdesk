@@ -9,6 +9,23 @@ interface SearchReport {
   warnings: string[];
 }
 
+function shapeLabel(shape: SearchHit["shape"]): string {
+  switch (shape) {
+    case "standalone":
+      return "独立";
+    case "package-skill":
+      return "包内";
+    case "plugin-skill":
+      return "插件内";
+    default:
+      return "插件";
+  }
+}
+
+function shapeTone(shape: SearchHit["shape"]): "muted" | "accent" {
+  return shape === "plugin" || shape === "plugin-skill" ? "accent" : "muted";
+}
+
 export function SearchPalette({
   vaults,
   onClose,
@@ -98,8 +115,8 @@ export function SearchPalette({
             value={query}
             onChange={(event) => setQuery(event.target.value)}
             onKeyDown={onKeyDown}
-            placeholder="搜索技能名、来源、描述或安装目标…"
-            aria-label="搜索技能"
+            placeholder="搜索技能、插件、manifest、来源或安装目标…"
+            aria-label="搜索技能与插件"
             spellCheck={false}
           />
           {loading ? <Spinner size={15} /> : <kbd>esc</kbd>}
@@ -107,7 +124,7 @@ export function SearchPalette({
 
         <div className="palette-body">
           {vaults.length === 0 ? (
-            <p className="palette-note">先打开一个仓库，再搜索技能元数据。</p>
+            <p className="palette-note">先打开一个仓库，再搜索技能与插件元数据。</p>
           ) : query.trim().length === 0 ? (
             <div className="palette-idle">
               <p className="palette-note">搜索已打开的 {vaults.length} 个仓库的元数据。</p>
@@ -128,29 +145,34 @@ export function SearchPalette({
           ) : error ? (
             <p className="palette-note is-danger">{error}</p>
           ) : empty ? (
-            <p className="palette-note">没有匹配的技能。搜索只覆盖元数据，不读取技能全文。</p>
+            <p className="palette-note">没有匹配的技能或插件。搜索只覆盖元数据，不读取文件全文。</p>
           ) : (
             <div className="palette-results">
               {hits.map((hit, index) => (
                 <button
-                  key={`${hit.vaultPath}/${hit.sourceName}/${hit.skill}`}
+                  key={`${hit.vaultPath}/${hit.shape}/${hit.sourceName}/${hit.skill}`}
                   className={`palette-hit ${index === active ? "is-active" : ""}`}
                   onMouseEnter={() => setActive(index)}
                   onClick={() => onPick(hit)}
                 >
                   <span className={`origin-glyph origin-${hit.origin}`}>
-                    <Icon name={hit.origin === "github" ? "git" : "folder"} size={14} />
+                    <Icon
+                      name={hit.shape === "plugin" ? "sparkle" : hit.origin === "github" ? "git" : "folder"}
+                      size={14}
+                    />
                   </span>
                   <span className="palette-hit-main">
                     <span className="palette-hit-title">
                       <strong>{hit.skill}</strong>
-                      <StatusPill tone="muted">{hit.shape === "standalone" ? "独立" : "包内"}</StatusPill>
+                      <StatusPill tone={shapeTone(hit.shape)}>{shapeLabel(hit.shape)}</StatusPill>
                       {hit.installedTargets.length > 0 ? (
                         <StatusPill tone="ok">{hit.installedTargets.length} 个安装</StatusPill>
                       ) : null}
                     </span>
                     <span className="palette-hit-meta">
-                      {hit.sourceName} · {hit.vaultName}
+                      {hit.shape === "plugin-skill" && hit.pluginName
+                        ? `插件 ${hit.pluginName} · ${hit.vaultName}`
+                        : `${hit.sourceName} · ${hit.vaultName}`}
                       {hit.installedTargets.length > 0 ? ` · ${hit.installedTargets.join("、")}` : ""}
                     </span>
                   </span>
@@ -164,7 +186,7 @@ export function SearchPalette({
         </div>
 
         <div className="palette-foot">
-          <span>跨仓库搜索元数据，不修改任何内容</span>
+          <span>跨仓库搜索技能与插件元数据，不修改任何内容</span>
           {report && hits.length > 0 ? <span>{hits.length} 个结果</span> : null}
         </div>
       </div>

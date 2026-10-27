@@ -77,7 +77,8 @@ export function Overview({
 
       <section className="stat-grid">
         <StatCard label="来源" value={vault.counts.sources} hint={`${github} GitHub · ${local} 本地`} icon="source" />
-        <StatCard label="技能" value={vault.counts.skills} hint={`${vault.counts.packages} 个包`} icon="skill" />
+        <StatCard label="可安装技能" value={vault.counts.skills} hint={`${vault.counts.packages} 个包`} icon="skill" />
+        <StatCard label="插件" value={vault.counts.plugins} hint={`${vault.counts.pluginSkills} 个插件内技能`} icon="sparkle" />
         <StatCard label="安装目标" value={vault.counts.targets} hint={`${vault.counts.managedInstalls} 个受管安装`} icon="target" />
         <StatCard
           label="待更新"
@@ -275,7 +276,7 @@ function StatCard({
   label: string;
   value: number;
   hint: string;
-  icon: "source" | "skill" | "target" | "download";
+  icon: "source" | "skill" | "sparkle" | "target" | "download";
   tone?: "accent";
 }) {
   return (

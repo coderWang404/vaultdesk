@@ -1,4 +1,14 @@
-import type { CheckStatus, SkillRecord, SourceRecord, TargetRecord } from "@vaultdesk/core";
+import type {
+  CheckStatus,
+  PluginAgent,
+  PluginAssetKind,
+  PluginRecord,
+  SkillRecord,
+  SourceRecord,
+  TargetRecord,
+  ValidationIssue,
+  VaultSnapshot,
+} from "@vaultdesk/core";
 
 export function shortSha(value: string | undefined, length = 7): string {
   return value ? value.slice(0, length) : "—";
@@ -90,4 +100,50 @@ export function plural(count: number, unit: string): string {
 
 export function installedFor(skill: SkillRecord): string {
   return skill.installed.length > 0 ? skill.installed.map((entry) => entry.targetId).join("、") : "未安装";
+}
+
+export function issuesForPlugin(vault: VaultSnapshot, plugin: PluginRecord): ValidationIssue[] {
+  const roots = [
+    plugin.workingPath,
+    plugin.metadataPath,
+    ...plugin.skills.flatMap((skill) => [skill.workingPath, skill.relativePath]),
+  ];
+  return vault.issues.filter((issue) => {
+    if (!issue.path) return false;
+    return roots.some((root) => issue.path === root || issue.path?.startsWith(`${root}/`));
+  });
+}
+
+export function pluginAgentLabel(agent: PluginAgent): string {
+  switch (agent) {
+    case "claude":
+      return "Claude";
+    case "codex":
+      return "Codex";
+    case "qoder":
+      return "Qoder";
+    default:
+      return "通用";
+  }
+}
+
+export function assetKindLabel(kind: PluginAssetKind): string {
+  switch (kind) {
+    case "skills":
+      return "技能";
+    case "commands":
+      return "命令";
+    case "agents":
+      return "子代理";
+    case "hooks":
+      return "hooks";
+    case "mcp":
+      return "MCP";
+    case "rules":
+      return "规则";
+    case "workflows":
+      return "工作流";
+    default:
+      return "其他";
+  }
 }

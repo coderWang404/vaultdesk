@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
-import { openVault, validateVault } from "@vaultdesk/core";
+import { openVault, searchVaults, validateVault } from "@vaultdesk/core";
 import { copyFixture, tempDir } from "./helpers.js";
 
 describe("plugin registry", () => {
@@ -71,6 +71,30 @@ describe("plugin registry", () => {
     fs.writeFileSync(vaultFile, original.replace("names: [plain-skill]", "names: [review]"));
     const skillReport = await validateVault(vaultPath);
     expect(skillReport.errors.some((error) => error.code === "target.plugin-not-installable")).toBe(true);
+  });
+
+  it("searches plugin names, manifest fields, assets, and contained skills", async () => {
+    const vaultPath = copyFixture("v2-plugins");
+    const vaults = [{ path: vaultPath }];
+
+    const byAgent = await searchVaults({ query: "codex", vaults });
+    expect(byAgent.hits.some((hit) => hit.shape === "plugin" && hit.skill === "codex-only")).toBe(true);
+    expect(byAgent.hits.some((hit) => hit.shape === "plugin" && hit.skill === "multi-manifest")).toBe(true);
+
+    const bySkill = await searchVaults({ query: "security", vaults });
+    const contained = bySkill.hits.find((hit) => hit.shape === "plugin-skill" && hit.skill === "security-scan");
+    expect(contained?.pluginName).toBe("qoder-scan");
+    expect(contained?.sourceName).toBe("qoder-scan");
+    expect(bySkill.hits.some((hit) => hit.shape === "plugin" && hit.skill === "qoder-scan")).toBe(true);
+    expect(bySkill.hits.every((hit) => hit.shape === "plugin" || hit.shape === "plugin-skill")).toBe(true);
+
+    const byAsset = await searchVaults({ query: "hooks", vaults });
+    const hooked = byAsset.hits.filter((hit) => hit.shape === "plugin").map((hit) => hit.skill);
+    expect(hooked).toEqual(expect.arrayContaining(["claude-kit", "qoder-scan"]));
+
+    const installable = await searchVaults({ query: "plain", vaults });
+    expect(installable.hits.map((hit) => hit.skill)).toContain("plain-skill");
+    expect(installable.hits.every((hit) => hit.shape !== "plugin" && hit.shape !== "plugin-skill")).toBe(true);
   });
 
   it("skips plugin skill symlinks that escape the plugin root", async () => {

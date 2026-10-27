@@ -1,17 +1,14 @@
 import { useState } from "react";
-import type { ImportPreview, ImportResult } from "@vaultdesk/core";
+import type { ImportPreview, ImportResult, PluginImportPreview, PluginImportResult } from "@vaultdesk/core";
 import { call, errorMessage } from "../../api";
+import { assetKindLabel, pluginAgentLabel } from "../../format";
 import { Icon } from "../icons";
 import { Button, Callout, Field, Modal, Spinner, StatusPill } from "../ui";
 
 type Mode = "local" | "github";
 type KindChoice = "auto" | "collection" | "suite";
-
-interface GithubPreview extends ImportPreview {
-  commit: string;
-  repo: string;
-  ref: string;
-}
+type Preview = ImportPreview | PluginImportPreview;
+type Result = ImportResult | PluginImportResult;
 
 export function ImportModal({
   vaultPath,
@@ -30,10 +27,10 @@ export function ImportModal({
   const [name, setName] = useState("");
   const [kind, setKind] = useState<KindChoice>("auto");
   const [entrypoint, setEntrypoint] = useState("");
-  const [preview, setPreview] = useState<ImportPreview | GithubPreview | null>(null);
+  const [preview, setPreview] = useState<Preview | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [applied, setApplied] = useState<ImportResult | null>(null);
+  const [applied, setApplied] = useState<Result | null>(null);
 
   function clearPreview(): void {
     setPreview(null);
@@ -66,7 +63,7 @@ export function ImportModal({
     setError(null);
     setApplied(null);
     try {
-      const result = await call<ImportPreview>("source.addLocal", {
+      const result = await call<Preview>("source.addLocal", {
         vaultPath,
         path,
         ...options(),
@@ -86,7 +83,7 @@ export function ImportModal({
     setError(null);
     setApplied(null);
     try {
-      const result = await call<GithubPreview>("source.addGithub", {
+      const result = await call<Preview>("source.addGithub", {
         vaultPath,
         repo: repo.trim(),
         ref: ref.trim() || "main",
@@ -109,13 +106,13 @@ export function ImportModal({
     try {
       const result =
         mode === "local"
-          ? await call<ImportResult>("source.addLocal", {
+          ? await call<Result>("source.addLocal", {
               vaultPath,
               path,
               ...options(),
               confirm: true,
             })
-          : await call<ImportResult>("source.addGithub", {
+          : await call<Result>("source.addGithub", {
               vaultPath,
               repo: repo.trim(),
               ref: ref.trim() || "main",
@@ -133,11 +130,15 @@ export function ImportModal({
 
   const conflicts = preview?.conflicts ?? [];
   const canApply = Boolean(preview) && conflicts.length === 0 && !applied;
+  const pluginPreview = preview?.shape === "plugin" ? preview : null;
+  const assetKinds = pluginPreview
+    ? [...new Set(pluginPreview.assets.map((asset) => asset.kind))]
+    : [];
 
   return (
     <Modal
       title="添加来源"
-      subtitle="检测目录中的 SKILL.md：一个为独立技能，多个为合集。VaultDesk 不做 AI 推断，suite 需要你指定入口。"
+      subtitle="检测目录中的插件 manifest 与 SKILL.md：插件只写入 vault，技能按单个或合集导入。VaultDesk 不做 AI 推断，suite 需要你指定入口。"
       onClose={onClose}
       width="wide"
       dismissable={!busy}
@@ -242,7 +243,7 @@ export function ImportModal({
             placeholder="自动"
           />
         </Field>
-        <Field label="分类">
+        <Field label="分类" hint={pluginPreview ? "插件不使用分类。" : undefined}>
           <select
             className="input"
             value={kind}
@@ -250,13 +251,14 @@ export function ImportModal({
               setKind(event.target.value as KindChoice);
               clearPreview();
             }}
+            disabled={Boolean(pluginPreview)}
           >
             <option value="auto">自动检测</option>
             <option value="collection">collection · 合集</option>
             <option value="suite">suite · 套件</option>
           </select>
         </Field>
-        <Field label="套件入口" optional hint="suite 必填；名字必须属于导入的技能。">
+        <Field label="套件入口" optional hint={pluginPreview ? "插件不使用入口。" : "suite 必填；名字必须属于导入的技能。"}>
           <input
             className="input"
             value={entrypoint}
@@ -265,7 +267,7 @@ export function ImportModal({
               clearPreview();
             }}
             placeholder="入口技能名"
-            disabled={kind !== "suite"}
+            disabled={Boolean(pluginPreview) || kind !== "suite"}
           />
         </Field>
       </div>
@@ -304,15 +306,65 @@ export function ImportModal({
               <h3>{preview.suggestedName}</h3>
             </div>
             <div className="import-badges">
-              <StatusPill tone="accent">{preview.shape === "package" ? `package/${preview.kind}` : "standalone"}</StatusPill>
-              {preview.entrypoint ? <StatusPill tone="warn">入口 {preview.entrypoint}</StatusPill> : null}
-              {"commit" in preview ? <StatusPill tone="muted">{preview.commit.slice(0, 8)}</StatusPill> : null}
+              {pluginPreview ? (
+                <StatusPill tone="accent">插件</StatusPill>
+              ) : (
+                <StatusPill tone="accent">
+                  {preview.shape === "package" ? `package/${preview.kind}` : "standalone"}
+                </StatusPill>
+              )}
+              {preview.shape !== "plugin" && preview.entrypoint ? (
+                <StatusPill tone="warn">入口 {preview.entrypoint}</StatusPill>
+              ) : null}
+              {pluginPreview
+                ? pluginPreview.manifests.map((manifest) => (
+                    <StatusPill
+                      key={manifest.relativePath}
+                      tone={manifest.parseError ? "danger" : "neutral"}
+                      title={manifest.relativePath}
+                    >
+                      {pluginAgentLabel(manifest.agent)}
+                    </StatusPill>
+                  ))
+                : null}
+              {pluginPreview?.hasHooks ? <StatusPill tone="warn">含 hooks</StatusPill> : null}
+              {"commit" in preview && preview.commit ? (
+                <StatusPill tone="muted">{preview.commit.slice(0, 8)}</StatusPill>
+              ) : null}
             </div>
           </div>
           <div className="import-meta mono">
             <span>{preview.inputPath}</span>
-            <span>→ {preview.targetRoot}</span>
+            <span>
+              → {preview.shape === "plugin" ? `plugins/${preview.suggestedName}` : preview.targetRoot}
+            </span>
           </div>
+          {pluginPreview ? (
+            <div className="import-plugin-summary">
+              <div className="import-plugin-facts">
+                <span>{pluginPreview.manifests.length} 个 manifest</span>
+                <span>{pluginPreview.assets.length} 项资产</span>
+                <span>{pluginPreview.skills.length} 个插件内技能</span>
+              </div>
+              {assetKinds.length > 0 ? (
+                <div className="import-plugin-assets">
+                  {assetKinds.map((assetKind) => (
+                    <StatusPill key={assetKind} tone={assetKind === "hooks" ? "warn" : "muted"}>
+                      {assetKindLabel(assetKind)}
+                    </StatusPill>
+                  ))}
+                </div>
+              ) : null}
+              {pluginPreview.hasHooks ? (
+                <Callout tone="warn" title="插件包含 hooks">
+                  <p>
+                    hooks 会随插件写入仓库，但 VaultDesk 永不执行。安装与适配由 agent 完成，请先在 agent
+                    侧确认 hooks 行为。
+                  </p>
+                </Callout>
+              ) : null}
+            </div>
+          ) : null}
           <div className="import-skills">
             {preview.skills.map((skill) => (
               <div className="import-skill" key={skill.name}>
@@ -340,6 +392,9 @@ export function ImportModal({
           {applied ? (
             <Callout tone="ok" title="导入完成">
               <p>已写入 {applied.wrote.length} 个路径，来源 {applied.sourceName}。</p>
+              {applied.shape === "plugin" ? (
+                <p>插件只写入 vault，不会安装到任何 agent。安装与适配由 agent 自己完成。</p>
+              ) : null}
             </Callout>
           ) : null}
         </div>

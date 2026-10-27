@@ -413,8 +413,8 @@ async function searchAndSettings(suite: Suite): Promise<void> {
 
   await page.keyboard.press("Meta+k");
   const palette = await dialog(page);
-  await palette.getByLabel("搜索技能").waitFor();
-  await palette.getByLabel("搜索技能").fill("beta");
+  await palette.getByLabel("搜索技能与插件").waitFor();
+  await palette.getByLabel("搜索技能与插件").fill("beta");
   const hit = palette.locator(".palette-hit").filter({ hasText: "beta" }).first();
   await hit.waitFor({ state: "visible", timeout: 30_000 });
   const hitMeta = await hit.locator(".palette-hit-meta").innerText();
@@ -426,7 +426,7 @@ async function searchAndSettings(suite: Suite): Promise<void> {
 
   await page.keyboard.press("Meta+k");
   const emptySearch = await dialog(page);
-  await emptySearch.getByLabel("搜索技能").fill("no-such-skill");
+  await emptySearch.getByLabel("搜索技能与插件").fill("no-such-skill");
   await waitForText(page, "没有匹配的技能", 30_000);
   await page.keyboard.press("Escape");
   await emptySearch.waitFor({ state: "hidden" });
@@ -471,6 +471,156 @@ async function searchAndSettings(suite: Suite): Promise<void> {
   equal(await relaunched.page.getByLabel("每个目标保留备份数").inputValue(), "3", "persisted retention after relaunch");
   equal(await relaunched.page.getByLabel("备份根目录").inputValue(), customBackups, "persisted backup root after relaunch");
   console.log("      cross-vault keyboard search, selection jump, settings validation and persistence OK");
+}
+
+async function pluginsFlow(suite: Suite): Promise<void> {
+  const workspace = suite.workspace("plugins");
+  const vaultPath = path.join(workspace.root, "plugins-vault");
+  const targetDest = path.join(workspace.root, "agents-target");
+  copyFixture("v2-plugins", vaultPath);
+  rewriteTargetDest(vaultPath, targetDest);
+  initGitRepo(vaultPath);
+
+  const demoDir = path.join(workspace.root, "demo-plugin-src");
+  fs.mkdirSync(path.join(demoDir, "skills"), { recursive: true });
+  fs.writeFileSync(
+    path.join(demoDir, "plugin.json"),
+    `${JSON.stringify({ name: "demo-plugin", version: "1.0.0", description: "Local demo plugin", license: "MIT" }, null, 2)}\n`,
+    "utf8",
+  );
+  writeSkill(path.join(demoDir, "skills", "demo-skill"), "demo-skill", "Demo plugin skill.");
+
+  const upstream = path.join(workspace.root, "upstream-plugin-kit");
+  fs.mkdirSync(path.join(upstream, ".claude-plugin"), { recursive: true });
+  fs.writeFileSync(
+    path.join(upstream, ".claude-plugin", "plugin.json"),
+    `${JSON.stringify({ name: "plugin-kit", version: "2.0.0", description: "Upstream kit plugin", license: "MIT" }, null, 2)}\n`,
+    "utf8",
+  );
+  writeSkill(path.join(upstream, "skills", "kit-review"), "kit-review", "Kit review skill.");
+  initGitRepo(upstream);
+  const bare = path.join(workspace.remotes, "plugin-kit.git");
+  git(workspace.root, ["clone", "--bare", upstream, bare]);
+  const pluginCommit = git(bare, ["rev-parse", "HEAD"]).trim();
+
+  const launched = await suite.launch({ workspace, initialVault: vaultPath });
+  const page = launched.page;
+
+  const pluginStat = page.locator(".stat-card").filter({ hasText: "插件" });
+  await pluginStat.getByText("3 个插件内技能").waitFor();
+  equal(await pluginStat.locator("strong").innerText(), "5", "overview plugin count");
+
+  await openSection(page, "插件");
+  await page.locator(".plugin-row").first().waitFor();
+  equal(await page.locator(".plugin-row").count(), 5, "fixture plugin rows");
+
+  await page.getByLabel("筛选插件").fill("security");
+  await waitFor(async () => (await page.locator(".plugin-row").count()) === 1, "security filter narrows to one plugin");
+  assert((await page.locator(".plugin-row").innerText()).includes("qoder-scan"), "security filter matches qoder-scan");
+
+  await page.getByLabel("筛选插件").fill("codex");
+  await waitFor(async () => (await page.locator(".plugin-row").count()) === 2, "codex filter narrows to two plugins");
+  const codexRows = await page.locator(".plugin-row").allInnerTexts();
+  assert(codexRows.some((text) => text.includes("codex-only")), "codex-only matched by manifest agent");
+  assert(codexRows.some((text) => text.includes("multi-manifest")), "multi-manifest matched by manifest agent");
+
+  await page.getByRole("button", { name: "清除筛选" }).click();
+  await waitFor(async () => (await page.locator(".plugin-row").count()) === 5, "search filter cleared");
+  const originFilter = page.getByRole("group", { name: "插件来源" });
+  await originFilter.getByRole("button", { name: "本地" }).click();
+  await waitFor(async () => (await page.locator(".plugin-row").count()) === 4, "local origin filter");
+  const localRows = await page.locator(".plugin-row").allInnerTexts();
+  assert(localRows.some((text) => text.includes("local-tools")), "local filter matches local-tools");
+  await originFilter.getByRole("button", { name: "全部" }).click();
+  await waitFor(async () => (await page.locator(".plugin-row").count()) === 5, "origin filter reset");
+
+  await page.locator(".plugin-row").filter({ hasText: "claude-kit" }).click();
+  const inspector = page.locator(".inspector");
+  await inspector.getByRole("heading", { name: "claude-kit" }).waitFor();
+  await waitForText(page, "这个插件包含 hooks");
+  await waitForText(page, "插件内技能");
+  await inspector.locator(".plugin-issue-list").waitFor();
+  assert(
+    (await inspector.locator(".plugin-issue-list").innerText()).includes("hooks"),
+    "plugin inspector surfaces the hooks warning from source metadata",
+  );
+  equal(await inspector.getByRole("button", { name: /安装/ }).count(), 0, "plugin inspector has no install action");
+  assert(
+    !fs.existsSync(path.join(vaultPath, "plugins/claude-kit/hooks/on-start.sh.ran")),
+    "plugin hooks are never executed",
+  );
+
+  await openSection(page, "技能");
+  equal(await page.locator(".skill-table-row").count(), 1, "plugin skills stay out of the installable skills list");
+
+  await page.keyboard.press("Meta+k");
+  const palette = await dialog(page);
+  await palette.getByLabel("搜索技能与插件").fill("security");
+  const hit = palette.locator(".palette-hit").filter({ hasText: "security-scan" }).first();
+  await hit.waitFor({ state: "visible", timeout: 30_000 });
+  const hitText = await hit.innerText();
+  assert(hitText.includes("插件内"), `plugin skill shape label: ${hitText}`);
+  assert(hitText.includes("插件 qoder-scan"), `plugin skill shows its plugin: ${hitText}`);
+  await hit.click();
+  await palette.waitFor({ state: "hidden" });
+  await page.locator(".nav-item.is-active").filter({ hasText: "插件" }).waitFor();
+  await page.locator(".plugin-row.is-selected").filter({ hasText: "qoder-scan" }).waitFor();
+  await page.locator(".inspector").getByRole("heading", { name: "qoder-scan" }).waitFor();
+
+  await page.getByRole("button", { name: "导入插件" }).click();
+  const localModal = await dialog(page);
+  await localModal.getByPlaceholder("/path/to/skill-or-repo").fill(demoDir);
+  await localModal.getByRole("button", { name: "预览分类" }).click();
+  await localModal.locator(".import-preview").waitFor({ state: "visible", timeout: 30_000 });
+  const localPreview = await localModal.locator(".import-preview").innerText();
+  assert(localPreview.includes("插件"), "local preview marked as plugin");
+  assert(localPreview.includes("plugins/demo-plugin"), "local preview target is plugins/demo-plugin");
+  assert(localPreview.includes("1 个 manifest"), "local plugin manifest count");
+  assert(localPreview.includes("1 个插件内技能"), "local plugin contained skill count");
+  equal(await localModal.locator("select").isDisabled(), true, "plugin import disables classification");
+  await localModal.getByRole("button", { name: "确认导入" }).click();
+  await waitForText(page, "导入完成", 30_000);
+  assert((await localModal.innerText()).includes("插件只写入 vault"), "plugin apply note");
+  await localModal.locator(".modal-footer").getByRole("button", { name: "完成" }).click();
+  await localModal.waitFor({ state: "hidden" });
+  assert(fs.existsSync(path.join(vaultPath, "plugins/demo-plugin/skills/demo-skill/SKILL.md")), "local plugin stored");
+  assert(fs.existsSync(path.join(vaultPath, "sources/demo-plugin.yml")), "local plugin metadata written");
+  assert(!fs.existsSync(path.join(vaultPath, "third_party/demo-plugin")), "local plugin has no vendor copy");
+  assert(!fs.existsSync(targetDest), "plugin import wrote nothing to the agent target");
+  await waitFor(async () => (await page.locator(".plugin-row").count()) === 6, "local plugin row appears", 30_000);
+
+  await page.getByRole("button", { name: "导入插件" }).click();
+  const githubModal = await dialog(page);
+  await githubModal.getByRole("button", { name: "GitHub 仓库" }).click();
+  await githubModal.getByPlaceholder("JimLiu/baoyu-skills").fill("e2e/plugin-kit");
+  await githubModal.getByRole("button", { name: "预览分类" }).click();
+  await githubModal.locator(".import-preview").waitFor({ state: "visible", timeout: 60_000 });
+  const githubPreview = await githubModal.locator(".import-preview").innerText();
+  assert(githubPreview.includes("plugin-kit"), "GitHub preview inferred the manifest name");
+  assert(githubPreview.includes("1 个 manifest"), "GitHub plugin manifest count");
+  assert(githubPreview.includes("1 个插件内技能"), "GitHub plugin contained skill count");
+  await githubModal.getByRole("button", { name: "确认导入" }).click();
+  await waitForText(page, "导入完成", 60_000);
+  await githubModal.locator(".modal-footer").getByRole("button", { name: "完成" }).click();
+  await githubModal.waitFor({ state: "hidden" });
+  assert(
+    fs.existsSync(path.join(vaultPath, "third_party/plugin-kit/.claude-plugin/plugin.json")),
+    "GitHub plugin vendored",
+  );
+  assert(
+    fs.existsSync(path.join(vaultPath, "plugins/plugin-kit/skills/kit-review/SKILL.md")),
+    "GitHub plugin working copy",
+  );
+  const sourceYaml = read(path.join(vaultPath, "sources/plugin-kit.yml"));
+  assert(sourceYaml.includes("shape: plugin"), "GitHub plugin metadata shape");
+  assert(sourceYaml.includes("repo: e2e/plugin-kit"), "GitHub plugin metadata repo");
+  assert(read(path.join(vaultPath, "vault.lock")).includes(pluginCommit), "GitHub plugin commit pinned");
+  await waitFor(async () => (await page.locator(".plugin-row").count()) === 7, "GitHub plugin row appears", 30_000);
+  await page.getByLabel("筛选插件").fill("plugin-kit");
+  await waitFor(async () => (await page.locator(".plugin-row").count()) === 1, "GitHub plugin filter");
+  assert(!fs.existsSync(targetDest), "GitHub plugin import wrote nothing to the agent target");
+
+  console.log("      plugin page, filters, search routing, hooks warning, local and GitHub imports OK");
 }
 
 async function autoCheckThrottle(suite: Suite): Promise<void> {
@@ -1085,7 +1235,7 @@ async function desktopScale(suite: Suite): Promise<void> {
 
   await page.keyboard.press("Meta+k");
   const palette = await dialog(page);
-  await palette.getByLabel("搜索技能").fill("scale-skill-077");
+  await palette.getByLabel("搜索技能与插件").fill("scale-skill-077");
   await palette.locator(".palette-hit").filter({ hasText: "scale-skill-077" }).first().waitFor({ timeout: 30_000 });
   await page.keyboard.press("Enter");
   await palette.waitFor({ state: "hidden" });
@@ -1236,7 +1386,7 @@ async function accessibilityAndKeyboard(suite: Suite): Promise<void> {
   });
   await page.evaluate(fs.readFileSync(axeSourcePath, "utf8"));
   const scans = [await auditPage(page, "overview")];
-  for (const section of ["来源", "技能", "安装目标", "Git", "设置"]) {
+  for (const section of ["来源", "技能", "插件", "安装目标", "Git", "设置"]) {
     await openSection(page, section);
     scans.push(await auditPage(page, section));
   }
@@ -1246,10 +1396,10 @@ async function accessibilityAndKeyboard(suite: Suite): Promise<void> {
   await installButton.focus();
   await page.keyboard.press("Meta+k");
   const palette = await dialog(page);
-  await palette.getByLabel("搜索技能").waitFor();
+  await palette.getByLabel("搜索技能与插件").waitFor();
   equal(
     await page.evaluate(() => document.activeElement?.getAttribute("aria-label")),
-    "搜索技能",
+    "搜索技能与插件",
     "palette focuses its search input",
   );
   for (let index = 0; index < 6; index += 1) {
@@ -1297,6 +1447,7 @@ async function main(): Promise<void> {
   await run("GitHub import, check, diff, guarded update, fork", githubFlow);
   await run("install, backup, verify, restore, remove and re-register target", installFlow);
   await run("cross-vault search, settings validation and persistence", searchAndSettings);
+  await run("plugin page, filters, search and imports", pluginsFlow);
   await run("boot auto-check honors the 24h interval", autoCheckThrottle);
   await run("auto-check runs once per vault per session", autoCheckSessionOnce);
   await run("slow check, offline warning and journal recovery banner", slowOfflineAndRecovery);

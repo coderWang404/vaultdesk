@@ -1,8 +1,12 @@
-import type { SkillRecord, SourceRecord, VaultSnapshot } from "@vaultdesk/core";
+import { useState } from "react";
+import type { PluginAssetKind, PluginRecord, SkillRecord, SourceRecord, VaultSnapshot } from "@vaultdesk/core";
 import {
+  assetKindLabel,
   hashLabel,
   installedFor,
+  issuesForPlugin,
   originLabel,
+  pluginAgentLabel,
   relativeTime,
   shortSha,
   sourceShapeLabel,
@@ -65,6 +69,19 @@ export function Inspector({
         onInstall={onInstall}
         onSkill={onSkill}
         onBackups={onBackups}
+      />
+    );
+  }
+
+  if (selection.kind === "plugin") {
+    const plugin = vault.plugins.find((entry) => entry.name === selection.name);
+    if (!plugin) return <aside className="inspector" />;
+    return (
+      <PluginInspector
+        vault={vault}
+        plugin={plugin}
+        onClose={onClose}
+        onReveal={onReveal}
       />
     );
   }
@@ -355,6 +372,246 @@ function SkillInspector({
           <p>GitHub 来源技能只读。编辑会先创建本地副本，并记录 forked_from。</p>
         </Callout>
       ) : null}
+    </aside>
+  );
+}
+
+async function copyPath(text: string): Promise<boolean> {
+  try {
+    await navigator.clipboard.writeText(text);
+    return true;
+  } catch {
+    const area = document.createElement("textarea");
+    area.value = text;
+    document.body.appendChild(area);
+    area.select();
+    const copied = document.execCommand("copy");
+    area.remove();
+    return copied;
+  }
+}
+
+function PluginInspector({
+  vault,
+  plugin,
+  onClose,
+  onReveal,
+}: {
+  vault: VaultSnapshot;
+  plugin: PluginRecord;
+  onClose: () => void;
+  onReveal: (path: string) => void;
+}) {
+  const [copied, setCopied] = useState(false);
+  const issues = issuesForPlugin(vault, plugin);
+  const assetCounts = new Map<PluginAssetKind, number>();
+  for (const asset of plugin.assets) {
+    assetCounts.set(asset.kind, (assetCounts.get(asset.kind) ?? 0) + 1);
+  }
+
+  async function onCopy(): Promise<void> {
+    if (await copyPath(plugin.workingPath)) {
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 1600);
+    }
+  }
+
+  return (
+    <aside className="inspector">
+      <header className="inspector-head">
+        <span className={`source-glyph origin-${plugin.origin}`}>
+          <Icon name="sparkle" size={17} />
+        </span>
+        <div>
+          <span className="eyebrow">插件</span>
+          <h2>{plugin.name}</h2>
+        </div>
+        <button className="inspector-close" onClick={onClose} aria-label="关闭详情">
+          <Icon name="x" size={15} />
+        </button>
+      </header>
+
+      <div className="inspector-tags">
+        <StatusPill tone="muted">插件</StatusPill>
+        <StatusPill tone={plugin.origin === "github" ? "neutral" : "accent"}>{originLabel(plugin.origin)}</StatusPill>
+        <StatusPill tone={statusTone(plugin.status)}>{statusLabel(plugin.status)}</StatusPill>
+        {plugin.version ? <StatusPill tone="muted">v{plugin.version}</StatusPill> : null}
+        {plugin.hasHooks ? <StatusPill tone="warn">含 hooks</StatusPill> : null}
+      </div>
+
+      {plugin.hasHooks ? (
+        <Callout tone="warn" title="这个插件包含 hooks">
+          <p>
+            hooks 已随插件保存，但 VaultDesk 永不执行它们。交给 agent 安装前，先把资产清单和
+            hooks 风险确认清楚。
+          </p>
+        </Callout>
+      ) : null}
+
+      <p className="inspector-copy">{plugin.description ?? "manifest 里没有填写描述。"}</p>
+
+      <div className="inspector-section">
+        <span className="inspector-section-title">上游</span>
+        {plugin.origin === "github" ? (
+          <>
+            <MetaRow label="仓库">
+              <span className="mono">{plugin.repo ?? "—"}</span>
+            </MetaRow>
+            <MetaRow label="引用">
+              <span className="mono">{plugin.ref}</span>
+            </MetaRow>
+            {plugin.contentPath ? (
+              <MetaRow label="仓库内路径">
+                <span className="mono">{plugin.contentPath}</span>
+              </MetaRow>
+            ) : null}
+            <MetaRow label="锁定 commit">
+              <span className="mono">{shortSha(plugin.locked?.commit, 12)}</span>
+            </MetaRow>
+            <MetaRow label="整根哈希">
+              <span className="mono">{hashLabel(plugin.locked?.hash)}</span>
+            </MetaRow>
+            <MetaRow label="远端 commit">
+              <span className="mono">{shortSha(plugin.remoteCommit, 12)}</span>
+            </MetaRow>
+          </>
+        ) : (
+          <MetaRow label="来源类型">本地目录，不参与上游更新</MetaRow>
+        )}
+        <MetaRow label="上次检查">{relativeTime(plugin.lastCheckedAt)}</MetaRow>
+        <MetaRow label="上次应用">{relativeTime(plugin.lastAppliedAt)}</MetaRow>
+        {plugin.license ? <MetaRow label="许可">{plugin.license}</MetaRow> : null}
+        {plugin.lastError ? <MetaRow label="错误">{plugin.lastError}</MetaRow> : null}
+      </div>
+
+      <div className="inspector-section">
+        <span className="inspector-section-title">路径</span>
+        <div className="path-row">
+          <span className="mono">{plugin.workingPath}</span>
+          <button className="inline-icon" onClick={() => onReveal(plugin.workingPath)} aria-label="显示插件根目录">
+            <Icon name="external" size={12} />
+          </button>
+        </div>
+        {plugin.vendorRoot ? (
+          <div className="path-row">
+            <span className="mono">{plugin.vendorRoot}</span>
+            <button className="inline-icon" onClick={() => onReveal(plugin.vendorRoot as string)} aria-label="显示上游副本">
+              <Icon name="external" size={12} />
+            </button>
+          </div>
+        ) : null}
+      </div>
+
+      <div className="inspector-section">
+        <span className="inspector-section-title">
+          manifest <em>{plugin.manifests.length}</em>
+        </span>
+        <div className="plugin-manifest-list">
+          {plugin.manifests.map((manifest) => (
+            <div className={`plugin-manifest ${manifest.parseError ? "is-error" : ""}`} key={manifest.relativePath}>
+              <StatusPill tone={manifest.parseError ? "danger" : "neutral"}>{pluginAgentLabel(manifest.agent)}</StatusPill>
+              <div>
+                <span className="mono">{manifest.relativePath}</span>
+                <span className="muted-small">
+                  {manifest.parseError
+                    ? manifest.parseError
+                    : [manifest.name, manifest.version ? `v${manifest.version}` : undefined]
+                        .filter(Boolean)
+                        .join(" · ") || "没有声明 name / version"}
+                </span>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <div className="inspector-section">
+        <span className="inspector-section-title">
+          资产 <em>{plugin.assets.length}</em>
+        </span>
+        <div className="plugin-asset-tags">
+          {[...assetCounts.entries()].map(([kind, count]) => (
+            <StatusPill tone={kind === "hooks" ? "warn" : "muted"} key={kind}>
+              {assetKindLabel(kind)} {count}
+            </StatusPill>
+          ))}
+          {plugin.assets.length === 0 ? <span className="muted-small">没有识别到资产目录或 manifest 引用。</span> : null}
+        </div>
+        {plugin.assets.length > 0 ? (
+          <div className="plugin-asset-list">
+            {plugin.assets.map((asset) => (
+              <div className="plugin-asset" key={`${asset.kind}:${asset.relativePath}`}>
+                <span>{assetKindLabel(asset.kind)}</span>
+                <span className="mono">{asset.relativePath}</span>
+              </div>
+            ))}
+          </div>
+        ) : null}
+        {plugin.otherCount > 0 ? (
+          <p className="muted-small">插件根另有 {plugin.otherCount} 个未分类条目。</p>
+        ) : null}
+      </div>
+
+      <div className="inspector-section">
+        <span className="inspector-section-title">
+          插件内技能 <em>{plugin.skills.length}</em>
+        </span>
+        {plugin.skills.length === 0 ? (
+          <p className="muted-small">这个插件没有包含技能。它仍然会作为完整插件保存。</p>
+        ) : (
+          <div className="plugin-skill-list">
+            {plugin.skills.map((skill) => (
+              <div className="plugin-skill" key={skill.name}>
+                <div>
+                  <strong>{skill.name}</strong>
+                  <span className="muted-small">{skill.description ?? "没有填写描述。"}</span>
+                </div>
+                <button
+                  className="inline-icon"
+                  onClick={() => onReveal(skill.workingPath)}
+                  aria-label={`显示 ${skill.name} 目录`}
+                >
+                  <Icon name="external" size={12} />
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+        <p className="muted-small">插件内技能不进入安装计划，也不参与 build。安装由 agent 完成。</p>
+      </div>
+
+      {issues.length > 0 ? (
+        <div className="inspector-section">
+          <span className="inspector-section-title">
+            校验问题 <em>{issues.length}</em>
+          </span>
+          <div className="plugin-issue-list">
+            {issues.map((issue) => (
+              <div className={`plugin-issue is-${issue.severity}`} key={`${issue.code}:${issue.message}`}>
+                <StatusPill tone={issue.severity === "error" ? "danger" : "warn"}>
+                  {issue.severity === "error" ? "错误" : "提示"}
+                </StatusPill>
+                <span>{issue.message}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      ) : null}
+
+      <div className="inspector-actions">
+        <Button size="sm" variant="quiet" icon="folder" onClick={() => onReveal(plugin.workingPath)}>
+          在 Finder 中显示
+        </Button>
+        {plugin.vendorRoot ? (
+          <Button size="sm" variant="ghost" icon="file" onClick={() => onReveal(plugin.vendorRoot as string)}>
+            上游副本
+          </Button>
+        ) : null}
+        <Button size="sm" variant="ghost" icon="file" onClick={() => void onCopy()}>
+          {copied ? "已复制" : "复制路径"}
+        </Button>
+      </div>
+      <p className="muted-small">VaultDesk 不会安装、启用或更新 agent 侧的插件副本。</p>
     </aside>
   );
 }

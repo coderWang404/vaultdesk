@@ -1,6 +1,6 @@
 {
   "name": "@vaultdesk/desktop",
-  "version": "0.6.0",
+  "version": "1.0.0",
   "private": true,
   "type": "module",
   "main": "./out/main/index.cjs",

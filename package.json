@@ -1,6 +1,6 @@
 {
   "name": "vaultdesk",
-  "version": "0.6.0",
+  "version": "1.0.0",
   "private": true,
   "description": "Local-first skill and plugin vault manager for macOS",
   "license": "Apache-2.0",

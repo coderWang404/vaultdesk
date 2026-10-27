@@ -68,12 +68,14 @@ The packaged-app scenario:
 1. Verifies the DMG with `hdiutil verify`, mounts it read-only, checks
    `VaultDesk.app` and the `Applications` link, copies the app out with `ditto`,
    and detaches the image.
-2. Checks bundle identifier, version, architecture, `app.asar`, signature state,
-   notarization state, Gatekeeper assessment and absence of a quarantine flag on
-   the locally built artifact.
+2. Checks bundle identifier, version, architecture, `app.asar`, the packaged
+   `agent-skill/vaultdesk/SKILL.md`, signature state, notarization state,
+   Gatekeeper assessment and absence of a quarantine flag on the locally built
+   artifact.
 3. Launches the copied binary with Playwright, opens a v2 fixture, checks source,
-   skill and target counts, validates the vault, edits a skill, confirms the file
-   on disk and in `git status`, exits, and confirms the edit persists.
+   skill and target counts, validates the vault, checks the Settings agent-skill
+   panel path, edits a skill, confirms the file on disk and in `git status`,
+   exits, and confirms the edit persists.
 
 If the app carries a Developer ID signature, the scenario requires strict
 `codesign` verification and a stapled notarization ticket. An ad-hoc build logs a
@@ -115,14 +117,15 @@ warning instead of pretending to be a signed release.
 
 ## Last verified
 
-2026-10-26, macOS arm64 host:
+2026-10-27, macOS arm64 host:
 
-- `npx vitest run`: 9 files, 31 tests passed.
-- `pnpm typecheck`: 4 workspace projects passed.
-- CLI suite: 12/12 scenarios passed, including the real public GitHub scenario
-  pinned at commit `dbd4588f9e10` and a real SIGKILL during import.
-- Desktop suite: 12/12 scenarios passed; axe reported 0 violations across six
-  views; 120-skill rendering completed in 912 ms.
-- DMG suite: passed for the 120.6 MB arm64 build; ad-hoc signature and missing
-  notarization were reported as warnings, and Gatekeeper accepted the app with
-  the host's security assessment disabled.
+- `pnpm test`: 13 files, 55 tests passed.
+- `pnpm -r typecheck`: 4 workspace projects passed.
+- CLI suite: 12/12 default scenarios passed. The opt-in real public GitHub
+  scenario was last verified on 2026-10-26 at commit `dbd4588f9e10`.
+- Desktop suite: 13/13 scenarios passed; axe reported 0 violations across seven
+  views; 120-skill rendering completed in 731 ms.
+- DMG suite: passed for `VaultDesk-1.0.0-arm64.dmg` (120.6 MB); bundle version
+  1.0.0, packaged agent skill present, ad-hoc signature and missing
+  notarization reported as warnings, Gatekeeper accepted the app with the host's
+  security assessment disabled, and the edited skill persisted after exit.

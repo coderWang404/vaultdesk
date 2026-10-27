@@ -181,9 +181,9 @@ function hasFlag(parsed: Parsed, name: string): boolean {
 function version(): string {
   try {
     const pkg = JSON.parse(fs.readFileSync(new URL("../package.json", import.meta.url), "utf8")) as { version?: string };
-    return pkg.version ?? "0.6.0";
+    return pkg.version ?? "1.0.0";
   } catch {
-    return "0.6.0";
+    return "1.0.0";
   }
 }
 

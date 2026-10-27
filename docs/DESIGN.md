@@ -1,13 +1,13 @@
 # VaultDesk 设计定稿
 
-- 状态：0.1–1.0 的实现依据；截至 2026-10-27，0.1–0.9 已实现，1.0 收尾中；插件登记设计见 `docs/PLUGINS.md`，SkillDeck 互操作结论见 `docs/SKILLDECK-INTEROP.md`
+- 状态：0.1–1.0 已实现；截至 2026-10-27，1.0.0 已构建并通过本地 DMG 验收，尚未发布；插件登记设计见 `docs/PLUGINS.md`，SkillDeck 互操作结论见 `docs/SKILLDECK-INTEROP.md`，发布状态与 Homebrew/公证评估见 `docs/RELEASE.md`
 - 日期：2026-10-27
-- 产品名：VaultDesk（0.1 发布前仍可改名）
+- 产品名：VaultDesk
 - CLI：`vaultdesk`
 - 仓库：`github.com/coderWang404/vaultdesk`
 - npm 包：`@coderWang404/vaultdesk`
 - 许可证：Apache-2.0，版权人 `coderWang404`
-- 平台：macOS（Apple Silicon + Intel）
+- 平台：macOS（1.0 验收产物为 Apple Silicon；Intel 可从源码构建）
 - 技术栈：Electron + React + TypeScript，pnpm monorepo
 
 ## 实现状态（2026-10-27）
@@ -21,7 +21,7 @@
 - 0.6.x 技能页类型筛选与来源分组、suite 成员引用 warning 已实现。
 - 0.7 插件登记已实现：`shape: plugin` source、整根导入与存储、manifest/资产/contained skills 校验、`plugin list/show`（含稳定 agent 契约）、插件页、插件搜索、安装 guard、fixture 与桌面 E2E。hooks 只展示、不执行。
 - 0.8 已实现：插件整根 diff、review-before-apply 更新、source 元数据刷新、conflict/--force guard、纯插件更新跳过 build 与 install、删除清理；搜索与总览、安装 guard 同前。
-- 验证证据：55 个 vitest 测试通过（13 个文件）；插件集成测试覆盖整根 diff、更新、force guard、content_path 与删除清理；preset 测试覆盖 verify_command 解析、显式确认、退出码/输出捕获、超时杀进程与 64KB 截断；CLI 与桌面 E2E 覆盖插件导入、检查、diff、更新、删除与 hooks 不执行，以及 agent skill、验证命令预览/执行；Electron 生产构建 smoke 通过并产出截图；`VaultDesk-0.6.0-arm64.dmg` 通过 `hdiutil verify`，包内应用可启动并打开 v2 fixture。
+- 验证证据：55 个 vitest 测试通过（13 个文件）；插件集成测试覆盖整根 diff、更新、force guard、content_path 与删除清理；preset 测试覆盖 verify_command 解析、显式确认、退出码/输出捕获、超时杀进程与 64KB 截断；CLI 与桌面 E2E 覆盖插件导入、检查、diff、更新、删除与 hooks 不执行，以及 agent skill、验证命令预览/执行；Electron 生产构建 smoke 通过并产出截图；`VaultDesk-1.0.0-arm64.dmg`（126,494,974 字节，SHA-256 `294f341d10a17727eb41f4e2970cd1189f3e9ec52b4e083a6627b37c3d419cea`）通过 `hdiutil verify`，包内 agent skill 存在，安装后的应用可启动、校验并编辑 v2 fixture，应用退出后编辑仍在。
 - 真实 v1 仓库只读验收：6 个来源、27 个技能、8 个安装目标，`vault validate` 无错误；迁移预览生成 9 个写入与 5 个删除；验收前后 `git status` 完全一致，未创建 `.vault/`。该仓库因已有未跟踪文件而 `cleanWorktree: false`，迁移按设计被阻止。
 - 插件边界：VaultDesk 只存储、校验、展示；不安装、不启用、不适配、不生成 marketplace/adapter manifest、不写 agent 注册表。agent 通过 vault-manager skill 自行安装。
 
@@ -319,8 +319,8 @@ vaultdesk agent skill
 | 0.6.x | 技能页类型筛选与来源分组；suite 成员引用 warning | 已实现 |
 | 0.7 | 插件登记：`shape: plugin` source、导入、存储、校验、`plugin list/show`、插件页、CLI JSON、vault-manager 契约、fixture | 已实现 |
 | 0.8 | 插件更新、整根 diff、搜索与总览、安装 guard、边界测试 | 已实现 |
-| 0.9 | 插件 E2E、DMG、文档、硬化 | 已实现：插件 CLI/桌面 E2E、文档与硬化；DMG 在 1.0 发布验收中重新打包 |
-| 1.0 | 收口、完成延期 0.6 项、稳定化、Homebrew、按需公证 | 进行中：延期项已补齐；版本、DMG、Homebrew/公证评估与完成审计待收尾 |
+| 0.9 | 插件 E2E、DMG、文档、硬化 | 已实现：插件 CLI/桌面 E2E、文档与硬化；DMG 已在 1.0 验收中重新打包并验证 |
+| 1.0 | 收口、完成延期 0.6 项、稳定化、Homebrew、按需公证 | 已实现：版本 1.0.0，延期项补齐，DMG 通过本地验收；Homebrew 与公证结论见 `docs/RELEASE.md`，发布动作待批准 |
 
 ### 0.1 验收
 
@@ -353,9 +353,10 @@ vaultdesk agent skill
 
 ## 10. 发布
 
-- 0.6.0 提供未签名 DMG，README 说明首次打开需右键或「隐私与安全性」放行。
-- 版本遵循 SemVer；当前为 0.6.0，1.0 前依次发布 0.6.x、0.7、0.8、0.9。
-- Homebrew cask 与公证在 1.0 视使用情况决定。
+- 1.0.0 提供 ad-hoc 签名、未公证的 arm64 DMG；README 说明首次打开需右键或「隐私与安全性」放行。
+- 版本遵循 SemVer；当前为 1.0.0。0.1 至 0.9 的功能已全部并入本次发布。
+- 2026-10-27 已在本地完成构建与 DMG 验收，未创建 tag、GitHub release、Homebrew cask 或公证提交。产物哈希、发布清单、公证步骤与 cask 草案见 `docs/RELEASE.md`。
+- 发布动作（commit/tag/push/GitHub release/cask/公证）逐项需要明确批准。
 
 ## 11. 关键决策记录
 

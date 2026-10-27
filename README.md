@@ -12,7 +12,7 @@ facts and apply the same rules.
 
 ## Status
 
-0.6.0 is a developer preview of the 0.x line. The desktop app and CLI support:
+1.0.0 is the first stable release. The desktop app and CLI support:
 
 - opening v1 and v2 vaults in parallel tabs, with validation and status
 - checking upstream commits and reviewing per-file diffs
@@ -33,8 +33,8 @@ facts and apply the same rules.
   available as `vaultdesk agent skill`
 - explicit Git commit and push limited to the paths VaultDesk changed
 
-Builds are unsigned and not notarized. All write operations preview first: the
-app requires an explicit confirmation, and the CLI requires `--yes`.
+Builds are ad-hoc signed and not notarized. All write operations preview first:
+the app requires an explicit confirmation, and the CLI requires `--yes`.
 
 ## Safety model
 
@@ -104,7 +104,7 @@ They require a macOS desktop session. Failed runs keep their workspace under
 See [tests/e2e/README.md](tests/e2e/README.md) for the scenario matrix, what is
 real versus simulated, and deliberate coverage limits.
 
-Build the unsigned DMG into `release/`:
+Build the ad-hoc signed DMG into `release/`:
 
 ```bash
 pnpm package:mac
@@ -113,6 +113,11 @@ pnpm package:mac
 On first launch, right-click the app and choose Open, or allow it in
 System Settings → Privacy & Security. The build is ad-hoc signed but not
 notarized.
+
+The verified 1.0.0 artifact is `VaultDesk-1.0.0-arm64.dmg` (Apple Silicon).
+[docs/RELEASE.md](docs/RELEASE.md) records its SHA-256, the verification
+steps, and the notarization and Homebrew assessments. Nothing is published
+yet.
 
 ## CLI
 
@@ -162,12 +167,12 @@ not share SkillDeck's lock file and how the two tools coexist.
 ## Known limits
 
 - macOS only; no Windows or Linux desktop build.
-- No signed or notarized release, no auto-update channel.
+- No Developer ID signed or notarized release, no auto-update channel.
 - Plugin installation is delegated to the agent by design; VaultDesk only
   stores, validates, and displays plugin roots.
 - SkillDeck coexistence is file-safe but has no shared lock or registry; see
   [docs/SKILLDECK-INTEROP.md](docs/SKILLDECK-INTEROP.md).
-- The CLI is built from this repository; it is not published to npm at 0.6.0.
+- The CLI is built from this repository; it is not published to npm at 1.0.0.
 
 ## License
 

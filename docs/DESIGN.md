@@ -21,7 +21,7 @@
 - 0.6.x 技能页类型筛选与来源分组、suite 成员引用 warning 已实现。
 - 0.7 插件登记已实现：`shape: plugin` source、整根导入与存储、manifest/资产/contained skills 校验、`plugin list/show`（含稳定 agent 契约）、插件页、插件搜索、安装 guard、fixture 与桌面 E2E。hooks 只展示、不执行。
 - 0.8 已实现：插件整根 diff、review-before-apply 更新、source 元数据刷新、conflict/--force guard、纯插件更新跳过 build 与 install、删除清理；搜索与总览、安装 guard 同前。
-- 验证证据：55 个 vitest 测试通过（13 个文件）；插件集成测试覆盖整根 diff、更新、force guard、content_path 与删除清理；preset 测试覆盖 verify_command 解析、显式确认、退出码/输出捕获、超时杀进程与 64KB 截断；CLI 与桌面 E2E 覆盖插件导入、检查、diff、更新、删除与 hooks 不执行，以及 agent skill、验证命令预览/执行；Electron 生产构建 smoke 通过并产出截图；`VaultDesk-1.0.0-arm64.dmg`（126,494,974 字节，SHA-256 `294f341d10a17727eb41f4e2970cd1189f3e9ec52b4e083a6627b37c3d419cea`）通过 `hdiutil verify`，包内 agent skill 存在，安装后的应用可启动、校验并编辑 v2 fixture，应用退出后编辑仍在。
+- 验证证据：55 个 vitest 测试通过（13 个文件）；插件集成测试覆盖整根 diff、更新、force guard、content_path 与删除清理；preset 测试覆盖 verify_command 解析、显式确认、退出码/输出捕获、超时杀进程与 64KB 截断；CLI 与桌面 E2E 覆盖插件导入、检查、diff、更新、删除与 hooks 不执行，以及 agent skill、验证命令预览/执行；Electron 生产构建 smoke 通过并产出截图；`VaultDesk-1.0.0-arm64.dmg`（125,189,367 字节，SHA-256 `d1b76e4f4c7ce31617240b103aea843093f09718ffca956626d643271bfa47c6`）通过 `hdiutil verify`，ad-hoc 签名为有效 bundle 签名（`codesign --verify --deep --strict` 通过，Identifier 为 `com.coderwang404.vaultdesk`），包内 agent skill 存在，安装后的应用可启动、校验并编辑 v2 fixture，应用退出后编辑仍在。
 - 真实 v1 仓库只读验收：6 个来源、27 个技能、8 个安装目标，`vault validate` 无错误；迁移预览生成 9 个写入与 5 个删除；验收前后 `git status` 完全一致，未创建 `.vault/`。该仓库因已有未跟踪文件而 `cleanWorktree: false`，迁移按设计被阻止。
 - 插件边界：VaultDesk 只存储、校验、展示；不安装、不启用、不适配、不生成 marketplace/adapter manifest、不写 agent 注册表。agent 通过 vault-manager skill 自行安装。
 
@@ -353,7 +353,7 @@ vaultdesk agent skill
 
 ## 10. 发布
 
-- 1.0.0 提供 ad-hoc 签名、未公证的 arm64 DMG；README 说明首次打开需右键或「隐私与安全性」放行。
+- 1.0.0 提供有效 ad-hoc bundle 签名、未公证的 arm64 DMG；README 说明首次打开需右键或「隐私与安全性」放行。
 - 版本遵循 SemVer；当前为 1.0.0。0.1 至 0.9 的功能已全部并入本次发布。
 - 2026-10-27 已在本地完成构建与 DMG 验收，未创建 tag、GitHub release、Homebrew cask 或公证提交。产物哈希、发布清单、公证步骤与 cask 草案见 `docs/RELEASE.md`。
 - 发布动作（commit/tag/push/GitHub release/cask/公证）逐项需要明确批准。

@@ -11,12 +11,12 @@ requires explicit approval.
 | --- | --- |
 | File | `release/VaultDesk-1.0.0-arm64.dmg` |
 | Platform | macOS, Apple Silicon (`arm64`) |
-| Size | 126,494,974 bytes (120.6 MiB) |
-| SHA-256 | `294f341d10a17727eb41f4e2970cd1189f3e9ec52b4e083a6627b37c3d419cea` |
-| DMG checksum | `hdiutil verify` VALID, CRC32 `$2856C478` |
+| Size | 125,189,367 bytes (119.4 MiB) |
+| SHA-256 | `d1b76e4f4c7ce31617240b103aea843093f09718ffca956626d643271bfa47c6` |
+| DMG checksum | `hdiutil verify` VALID, CRC32 `$519342E4` |
 | Bundle ID | `com.coderwang404.vaultdesk` |
 | Bundle version | `1.0.0` |
-| Signing | Ad-hoc (`identity: null` in `apps/desktop/electron-builder.yml`) |
+| Signing | Ad-hoc bundle signature (`identity: "-"`, hardened runtime off); strict `codesign --verify` passes |
 | Notarization | None |
 
 The hash identifies this local build only. electron-builder output includes
@@ -30,9 +30,10 @@ timestamps, so a rebuild is expected to produce a different digest.
   with zero violations.
 - `pnpm exec tsx tests/e2e/dmg.e2e.mts` mounts the DMG, checks the bundle
   identifier, version, architecture, `app.asar`, and the packaged
-  `Contents/Resources/agent-skill/vaultdesk/SKILL.md`, then launches the
-  installed app, opens a v2 fixture vault, runs `vault validate`, edits a
-  skill, and confirms the edit survives app exit.
+  `Contents/Resources/agent-skill/vaultdesk/SKILL.md`, requires a valid
+  `codesign --verify --deep --strict` signature with the VaultDesk identifier,
+  then launches the installed app, opens a v2 fixture vault, runs
+  `vault validate`, edits a skill, and confirms the edit survives app exit.
 - The DMG carries no quarantine flag after a local build.
 
 Scenario coverage and deliberate limits are listed in
@@ -55,8 +56,9 @@ Not done. Notarization needs credentials the project does not have:
 
 1. Apple Developer Program membership.
 2. A Developer ID Application certificate installed in the build keychain.
-3. Hardened runtime enabled and the identity set in `electron-builder.yml`
-   (`identity` currently `null`).
+3. Replace the ad-hoc identity with the certificate name and enable the
+   hardened runtime in `electron-builder.yml` (`identity` is currently `"-"`
+   and `hardenedRuntime` is `false` for the unsigned build).
 4. `notarytool` submission with an app-specific password or API key, followed
    by `xcrun stapler staple`.
 
@@ -86,7 +88,7 @@ live:
 ```ruby
 cask "vaultdesk" do
   version "1.0.0"
-  sha256 "294f341d10a17727eb41f4e2970cd1189f3e9ec52b4e083a6627b37c3d419cea"
+  sha256 "d1b76e4f4c7ce31617240b103aea843093f09718ffca956626d643271bfa47c6"
 
   url "https://github.com/coderWang404/vaultdesk/releases/download/v#{version}/VaultDesk-#{version}-arm64.dmg"
   name "VaultDesk"
@@ -140,7 +142,7 @@ stays local.
 
 ## Known limits at 1.0
 
-- Ad-hoc signed and not notarized.
+- Ad-hoc signed (valid bundle signature) and not notarized.
 - The verified artifact is Apple Silicon only. An Intel build can be produced
   from the same source with `electron-builder --mac dmg --x64`, but it is not
   part of this release verification.

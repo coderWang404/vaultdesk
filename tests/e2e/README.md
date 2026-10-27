@@ -77,9 +77,10 @@ The packaged-app scenario:
    panel path, edits a skill, confirms the file on disk and in `git status`,
    exits, and confirms the edit persists.
 
-If the app carries a Developer ID signature, the scenario requires strict
-`codesign` verification and a stapled notarization ticket. An ad-hoc build logs a
-warning instead of pretending to be a signed release.
+The scenario requires a valid `codesign --verify --deep --strict` bundle
+signature and, for ad-hoc builds, the VaultDesk identifier. A Developer ID build
+additionally requires a stapled notarization ticket. Ad-hoc builds log a warning
+instead of pretending to be a signed release.
 
 ## Real and simulated inputs
 
@@ -103,7 +104,7 @@ warning instead of pretending to be a signed release.
 | Limit | Why it is not exercised here |
 | --- | --- |
 | Real private GitHub repositories, PATs, 2FA or OAuth | No credentials are stored in the repository. Local smart HTTP exercises the same Basic auth header, 401 handling and token hygiene; GitHub-side 2FA and OAuth flows are not implemented by the app. |
-| Developer ID signing and notarization | No Apple Developer identity or notary credentials are available. The build is ad-hoc signed; the DMG test enforces the stricter checks when a Developer ID signature is present. |
+| Developer ID signing and notarization | No Apple Developer identity or notary credentials are available. The build is ad-hoc signed; the DMG test requires a valid bundle signature and enforces notarization only when a Developer ID signature is present. |
 | Browser quarantine and `/Applications` install | A locally built DMG has no quarantine xattr. The test copies into a temporary install directory rather than `/Applications`, so the first-launch Gatekeeper prompt for a downloaded DMG is not reproduced. |
 | iCloud Drive, SMB/NFS or other network filesystems | No reproducible share is available. An external APFS disk image covers a non-home mount, but not iCloud eviction or network latency/failure semantics. |
 | macOS version and CPU matrix | Verified on the host macOS arm64 version only. No Intel build and no macOS 13/14/15 matrix are run. |
@@ -125,7 +126,8 @@ warning instead of pretending to be a signed release.
   scenario was last verified on 2026-10-26 at commit `dbd4588f9e10`.
 - Desktop suite: 13/13 scenarios passed; axe reported 0 violations across seven
   views; 120-skill rendering completed in 731 ms.
-- DMG suite: passed for `VaultDesk-1.0.0-arm64.dmg` (120.6 MB); bundle version
-  1.0.0, packaged agent skill present, ad-hoc signature and missing
-  notarization reported as warnings, Gatekeeper accepted the app with the host's
-  security assessment disabled, and the edited skill persisted after exit.
+- DMG suite: passed for `VaultDesk-1.0.0-arm64.dmg` (119.4 MB); bundle version
+  1.0.0, packaged agent skill present, strict `codesign` verification passed
+  with the VaultDesk identifier, ad-hoc signature and missing notarization
+  reported as warnings, Gatekeeper accepted the app with the host's security
+  assessment disabled, and the edited skill persisted after exit.

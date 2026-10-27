@@ -87,10 +87,15 @@ function verifyBundle(): string {
   const developerId = /Authority=Developer ID Application/.test(details);
   const adhoc = /Signature=adhoc/.test(details);
   assert(developerId || adhoc, `unknown signing state:\n${details}`);
+  const signatureCheck = run("codesign", ["--verify", "--deep", "--strict", appPath]);
+  equal(signatureCheck.status, 0, `codesign verify: ${signatureCheck.stderr || signatureCheck.stdout}`);
   if (developerId) {
-    const signatureCheck = run("codesign", ["--verify", "--deep", "--strict", appPath]);
-    equal(signatureCheck.status, 0, `codesign verify: ${signatureCheck.stderr}`);
+    assert(!adhoc, `Developer ID app still reports ad-hoc: ${details}`);
   } else {
+    assert(
+      /Identifier=com\.coderwang404\.vaultdesk/.test(details),
+      `ad-hoc signature identifier: ${details}`,
+    );
     console.log("      WARN: app is ad-hoc signed; Developer ID signing and notarization are not configured");
   }
   const staple = run("xcrun", ["stapler", "validate", appPath]);

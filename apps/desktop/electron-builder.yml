@@ -13,7 +13,8 @@ extraResources:
 asar: true
 mac:
   category: public.app-category.developer-tools
-  identity: null
+  identity: "-"
+  hardenedRuntime: false
   target:
     - dmg
   icon: build/icon.icns

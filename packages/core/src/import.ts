@@ -68,7 +68,7 @@ export function detectImport(inputPath: string): ImportPreview {
   const names = skills.map((skill) => skill.name);
   const duplicates = names.filter((name, index) => names.indexOf(name) !== index);
   const shape = skills.length === 1 ? "standalone" : "package";
-  const kind = shape === "standalone" ? "collection" : "collection";
+  const kind: "collection" = "collection";
   const warnings: string[] = [];
   if (duplicates.length > 0) warnings.push(`Duplicate skill names in import: ${[...new Set(duplicates)].join(", ")}`);
   if (skills.some((skill) => !skill.description)) warnings.push("Some skills have no description in frontmatter.");
@@ -94,7 +94,7 @@ export async function previewImport(
   const detection = detectImport(inputPath);
   const snapshot = await openVault(vaultPath);
   const sourceName = name ?? detection.suggestedName;
-  const shape = options.kind || detection.shape === "package" ? "package" : "standalone";
+  const shape = options.kind ? "package" : detection.shape;
   const kind = options.kind ?? "collection";
   const entrypoint =
     kind === "suite"

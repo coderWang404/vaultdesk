@@ -13,6 +13,7 @@ export * from "./install.js";
 export * from "./skills.js";
 export * from "./import.js";
 export * from "./plugins/discover.js";
+export * from "./plugins/import.js";
 export * from "./vault/model.js";
 export * from "./vault/validate.js";
 export * from "./vault/state.js";

@@ -212,6 +212,7 @@ function makePluginRecord(input: {
   ref: string;
   version?: string;
   description?: string;
+  contentPath?: string;
   metadataPath: string;
   warnings: string[];
   locked?: PluginRecord["locked"];
@@ -242,6 +243,7 @@ function makePluginRecord(input: {
     version: input.version,
     description: input.description,
     license: inspected.license,
+    contentPath: input.contentPath,
     workingPath,
     vendorRoot: input.origin === "github" ? path.join(input.vaultPath, "third_party", input.name) : undefined,
     metadataPath: input.metadataPath,
@@ -361,6 +363,7 @@ async function loadV2(vaultPath: string): Promise<{
             ref,
             version: typeof raw.version === "string" ? raw.version : undefined,
             description: typeof raw.description === "string" ? raw.description : undefined,
+            contentPath: typeof raw.content_path === "string" ? raw.content_path : undefined,
             metadataPath: filePath,
             warnings,
             locked,
@@ -441,6 +444,7 @@ async function loadV2(vaultPath: string): Promise<{
         ref: source.ref,
         version: source.version,
         description: source.description,
+        contentPath: source.content_path,
         metadataPath: filePath,
         warnings,
         locked,
@@ -461,6 +465,7 @@ async function loadV2(vaultPath: string): Promise<{
         updateMode: source.update_mode,
         version: source.version,
         description: source.description,
+        contentPath: source.content_path,
         workingPath: plugin.workingPath,
         vendorRoot: plugin.vendorRoot,
         metadataPath: filePath,

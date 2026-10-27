@@ -152,6 +152,7 @@ export interface PluginRecord {
   version?: string;
   description?: string;
   license?: string;
+  contentPath?: string;
   workingPath: string;
   vendorRoot?: string;
   metadataPath: string;
@@ -318,6 +319,31 @@ export interface ImportResult {
   kind?: PackageKind;
   skillNames: string[];
   wrote: string[];
+}
+
+export interface PluginImportPreview {
+  inputPath: string;
+  shape: "plugin";
+  suggestedName: string;
+  rootPath: string;
+  relativePath: string;
+  manifests: PluginManifest[];
+  assets: PluginAsset[];
+  skills: ImportSkillCandidate[];
+  hasHooks: boolean;
+  conflicts: string[];
+  warnings: string[];
+  repo?: string;
+  ref?: string;
+  commit?: string;
+}
+
+export interface PluginImportResult {
+  sourceName: string;
+  shape: "plugin";
+  skillNames: string[];
+  wrote: string[];
+  commit?: string;
 }
 
 export interface ForkPreview {

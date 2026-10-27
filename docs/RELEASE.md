@@ -1,9 +1,9 @@
 # VaultDesk 1.0 release
 
 Status: 1.0.0 was built and verified locally on 2026-10-27. Nothing was
-published: no git tag, GitHub release, npm package, Homebrew cask, or
-notarization submission exists for this version. Each publication step below
-requires explicit approval.
+published from this workspace: no tag was created, nothing was pushed, and no
+npm package, Homebrew cask, or notarization submission exists. Each publication
+step below requires explicit approval.
 
 ## Artifact
 

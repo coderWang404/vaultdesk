@@ -153,7 +153,7 @@ function resolveFetchedPluginRoot(
       throw new VaultDeskError("upstream-not-found", `Path not found in repository: ${contentPath}`);
     }
     if (!isPluginRoot(root)) {
-      throw new VaultDeskError("invalid-input", `No plugin manifest found at ${contentPath}.`);
+      throw new VaultDeskError("not-a-plugin", `No plugin manifest found at ${contentPath}.`);
     }
     return { root, relativePath: contentPath, warnings: [] };
   }
@@ -172,7 +172,7 @@ function resolveFetchedPluginRoot(
       `Repository contains multiple plugin roots; pass --path with one of: ${candidates.join(", ")}`,
     );
   }
-  throw new VaultDeskError("invalid-input", "No plugin manifest found in this repository.");
+  throw new VaultDeskError("not-a-plugin", "No plugin manifest found in this repository.");
 }
 
 function parseRepo(input: string): { repo?: string; remoteUrl?: string } {

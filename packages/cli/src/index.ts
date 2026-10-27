@@ -2,12 +2,15 @@ import fs from "node:fs";
 import path from "node:path";
 import {
   VaultDeskError,
+  addGithubPlugin,
+  addGithubSource,
   applyImport,
   applyMigration,
-  addGithubSource,
+  applyPluginImport,
   buildVault,
   checkSources,
   commitPaths,
+  detectLocalPlugin,
   expandHome,
   forkSkill,
   initVault,
@@ -18,7 +21,9 @@ import {
   planMigration,
   previewAddGithub,
   previewFork,
+  previewGithubPlugin,
   previewImport,
+  previewPluginImport,
   previewUpdate,
   push,
   removeSource,
@@ -36,6 +41,8 @@ import {
   type InstallResult,
   type MigrationPlan,
   type MigrationResult,
+  type PluginImportPreview,
+  type PluginRecord,
   type SourceDiff,
   type SourceRecord,
   type UpdateResult,
@@ -192,10 +199,12 @@ Commands:
   source check [names...]          Check upstream commits (read-only)
   source diff <name>               Show the upstream diff for one source
   source update [names...]         Preview or apply upstream updates
-  source add <path>                Import a local folder (preview by default)
-  source add --repo owner/name     Add a GitHub source (preview by default)
+  source add <path>                Import a local folder or plugin root (preview by default)
+  source add --repo owner/name     Add a GitHub source or plugin (preview by default)
   source remove <name>             Remove a source registration
   source fork <skill> [--as name]  Fork a GitHub skill into a local skill
+  plugin list                      List registered plugins, assets, and status
+  plugin show <name>               Show one plugin, its manifests, and contained skills
   build                            Preview or rebuild build/skills
   target list                      List install targets
   target install <names...> --dest <dir> [--id id]
@@ -276,6 +285,12 @@ function statusText(status: string): string {
   }
 }
 
+function shapeText(shape: SourceRecord["shape"], kind?: SourceRecord["kind"]): string {
+  if (shape === "plugin") return "plugin";
+  if (shape === "package") return `package/${kind ?? "?"}`;
+  return "standalone";
+}
+
 function printSnapshot(snapshot: VaultSnapshot): string[] {
   const lines: string[] = [];
   const mode = snapshot.readOnly ? "read-only" : "writable";
@@ -291,7 +306,7 @@ function printSnapshot(snapshot: VaultSnapshot): string[] {
     }`,
   );
   lines.push(
-    `Sources  ${snapshot.counts.sources} sources · ${snapshot.counts.packages} packages · ${snapshot.counts.skills} skills`,
+    `Sources  ${snapshot.counts.sources} sources · ${snapshot.counts.packages} packages · ${snapshot.counts.skills} skills · ${snapshot.counts.plugins} plugins · ${snapshot.counts.pluginSkills} plugin skills`,
   );
   lines.push(
     `Targets  ${snapshot.counts.targets} targets · ${snapshot.counts.managedInstalls} managed installs`,
@@ -312,11 +327,15 @@ function printSnapshot(snapshot: VaultSnapshot): string[] {
         ["NAME", "SHAPE", "ORIGIN", "REF", "COMMIT", "SKILLS", "STATUS"],
         snapshot.sources.map((source) => [
           source.name,
-          source.shape === "package" ? `package/${source.kind ?? "?"}` : "standalone",
+          shapeText(source.shape, source.kind),
           source.origin,
           source.origin === "github" ? source.ref : "-",
           source.locked?.commit ? source.locked.commit.slice(0, 12) : "-",
-          String(source.skills.length),
+          String(
+            source.shape === "plugin"
+              ? (snapshot.plugins.find((plugin) => plugin.name === source.name)?.skills.length ?? 0)
+              : source.skills.length,
+          ),
           statusText(source.status),
         ]),
       ),
@@ -364,9 +383,9 @@ function printValidation(report: ValidationReport): string[] {
   return lines;
 }
 
-function printSource(source: SourceRecord): string[] {
+function printSource(source: SourceRecord, plugin?: PluginRecord): string[] {
   const lines: string[] = [];
-  const shape = source.shape === "package" ? `package/${source.kind ?? "?"}` : "standalone";
+  const shape = shapeText(source.shape, source.kind);
   lines.push(bold(source.name) + `  ${dim(`${shape} · ${source.origin} · ${statusText(source.status)}`)}`);
   if (source.description) lines.push(source.description);
   lines.push("");
@@ -375,16 +394,23 @@ function printSource(source: SourceRecord): string[] {
     lines.push(`Ref      ${source.ref}`);
     lines.push(`Commit   ${source.locked?.commit ?? dim("not pinned")}`);
   }
+  if (source.contentPath) lines.push(`Content  ${source.contentPath}`);
   if (source.entrypoint) lines.push(`Entry    ${source.entrypoint}`);
   if (source.version) lines.push(`Version  ${source.version}`);
   if (source.lastCheckedAt) lines.push(`Checked  ${source.lastCheckedAt}`);
   if (source.lastAppliedAt) lines.push(`Applied  ${source.lastAppliedAt}`);
+  if (plugin) {
+    lines.push(`Files    ${plugin.workingPath}`);
+    lines.push(
+      `Plugin   ${plugin.manifests.length} manifests · ${plugin.assets.length} assets · ${plugin.skills.length} contained skills${plugin.hasHooks ? ` ${yellow("hooks present")}` : ""}`,
+    );
+  }
   lines.push("");
   lines.push(bold("Skills"));
   lines.push(
     ...table(
       ["NAME", "ENTRY", "INVOCABLE", "INSTALLED", "HASH"],
-      source.skills.map((skill) => [
+      (plugin ? plugin.skills : source.skills).map((skill) => [
         skill.name,
         skill.isEntrypoint ? "yes" : "-",
         skill.userInvocable ? "yes" : "no",
@@ -543,6 +569,108 @@ function printImport(preview: ImportPreview & { commit?: string; repo?: string }
   return lines;
 }
 
+function printPluginImport(preview: PluginImportPreview): string[] {
+  const lines: string[] = [];
+  lines.push(bold(`Import plugin ${preview.suggestedName}`));
+  lines.push(dim(preview.inputPath));
+  if (preview.repo) {
+    lines.push(`Repo     ${preview.repo}${preview.commit ? ` @ ${preview.commit.slice(0, 12)}` : ""}`);
+  }
+  lines.push(`Root     ${preview.relativePath}`);
+  lines.push(`Target   plugins/${preview.suggestedName}`);
+  lines.push("");
+  lines.push(bold("Manifests"));
+  lines.push(
+    ...table(
+      ["AGENT", "NAME", "VERSION", "PATH"],
+      preview.manifests.map((manifest) => [
+        manifest.agent,
+        manifest.name ?? "-",
+        manifest.version ?? "-",
+        manifest.relativePath + (manifest.parseError ? ` ${red("invalid")}` : ""),
+      ]),
+    ),
+  );
+  const assetKinds = new Map<string, number>();
+  for (const asset of preview.assets) assetKinds.set(asset.kind, (assetKinds.get(asset.kind) ?? 0) + 1);
+  lines.push("");
+  lines.push(
+    `Assets   ${[...assetKinds.entries()].map(([kind, count]) => `${count} ${kind}`).join(" · ") || "-"}`,
+  );
+  if (preview.hasHooks) lines.push(yellow("Hooks are present and will never be executed by VaultDesk."));
+  lines.push("");
+  lines.push(bold("Contained skills"));
+  lines.push(
+    ...table(
+      ["SKILL", "PATH", "DESCRIPTION"],
+      preview.skills.map((skill) => [skill.name, skill.relativePath, (skill.description ?? "").slice(0, 60)]),
+    ),
+  );
+  if (preview.conflicts.length > 0) {
+    lines.push("");
+    for (const conflict of preview.conflicts) lines.push(red(`conflict: ${conflict}`));
+  }
+  for (const warning of preview.warnings) lines.push(yellow(`warning: ${warning}`));
+  return lines;
+}
+
+function printPlugin(plugin: PluginRecord): string[] {
+  const lines: string[] = [];
+  lines.push(bold(plugin.name) + `  ${dim(`${plugin.origin} · ${statusText(plugin.status)}`)}`);
+  if (plugin.description) lines.push(plugin.description);
+  lines.push("");
+  if (plugin.origin === "github") {
+    lines.push(`Repo     ${plugin.repo ?? "-"}`);
+    lines.push(`Ref      ${plugin.ref}`);
+    lines.push(`Commit   ${plugin.locked?.commit ?? dim("not pinned")}`);
+  }
+  if (plugin.contentPath) lines.push(`Content  ${plugin.contentPath}`);
+  if (plugin.version) lines.push(`Version  ${plugin.version}`);
+  if (plugin.license) lines.push(`License  ${plugin.license}`);
+  lines.push(`Files    ${plugin.workingPath}`);
+  if (plugin.vendorRoot) lines.push(`Vendor   ${plugin.vendorRoot}`);
+  if (plugin.lastCheckedAt) lines.push(`Checked  ${plugin.lastCheckedAt}`);
+  if (plugin.lastAppliedAt) lines.push(`Applied  ${plugin.lastAppliedAt}`);
+  if (plugin.lastError) lines.push(red(`Error    ${plugin.lastError}`));
+  lines.push("");
+  lines.push(bold("Manifests"));
+  lines.push(
+    ...table(
+      ["AGENT", "NAME", "VERSION", "PATH"],
+      plugin.manifests.map((manifest) => [
+        manifest.agent,
+        manifest.name ?? "-",
+        manifest.version ?? "-",
+        manifest.relativePath + (manifest.parseError ? ` ${red("invalid")}` : ""),
+      ]),
+    ),
+  );
+  lines.push("");
+  lines.push(bold("Assets"));
+  if (plugin.assets.length === 0) lines.push(dim("No assets discovered."));
+  else {
+    lines.push(...table(["KIND", "PATH"], plugin.assets.map((asset) => [asset.kind, asset.relativePath])));
+  }
+  if (plugin.otherCount > 0) lines.push(dim(`${plugin.otherCount} other entries at the plugin root.`));
+  if (plugin.hasHooks) lines.push(yellow("Hooks are present. VaultDesk stores them and never executes them."));
+  lines.push("");
+  lines.push(bold("Contained skills"));
+  if (plugin.skills.length === 0) lines.push(dim("No skills inside this plugin."));
+  else {
+    lines.push(
+      ...table(
+        ["NAME", "INVOCABLE", "HASH"],
+        plugin.skills.map((skill) => [
+          skill.name,
+          skill.userInvocable ? "yes" : "no",
+          (skill.contentHash || "").replace(/^sha256:/, "").slice(0, 10) || "-",
+        ]),
+      ),
+    );
+  }
+  return lines;
+}
+
 function printFork(preview: ForkPreview): string[] {
   const lines: string[] = [];
   lines.push(bold(`Fork ${preview.skill}`) + `  ${dim(`${preview.sourceName} -> ${preview.newSourceName}`)}`);
@@ -654,10 +782,14 @@ async function dispatch(parsed: Parsed): Promise<CommandResult> {
               ["NAME", "SHAPE", "ORIGIN", "REF", "SKILLS", "STATUS"],
               snapshot.sources.map((source) => [
                 source.name,
-                source.shape === "package" ? `package/${source.kind ?? "?"}` : "standalone",
+                shapeText(source.shape, source.kind),
                 source.origin,
                 source.origin === "github" ? source.ref : "-",
-                String(source.skills.length),
+                String(
+                  source.shape === "plugin"
+                    ? (snapshot.plugins.find((plugin) => plugin.name === source.name)?.skills.length ?? 0)
+                    : source.skills.length,
+                ),
                 statusText(source.status),
               ]),
             ),
@@ -672,7 +804,8 @@ async function dispatch(parsed: Parsed): Promise<CommandResult> {
           (entry) => entry.name === name || entry.skills.some((skill) => skill.name === name),
         );
         if (!source) throw new VaultDeskError("unknown-source", `Unknown source or skill: ${name}`);
-        return { data: source, warnings: [], human: printSource(source) };
+        const plugin = snapshot.plugins.find((entry) => entry.name === source.name);
+        return { data: source, warnings: [], human: printSource(source, plugin) };
       }
       if (action === "check") {
         const report = await checkSources(vaultPath, {
@@ -684,11 +817,26 @@ async function dispatch(parsed: Parsed): Promise<CommandResult> {
       if (action === "diff") {
         const name = rest[0];
         if (!name) throw new VaultDeskError("invalid-input", "source diff requires a source name.");
+        const snapshot = await openVault(vaultPath);
+        if (snapshot.plugins.some((plugin) => plugin.name === name)) {
+          throw new VaultDeskError("unsupported", "Plugin diff is not available yet. Use plugin show to inspect the stored root.");
+        }
         const diff = await sourceDiff(vaultPath, name);
         return { data: diff, warnings: diff.warnings, human: printDiff(diff) };
       }
       if (action === "update") {
-        const names = rest.length > 0 ? rest : undefined;
+        let names = rest.length > 0 ? rest : undefined;
+        const snapshot = await openVault(vaultPath);
+        if (names) {
+          const plugin = names.find((name) => snapshot.plugins.some((entry) => entry.name === name));
+          if (plugin) throw new VaultDeskError("unsupported", `Plugin updates are not available yet: ${plugin}`);
+        } else {
+          const skipped = snapshot.plugins.map((plugin) => plugin.name);
+          names = snapshot.sources.filter((source) => source.shape !== "plugin").map((source) => source.name);
+          if (skipped.length > 0) {
+            process.stderr.write(yellow(`Skipping plugins (not updateable yet): ${skipped.join(", ")}\n`));
+          }
+        }
         if (!parsed.yes || hasFlag(options, "dry-run")) {
           const preview = await previewUpdate(vaultPath, names);
           const lines: string[] = [];
@@ -732,6 +880,20 @@ async function dispatch(parsed: Parsed): Promise<CommandResult> {
         const name = valueOf(options, "name");
         const entrypoint = valueOf(options, "entrypoint");
         const apply = parsed.yes && !hasFlag(options, "dry-run");
+        const refusePluginSkillFlags = (): void => {
+          if (kindRaw || entrypoint) {
+            throw new VaultDeskError("invalid-input", "Plugin imports do not take --kind or --entrypoint.");
+          }
+        };
+        const pluginAdded = (sourceName: string, wrote: string[], commit?: string): CommandResult => ({
+          data: { sourceName, shape: "plugin", wrote, ...(commit ? { commit } : {}) },
+          warnings: [],
+          human: [
+            green(`Imported plugin ${sourceName}${commit ? ` at ${commit.slice(0, 12)}` : ""}.`),
+            ...wrote,
+            dim("Plugins are installed by the agent; VaultDesk only stores and displays them."),
+          ],
+        });
         if (repo) {
           const input = {
             repo,
@@ -741,6 +903,25 @@ async function dispatch(parsed: Parsed): Promise<CommandResult> {
             kind,
             entrypoint,
           };
+          const pluginInput = { repo, ref: input.ref, path: input.path, name };
+          let pluginPreview: PluginImportPreview | undefined;
+          try {
+            pluginPreview = await previewGithubPlugin(vaultPath, pluginInput);
+          } catch (error) {
+            if (!(error instanceof VaultDeskError) || error.code !== "not-a-plugin") throw error;
+          }
+          if (pluginPreview) {
+            refusePluginSkillFlags();
+            if (!apply) {
+              return {
+                data: pluginPreview,
+                warnings: pluginPreview.warnings,
+                human: [...printPluginImport(pluginPreview), "", notice(parsed)],
+              };
+            }
+            const result = await addGithubPlugin(vaultPath, pluginInput);
+            return pluginAdded(result.sourceName, result.wrote, result.commit);
+          }
           if (!apply) {
             const preview = await previewAddGithub(vaultPath, input);
             return { data: preview, warnings: preview.warnings, human: [...printImport(preview), "", notice(parsed)] };
@@ -753,6 +934,19 @@ async function dispatch(parsed: Parsed): Promise<CommandResult> {
           };
         }
         const inputPath = path.resolve(expandHome(localPath as string));
+        if (detectLocalPlugin(inputPath)) {
+          refusePluginSkillFlags();
+          if (!apply) {
+            const preview = await previewPluginImport(inputPath, vaultPath, { name });
+            return {
+              data: preview,
+              warnings: preview.warnings,
+              human: [...printPluginImport(preview), "", notice(parsed)],
+            };
+          }
+          const result = await applyPluginImport(inputPath, vaultPath, { name });
+          return pluginAdded(result.sourceName, result.wrote);
+        }
         if (!apply) {
           const preview = await previewImport(inputPath, vaultPath, name, { kind, entrypoint });
           return { data: preview, warnings: preview.warnings, human: [...printImport(preview), "", notice(parsed)] };
@@ -811,6 +1005,42 @@ async function dispatch(parsed: Parsed): Promise<CommandResult> {
         };
       }
       throw new VaultDeskError("invalid-input", `Unknown source action: ${action}`);
+    }
+
+    case "plugin": {
+      const vaultPath = vaultPathOf(parsed);
+      const snapshot = await openVault(vaultPath);
+      if (action === "list" || action === undefined) {
+        if (snapshot.plugins.length === 0) {
+          return { data: [], warnings: snapshot.warnings, human: [dim("No plugins registered.")] };
+        }
+        return {
+          data: snapshot.plugins,
+          warnings: snapshot.warnings,
+          human: table(
+            ["NAME", "ORIGIN", "VERSION", "MANIFESTS", "SKILLS", "ASSETS", "STATUS"],
+            snapshot.plugins.map((plugin) => [
+              plugin.name,
+              plugin.origin,
+              plugin.version ?? "-",
+              plugin.manifests.map((manifest) => manifest.agent).join(", ") || "-",
+              String(plugin.skills.length),
+              String(plugin.assets.length),
+              statusText(plugin.status),
+            ]),
+          ),
+        };
+      }
+      if (action === "show") {
+        const name = rest[0];
+        if (!name) throw new VaultDeskError("invalid-input", "plugin show requires a plugin or contained skill name.");
+        const plugin = snapshot.plugins.find(
+          (entry) => entry.name === name || entry.skills.some((skill) => skill.name === name),
+        );
+        if (!plugin) throw new VaultDeskError("unknown-plugin", `Unknown plugin or plugin skill: ${name}`);
+        return { data: plugin, warnings: snapshot.warnings, human: printPlugin(plugin) };
+      }
+      throw new VaultDeskError("invalid-input", `Unknown plugin action: ${action}`);
     }
 
     case "build": {

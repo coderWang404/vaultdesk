@@ -48,6 +48,12 @@ function resolveSkills(snapshot: VaultSnapshot, names: string[]): SkillRecord[] 
   for (const name of names) {
     const source = snapshot.sources.find((entry) => entry.name === name);
     if (source) {
+      if (source.shape === "plugin") {
+        throw new VaultDeskError(
+          "plugin-not-installable",
+          `Plugin ${name} is installed by the agent, not VaultDesk.`,
+        );
+      }
       for (const skill of source.skills) selected.set(skill.name, skill);
       continue;
     }
@@ -55,6 +61,12 @@ function resolveSkills(snapshot: VaultSnapshot, names: string[]): SkillRecord[] 
     if (skill) {
       selected.set(skill.name, skill);
       continue;
+    }
+    if (snapshot.plugins.some((plugin) => plugin.skills.some((entry) => entry.name === name))) {
+      throw new VaultDeskError(
+        "plugin-not-installable",
+        `Skill ${name} belongs to a plugin; install the plugin with the agent instead.`,
+      );
     }
     throw new VaultDeskError("unknown-source", `Unknown source or skill: ${name}`);
   }

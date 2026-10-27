@@ -323,6 +323,14 @@ export async function removeSource(
             deleted.push(skill.vendorPath);
           }
         }
+        if (source.shape === "plugin") {
+          for (const target of [source.workingPath, source.vendorRoot]) {
+            if (target && isDirectory(target)) {
+              removePath(target);
+              removedPaths.push(target);
+            }
+          }
+        }
         for (const entry of deleted) pruneEmptySourceDirs(entry, vaultPath, removedPaths);
       } else {
         journal.skipped("files", "workspace copies kept");

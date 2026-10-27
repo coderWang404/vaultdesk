@@ -110,4 +110,75 @@ describe("CLI contract", () => {
     expect(legacy.status).toBe(1);
     expect(legacy.json?.errors[0]?.code).toBe("not-writable-v1");
   });
+
+  it("lists and shows plugins, and refuses to install plugin content", () => {
+    const vaultPath = copyFixture("v2-plugins");
+
+    const list = runCli(["--json", "--vault", vaultPath, "plugin", "list"]);
+    expect(list.status).toBe(0);
+    const plugins = list.json?.data as { name: string; skills: { name: string }[] }[];
+    expect(plugins).toHaveLength(5);
+    expect(plugins.find((plugin) => plugin.name === "claude-kit")?.skills.map((skill) => skill.name)).toEqual(["review"]);
+
+    const show = runCli(["--json", "--vault", vaultPath, "plugin", "show", "review"]);
+    expect(show.status).toBe(0);
+    expect(show.json?.data).toMatchObject({ name: "claude-kit", hasHooks: true });
+
+    const human = runCli(["--vault", vaultPath, "plugin", "show", "claude-kit"]);
+    expect(human.stdout).toContain("Hooks are present");
+    expect(human.stdout).toContain("Contained skills");
+
+    const unknown = runCli(["--json", "--vault", vaultPath, "plugin", "show", "nope"]);
+    expect(unknown.status).toBe(2);
+    expect(unknown.json?.errors[0]?.code).toBe("unknown-plugin");
+
+    const dest = path.join(tempDir("cli-plugin-dest"), "agents");
+    const byPlugin = runCli(["--json", "--yes", "--vault", vaultPath, "target", "install", "claude-kit", "--dest", dest]);
+    expect(byPlugin.status).toBe(2);
+    expect(byPlugin.json?.errors[0]?.code).toBe("plugin-not-installable");
+    expect(fs.existsSync(dest)).toBe(false);
+
+    const bySkill = runCli(["--json", "--yes", "--vault", vaultPath, "target", "install", "review", "--dest", dest]);
+    expect(bySkill.status).toBe(2);
+    expect(bySkill.json?.errors[0]?.code).toBe("plugin-not-installable");
+  });
+
+  it("imports a local plugin through source add with preview and --yes", () => {
+    const vaultPath = copyFixture("v2-plugins");
+    const input = path.join(tempDir("cli-plugin-input"), "cli-kit");
+    fs.mkdirSync(path.join(input, ".claude-plugin"), { recursive: true });
+    fs.writeFileSync(
+      path.join(input, ".claude-plugin", "plugin.json"),
+      JSON.stringify({ name: "cli-kit", version: "2.0.0" }),
+    );
+    fs.mkdirSync(path.join(input, "skills", "helper"), { recursive: true });
+    fs.writeFileSync(
+      path.join(input, "skills", "helper", "SKILL.md"),
+      "---\nname: helper\ndescription: CLI helper\n---\n\n# helper\n",
+    );
+
+    const preview = runCli(["--json", "--vault", vaultPath, "source", "add", input]);
+    expect(preview.status).toBe(0);
+    expect(preview.json?.data).toMatchObject({ shape: "plugin", suggestedName: "cli-kit", conflicts: [] });
+    expect(fs.existsSync(path.join(vaultPath, "plugins", "cli-kit"))).toBe(false);
+
+    const applied = runCli(["--json", "--yes", "--vault", vaultPath, "source", "add", input, "--name", "cli-kit"]);
+    expect(applied.status).toBe(0);
+    expect(applied.json?.data).toMatchObject({ sourceName: "cli-kit", shape: "plugin" });
+    expect(fs.existsSync(path.join(vaultPath, "plugins", "cli-kit", ".claude-plugin", "plugin.json"))).toBe(true);
+
+    const status = runCli(["--json", "--vault", vaultPath, "vault", "status"]);
+    expect((status.json?.data as { counts: { plugins: number; pluginSkills: number } }).counts).toMatchObject({
+      plugins: 6,
+      pluginSkills: 4,
+    });
+
+    const conflict = runCli(["--json", "--yes", "--vault", vaultPath, "source", "add", input, "--name", "cli-kit"]);
+    expect(conflict.status).toBe(1);
+    expect(conflict.json?.errors[0]?.code).toBe("path-conflict");
+
+    const badFlags = runCli(["--json", "--vault", vaultPath, "source", "add", input, "--kind", "suite"]);
+    expect(badFlags.status).toBe(2);
+    expect(badFlags.json?.errors[0]?.code).toBe("invalid-input");
+  });
 });

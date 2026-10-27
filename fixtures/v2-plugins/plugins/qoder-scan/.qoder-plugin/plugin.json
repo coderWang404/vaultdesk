@@ -1,0 +1,10 @@
+{
+  "name": "qoder-scan",
+  "version": "0.9.4",
+  "description": "Qoder security plugin",
+  "license": "Apache-2.0",
+  "skills": [
+    "./skills/security-scan"
+  ],
+  "hooks": "./.qoder-plugin/qoder-hooks.json"
+}

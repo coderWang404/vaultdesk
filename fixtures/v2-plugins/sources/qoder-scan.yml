@@ -1,0 +1,7 @@
+schema: 1
+name: qoder-scan
+shape: plugin
+origin: local
+version: 0.9.4
+description: Qoder security plugin
+skills: []

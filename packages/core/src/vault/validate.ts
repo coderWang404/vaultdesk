@@ -14,7 +14,7 @@ import {
   readText,
 } from "../fsx.js";
 import { parseFrontmatter, frontmatterDescription, frontmatterName } from "../frontmatter.js";
-import type { SourceRecord, ValidationIssue, ValidationReport, VaultSnapshot } from "../types.js";
+import type { PluginRecord, SourceRecord, ValidationIssue, ValidationReport, VaultSnapshot } from "../types.js";
 import { loadVault } from "./model.js";
 
 const V2_VAULT_KEYS = new Set(["schema", "name", "defaults", "targets"]);
@@ -188,6 +188,8 @@ function checkTargets(snapshot: VaultSnapshot, issues: ValidationIssue[]): void 
     ...snapshot.sources.map((source) => source.name),
     ...snapshot.skills.map((skill) => skill.name),
   ]);
+  const pluginNames = new Set(snapshot.plugins.map((plugin) => plugin.name));
+  const pluginSkillNames = new Set(snapshot.plugins.flatMap((plugin) => plugin.skills.map((skill) => skill.name)));
   for (const target of snapshot.targets) {
     if (ids.has(target.id)) {
       push(issues, "error", "target.duplicate-id", `Duplicate install target id: ${target.id}`);
@@ -196,8 +198,17 @@ function checkTargets(snapshot: VaultSnapshot, issues: ValidationIssue[]): void 
     if (!target.names.length) {
       push(issues, "error", "target.empty", `Install target ${target.id} has no names`);
     }
+    const pluginNames = new Set(snapshot.plugins.map((plugin) => plugin.name));
+    const pluginSkillNames = new Set(snapshot.plugins.flatMap((plugin) => plugin.skills.map((skill) => skill.name)));
     for (const name of target.names) {
-      if (!knownNames.has(name)) {
+      if (pluginNames.has(name) || pluginSkillNames.has(name)) {
+        push(
+          issues,
+          "error",
+          "target.plugin-not-installable",
+          `Install target ${target.id} references plugin content ${name}; plugins are installed by the agent, not VaultDesk`,
+        );
+      } else if (!knownNames.has(name)) {
         push(issues, "error", "target.unknown-name", `Install target ${target.id} references unknown source or skill: ${name}`);
       }
     }
@@ -282,12 +293,51 @@ function checkSourceCommon(source: SourceRecord, vaultPath: string, issues: Vali
         }
       }
     }
-  } else {
+  } else if (source.shape === "standalone") {
     if (source.skills.length !== 1) {
       push(issues, "error", "source.standalone-skills", `Standalone source ${source.name} must declare exactly one skill`);
     }
     if (source.kind) {
       push(issues, "error", "source.standalone-kind", `Standalone source ${source.name} must not set kind`);
+    }
+  } else {
+    if (source.kind) {
+      push(issues, "error", "source.plugin-kind", `Plugin source ${source.name} must not set kind`, source.metadataPath);
+    }
+    if (source.entrypoint) {
+      push(
+        issues,
+        "error",
+        "source.plugin-entrypoint",
+        `Plugin source ${source.name} must not set entrypoint`,
+        source.metadataPath,
+      );
+    }
+    if (source.skills.length > 0) {
+      push(
+        issues,
+        "error",
+        "source.plugin-skills",
+        `Plugin source ${source.name} must not declare skills; members are discovered from the plugin root`,
+        source.metadataPath,
+      );
+    }
+    if (!isDirectory(source.workingPath)) {
+      push(issues, "error", "plugin.missing-root", `Plugin directory is missing for ${source.name}`, source.workingPath);
+    }
+    if (source.origin === "github") {
+      if (!source.repo) {
+        push(issues, "error", "source.repo-missing", `GitHub plugin ${source.name} is missing repo`);
+      }
+      if (!isInside(source.workingPath, vaultPath)) {
+        push(issues, "error", "path.escape", `Plugin ${source.name} working path escapes the vault`, source.workingPath);
+      }
+      const vendor = path.join(vaultPath, "third_party", source.name);
+      if (!isDirectory(vendor)) {
+        push(issues, "warning", "source.vendor-missing", `Vendor copy is missing for plugin ${source.name}`);
+      }
+    } else if (source.repo || source.remoteUrl) {
+      push(issues, "warning", "source.local-upstream-fields", `Local plugin ${source.name} still declares upstream fields`);
     }
   }
 
@@ -320,10 +370,87 @@ function checkSourceCommon(source: SourceRecord, vaultPath: string, issues: Vali
   }
 }
 
+function checkPlugin(plugin: PluginRecord, snapshot: VaultSnapshot, issues: ValidationIssue[]): void {
+  if (!isDirectory(plugin.workingPath)) return;
+  if (!isInside(plugin.workingPath, snapshot.path)) {
+    push(issues, "error", "path.escape", `Plugin ${plugin.name} working path escapes the vault`, plugin.workingPath);
+    return;
+  }
+  if (plugin.manifests.length === 0) {
+    push(issues, "error", "plugin.manifest-missing", `Plugin ${plugin.name} has no recognizable manifest`, plugin.workingPath);
+  }
+  const names = new Set<string>();
+  const versions = new Set<string>();
+  for (const manifest of plugin.manifests) {
+    if (manifest.parseError) {
+      push(issues, "error", "plugin.manifest-invalid", `${manifest.relativePath}: ${manifest.parseError}`, plugin.metadataPath);
+    }
+    if (!isInside(manifest.path, plugin.workingPath)) {
+      push(issues, "error", "plugin.manifest-escape", `${manifest.relativePath} escapes the plugin root`, plugin.metadataPath);
+    }
+    if (manifest.name) names.add(manifest.name);
+    if (manifest.version) versions.add(manifest.version);
+    if (manifest.name && manifest.name !== plugin.name) {
+      push(
+        issues,
+        "warning",
+        "plugin.manifest-name-mismatch",
+        `Plugin ${plugin.name} manifest ${manifest.relativePath} declares name ${manifest.name}`,
+        plugin.metadataPath,
+      );
+    }
+  }
+  if (names.size > 1) {
+    push(issues, "warning", "plugin.manifest-name-conflict", `Plugin ${plugin.name} manifests disagree on name`, plugin.metadataPath);
+  }
+  if (versions.size > 1) {
+    push(
+      issues,
+      "warning",
+      "plugin.manifest-version-conflict",
+      `Plugin ${plugin.name} manifests disagree on version`,
+      plugin.metadataPath,
+    );
+  }
+  if (plugin.hasHooks) {
+    push(issues, "warning", "plugin.hooks", `Plugin ${plugin.name} contains hooks; VaultDesk never executes them`, plugin.metadataPath);
+  }
+  const kinds = new Set(plugin.assets.map((asset) => asset.kind));
+  for (const kind of ["commands", "agents", "mcp"] as const) {
+    if (kinds.has(kind)) {
+      push(
+        issues,
+        "warning",
+        "plugin.executable-assets",
+        `Plugin ${plugin.name} contains ${kind}; review them before installing in an agent`,
+        plugin.metadataPath,
+      );
+    }
+  }
+  if (!plugin.license) {
+    push(issues, "warning", "plugin.license-missing", `Plugin ${plugin.name} has no license`, plugin.metadataPath);
+  }
+  if (plugin.otherCount > 0) {
+    push(issues, "warning", "plugin.other-assets", `Plugin ${plugin.name} has ${plugin.otherCount} unrecognized top-level entries`, plugin.metadataPath);
+  }
+  for (const skill of plugin.skills) {
+    issues.push(...frontmatterIssues(skill, snapshot.path));
+    if (snapshot.skills.some((entry) => entry.name === skill.name)) {
+      push(
+        issues,
+        "warning",
+        "plugin.skill-duplicate",
+        `Plugin ${plugin.name} contains skill ${skill.name}, which collides with an installable skill`,
+        skill.relativePath,
+      );
+    }
+  }
+}
+
 function checkNameNamespace(snapshot: VaultSnapshot, issues: ValidationIssue[]): void {
-  const owners = new Map<string, { kind: "package" | "skill"; sourceName: string }>();
+  const owners = new Map<string, { kind: "package" | "skill" | "plugin"; sourceName: string }>();
   for (const source of snapshot.sources) {
-    if (source.shape === "package") {
+    if (source.shape === "package" || source.shape === "plugin") {
       const existing = owners.get(source.name);
       if (existing) {
         push(
@@ -333,7 +460,7 @@ function checkNameNamespace(snapshot: VaultSnapshot, issues: ValidationIssue[]):
           `Name ${source.name} is used by both ${existing.sourceName} and ${source.name}`,
         );
       } else {
-        owners.set(source.name, { kind: "package", sourceName: source.name });
+        owners.set(source.name, { kind: source.shape, sourceName: source.name });
       }
     }
   }
@@ -346,7 +473,7 @@ function checkNameNamespace(snapshot: VaultSnapshot, issues: ValidationIssue[]):
           issues,
           "error",
           "name.duplicate",
-          `Skill name ${skill.name} collides with ${existing.kind === "package" ? "package" : "skill"} ${existing.sourceName}`,
+          `Skill name ${skill.name} collides with ${existing.kind === "package" ? "package" : "plugin"} ${existing.sourceName}`,
         );
       }
       continue;
@@ -612,6 +739,9 @@ export async function collectIssues(snapshot: VaultSnapshot): Promise<Validation
     }
     sourceNames.add(source.name);
     checkSourceCommon(source, snapshot.path, issues);
+  }
+  for (const plugin of snapshot.plugins) {
+    checkPlugin(plugin, snapshot, issues);
   }
 
   if (!snapshot.name.trim()) {

@@ -1,0 +1,7 @@
+schema: 1
+name: local-tools
+shape: plugin
+origin: local
+version: 0.1.0
+description: Local command bundle
+skills: []

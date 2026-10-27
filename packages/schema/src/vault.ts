@@ -9,7 +9,7 @@ export const slugSchema = z
 const optionalPath = z.string().min(1).optional();
 
 export const originSchema = z.enum(["github", "local"]);
-export const shapeSchema = z.enum(["standalone", "package"]);
+export const shapeSchema = z.enum(["standalone", "package", "plugin"]);
 export const packageKindSchema = z.enum(["suite", "collection"]);
 export const updateModeSchema = z.enum(["review-before-apply", "auto"]);
 
@@ -44,13 +44,34 @@ export const sourceFileSchema = z
     version: z.string().optional(),
     description: z.string().optional(),
     update_mode: updateModeSchema.default("review-before-apply"),
-    skills: z.array(skillEntrySchema).min(1),
+    skills: z.array(skillEntrySchema).default([]),
     script_deps: z.record(z.array(z.string())).optional(),
     forked_from: forkedFromSchema.optional(),
   })
   .superRefine((source, ctx) => {
     if (source.shape === "package" && !source.kind) {
       ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["kind"], message: "package sources require kind" });
+    }
+    if (source.shape === "package" && source.skills.length === 0) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["skills"], message: "package sources require at least one skill" });
+    }
+    if (source.shape === "plugin") {
+      if (source.kind) {
+        ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["kind"], message: "plugin sources must not set kind" });
+      }
+      if (source.entrypoint) {
+        ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["entrypoint"], message: "plugin sources must not set entrypoint" });
+      }
+      if (source.skills.length > 0) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["skills"],
+          message: "plugin sources must not declare skills; members are discovered from the plugin root",
+        });
+      }
+      if (source.forked_from) {
+        ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["forked_from"], message: "plugin sources must not set forked_from" });
+      }
     }
     if (source.shape === "standalone" && source.kind) {
       ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["kind"], message: "standalone sources must not set kind" });
@@ -76,12 +97,14 @@ export const sourceFileSchema = z
       if (!source.repo) {
         ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["repo"], message: "github sources require repo" });
       }
-      for (const [index, skill] of source.skills.entries()) {
-        if (!skill.source_path) {
-          ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["skills", index, "source_path"], message: "github skills require source_path" });
-        }
-        if (!skill.vendor_path) {
-          ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["skills", index, "vendor_path"], message: "github skills require vendor_path" });
+      if (source.shape !== "plugin") {
+        for (const [index, skill] of source.skills.entries()) {
+          if (!skill.source_path) {
+            ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["skills", index, "source_path"], message: "github skills require source_path" });
+          }
+          if (!skill.vendor_path) {
+            ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["skills", index, "vendor_path"], message: "github skills require vendor_path" });
+          }
         }
       }
     }

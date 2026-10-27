@@ -1,0 +1,8 @@
+{
+  "name": "codex-only",
+  "version": "0.1.0",
+  "description": "Codex-only plugin without skills",
+  "commands": [
+    "./commands/run.md"
+  ]
+}

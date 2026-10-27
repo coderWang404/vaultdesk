@@ -1,0 +1,5 @@
+schema: 1
+name: multi-manifest
+shape: plugin
+origin: local
+skills: []

@@ -1,0 +1,10 @@
+schema: 1
+name: plugins
+defaults:
+  ref: main
+  update_mode: review-before-apply
+targets:
+  - id: agents
+    dest: ~/.agents/skills
+    names: [plain-skill]
+    install_after_update: true

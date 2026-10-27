@@ -1,0 +1,6 @@
+schema: 1
+name: plain-skill
+shape: standalone
+origin: local
+skills:
+  - name: plain-skill

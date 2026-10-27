@@ -1,0 +1,9 @@
+schema: 1
+name: claude-kit
+shape: plugin
+origin: github
+repo: example/claude-kit
+ref: main
+version: 1.2.0
+description: Claude review plugin
+skills: []

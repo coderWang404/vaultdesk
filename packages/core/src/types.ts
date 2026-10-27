@@ -53,9 +53,10 @@ export interface InstalledSkill {
 export interface SkillRecord {
   name: string;
   description?: string;
-  shape: "standalone" | "package-skill";
+  shape: "standalone" | "package-skill" | "plugin-skill";
   origin: Origin;
   sourceName: string;
+  pluginName?: string;
   packageName?: string;
   packageKind?: PackageKind;
   workingPath: string;
@@ -114,6 +115,59 @@ export interface TargetRecord {
   installedHash?: string;
 }
 
+export type PluginAgent = "claude" | "codex" | "qoder" | "generic";
+
+export type PluginAssetKind =
+  | "skills"
+  | "commands"
+  | "agents"
+  | "hooks"
+  | "mcp"
+  | "rules"
+  | "workflows"
+  | "other";
+
+export interface PluginManifest {
+  agent: PluginAgent;
+  path: string;
+  relativePath: string;
+  name?: string;
+  version?: string;
+  description?: string;
+  license?: string;
+  parseError?: string;
+}
+
+export interface PluginAsset {
+  kind: PluginAssetKind;
+  path: string;
+  relativePath: string;
+}
+
+export interface PluginRecord {
+  name: string;
+  origin: Origin;
+  repo?: string;
+  ref: string;
+  version?: string;
+  description?: string;
+  license?: string;
+  workingPath: string;
+  vendorRoot?: string;
+  metadataPath: string;
+  manifests: PluginManifest[];
+  assets: PluginAsset[];
+  otherCount: number;
+  hasHooks: boolean;
+  skills: SkillRecord[];
+  locked?: { commit?: string; hash?: string; skills?: Record<string, string> };
+  status: CheckStatus;
+  lastCheckedAt?: string;
+  lastAppliedAt?: string;
+  remoteCommit?: string;
+  lastError?: string;
+}
+
 export interface VaultSnapshot {
   path: string;
   name: string;
@@ -122,6 +176,7 @@ export interface VaultSnapshot {
   readOnly: boolean;
   sources: SourceRecord[];
   skills: SkillRecord[];
+  plugins: PluginRecord[];
   targets: TargetRecord[];
   git: GitSummary;
   issues: ValidationIssue[];
@@ -130,6 +185,8 @@ export interface VaultSnapshot {
     sources: number;
     packages: number;
     skills: number;
+    plugins: number;
+    pluginSkills: number;
     targets: number;
     managedInstalls: number;
   };
@@ -279,7 +336,7 @@ export interface SearchHit {
   skill: string;
   sourceName: string;
   origin: Origin;
-  shape: "standalone" | "package-skill";
+  shape: "standalone" | "package-skill" | "plugin-skill";
   description?: string;
   relativePath: string;
   installedTargets: string[];

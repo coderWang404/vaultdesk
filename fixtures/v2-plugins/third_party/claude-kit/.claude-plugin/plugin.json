@@ -1,0 +1,10 @@
+{
+  "name": "claude-kit",
+  "version": "1.2.0",
+  "description": "Claude review plugin",
+  "license": "MIT",
+  "hooks": "./hooks/hooks.json",
+  "commands": [
+    "./commands/review.md"
+  ]
+}

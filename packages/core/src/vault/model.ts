@@ -30,9 +30,11 @@ import { VaultDeskError } from "../errors.js";
 import { getGitSummary } from "../git.js";
 import { parseFrontmatter, frontmatterDescription, frontmatterName } from "../frontmatter.js";
 import { readJournal } from "../journal.js";
+import { inspectPlugin } from "../plugins/discover.js";
 import type {
   CheckStatus,
   InstalledSkill,
+  PluginRecord,
   SkillRecord,
   SourceRecord,
   TargetRecord,
@@ -202,6 +204,61 @@ function deriveStatus(
   return lockedCommit === remoteCommit ? "current" : "update-available";
 }
 
+function makePluginRecord(input: {
+  vaultPath: string;
+  name: string;
+  origin: PluginRecord["origin"];
+  repo?: string;
+  ref: string;
+  version?: string;
+  description?: string;
+  metadataPath: string;
+  warnings: string[];
+  locked?: PluginRecord["locked"];
+  status: CheckStatus;
+  lastCheckedAt?: string;
+  lastAppliedAt?: string;
+  remoteCommit?: string;
+  lastError?: string;
+}): PluginRecord {
+  const workingPath = path.join(input.vaultPath, "plugins", input.name);
+  const inspected = inspectPlugin({
+    root: workingPath,
+    vaultPath: input.vaultPath,
+    sourceName: input.name,
+    origin: input.origin,
+    repo: input.repo,
+    ref: input.ref,
+    warnings: input.warnings,
+  });
+  for (const skill of inspected.skills) {
+    skill.lockedHash = input.locked?.skills?.[skill.name] ?? input.locked?.hash;
+  }
+  return {
+    name: input.name,
+    origin: input.origin,
+    repo: input.repo,
+    ref: input.ref,
+    version: input.version,
+    description: input.description,
+    license: inspected.license,
+    workingPath,
+    vendorRoot: input.origin === "github" ? path.join(input.vaultPath, "third_party", input.name) : undefined,
+    metadataPath: input.metadataPath,
+    manifests: inspected.manifests,
+    assets: inspected.assets,
+    otherCount: inspected.otherCount,
+    hasHooks: inspected.hasHooks,
+    skills: inspected.skills,
+    locked: input.locked,
+    status: input.status,
+    lastCheckedAt: input.lastCheckedAt,
+    lastAppliedAt: input.lastAppliedAt,
+    remoteCommit: input.remoteCommit,
+    lastError: input.lastError,
+  };
+}
+
 async function loadV2(vaultPath: string): Promise<{
   snapshot: Omit<VaultSnapshot, "git" | "operation" | "issues">;
   rawWarnings: string[];
@@ -262,6 +319,7 @@ async function loadV2(vaultPath: string): Promise<{
   }
 
   const sources: SourceRecord[] = [];
+  const plugins: PluginRecord[] = [];
   const sourcesDir = path.join(vaultPath, "sources");
   const sourceFiles = isDirectory(sourcesDir)
     ? listDirectory(sourcesDir)
@@ -282,11 +340,51 @@ async function loadV2(vaultPath: string): Promise<{
       const raw = asRecord(parsed.value);
       const rawSkills = Array.isArray(raw.skills) ? raw.skills : [];
       const name = typeof raw.name === "string" ? raw.name : fileName.replace(/\.yml$/, "");
-      const shape = raw.shape === "package" ? "package" : "standalone";
+      const shape =
+        raw.shape === "package" ? "package" : raw.shape === "plugin" ? "plugin" : "standalone";
       const origin = raw.origin === "github" ? "github" : "local";
       warnings.push(
         `sources/${fileName}: ${result.error.issues.map((issue) => `${issue.path.join(".")}: ${issue.message}`).join("; ")}`,
       );
+      if (shape === "plugin") {
+        const ref = typeof raw.ref === "string" ? raw.ref : "main";
+        const locked = lock?.sources[name];
+        const sourceState = state?.sources[name];
+        const remoteCommit = sourceState?.remote_commit;
+        const status = deriveStatus(origin, locked?.commit, remoteCommit, sourceState?.status);
+        plugins.push(
+          makePluginRecord({
+            vaultPath,
+            name,
+            origin,
+            repo: typeof raw.repo === "string" ? raw.repo : undefined,
+            ref,
+            version: typeof raw.version === "string" ? raw.version : undefined,
+            description: typeof raw.description === "string" ? raw.description : undefined,
+            metadataPath: filePath,
+            warnings,
+            locked,
+            status,
+            lastCheckedAt: sourceState?.checked_at,
+            lastAppliedAt: sourceState?.applied_at ?? state?.last_applied_at,
+            remoteCommit,
+            lastError: sourceState?.error,
+          }),
+        );
+        sources.push({
+          name,
+          shape,
+          origin,
+          ref,
+          updateMode: "review-before-apply",
+          workingPath: path.join(vaultPath, "plugins", name),
+          metadataPath: filePath,
+          skills: [],
+          locked,
+          status,
+        });
+        continue;
+      }
       const sourceSkills: SkillRecord[] = rawSkills
         .map((entry) => asRecord(entry))
         .filter((entry) => typeof entry.name === "string")
@@ -329,6 +427,53 @@ async function loadV2(vaultPath: string): Promise<{
     }
 
     const source = result.data;
+    const locked = lock?.sources[source.name];
+    const sourceState = state?.sources[source.name];
+    const lastChecked = sourceState?.checked_at;
+    const remoteCommit = sourceState?.remote_commit;
+    if (source.shape === "plugin") {
+      const status = deriveStatus(source.origin, locked?.commit, remoteCommit, sourceState?.status);
+      const plugin = makePluginRecord({
+        vaultPath,
+        name: source.name,
+        origin: source.origin,
+        repo: source.repo,
+        ref: source.ref,
+        version: source.version,
+        description: source.description,
+        metadataPath: filePath,
+        warnings,
+        locked,
+        status,
+        lastCheckedAt: lastChecked,
+        lastAppliedAt: sourceState?.applied_at ?? state?.last_applied_at,
+        remoteCommit,
+        lastError: sourceState?.error,
+      });
+      plugins.push(plugin);
+      sources.push({
+        name: source.name,
+        shape: source.shape,
+        origin: source.origin,
+        repo: source.repo,
+        remoteUrl: source.remote_url,
+        ref: source.ref,
+        updateMode: source.update_mode,
+        version: source.version,
+        description: source.description,
+        workingPath: plugin.workingPath,
+        vendorRoot: plugin.vendorRoot,
+        metadataPath: filePath,
+        skills: [],
+        locked,
+        lastCheckedAt: lastChecked,
+        lastAppliedAt: sourceState?.applied_at ?? state?.last_applied_at,
+        remoteCommit,
+        lastError: sourceState?.error,
+        status,
+      });
+      continue;
+    }
     const contentPath =
       source.shape === "package" ? source.content_path ?? `packages/${source.name}` : undefined;
     const sourceSkills = source.skills.map((entry) =>
@@ -356,13 +501,9 @@ async function loadV2(vaultPath: string): Promise<{
         warnings,
       }),
     );
-    const locked = lock?.sources[source.name];
     for (const skill of sourceSkills) {
       skill.lockedHash = locked?.skills?.[skill.name] ?? locked?.hash;
     }
-    const sourceState = state?.sources[source.name];
-    const lastChecked = sourceState?.checked_at;
-    const remoteCommit = sourceState?.remote_commit;
     sources.push({
       name: source.name,
       shape: source.shape,
@@ -420,9 +561,10 @@ async function loadV2(vaultPath: string): Promise<{
       readOnly: false,
       sources,
       skills,
+      plugins,
       targets,
       warnings,
-      counts: countSnapshot(sources, skills, targets),
+      counts: countSnapshot(sources, skills, plugins, targets),
       metadata,
       locked: lock,
       state,
@@ -514,12 +656,15 @@ async function scanTargets(vaultPath: string, targets: TargetRecord[], skills: S
 function countSnapshot(
   sources: SourceRecord[],
   skills: SkillRecord[],
+  plugins: PluginRecord[],
   targets: TargetRecord[],
 ): VaultSnapshot["counts"] {
   return {
     sources: sources.length,
     packages: sources.filter((source) => source.shape === "package").length,
     skills: skills.length,
+    plugins: plugins.length,
+    pluginSkills: plugins.reduce((total, plugin) => total + plugin.skills.length, 0),
     targets: targets.length,
     managedInstalls: targets.reduce(
       (total, target) => total + target.installed.filter((entry) => entry.managed && entry.matches !== false).length,
@@ -700,9 +845,10 @@ async function loadV1(vaultPath: string): Promise<{
       readOnly: true,
       sources,
       skills,
+      plugins: [],
       targets,
       warnings,
-      counts: countSnapshot(sources, skills, targets),
+      counts: countSnapshot(sources, skills, [], targets),
       metadata: {
         schema: 1,
         name: path.basename(vaultPath),

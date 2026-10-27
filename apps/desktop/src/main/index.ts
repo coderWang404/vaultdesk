@@ -22,6 +22,13 @@ const dirname = __dirname;
 const isDev = Boolean(process.env.ELECTRON_RENDERER_URL);
 const isSmoke = process.env.VAULTDESK_SMOKE === "1";
 
+function resolveAgentSkillDir(): string {
+  const override = process.env.VAULTDESK_AGENT_SKILL_DIR;
+  if (override) return override;
+  if (app.isPackaged) return path.join(process.resourcesPath, "agent-skill", "vaultdesk");
+  return path.resolve(dirname, "../../../../agent-skill/vaultdesk");
+}
+
 let mainWindow: BrowserWindow | null = null;
 
 app.setName("VaultDesk");
@@ -77,7 +84,10 @@ function registerIpc(): void {
       if (!knownCommands.includes(command)) {
         throw new VaultDeskError("unsupported", `Unknown command: ${command}`);
       }
-      const data = await runCommand(command, parsed.data.payload, { version: app.getVersion() });
+      const data = await runCommand(command, parsed.data.payload, {
+        version: app.getVersion(),
+        agentSkillDir: resolveAgentSkillDir(),
+      });
       return { ok: true, data, warnings: warningsOf(data) };
     } catch (error) {
       return { ok: false, error: serializeError(error) };

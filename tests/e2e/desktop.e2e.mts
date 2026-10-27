@@ -1342,6 +1342,7 @@ async function presetInstall(suite: Suite): Promise<void> {
       "    docs_url: null",
       "    verification_required: false",
       "    notes: Sandboxed preset used by the desktop E2E suite.",
+      "    verify_command: 'printf \"desktop-ok\"; touch \"$HOME/preset-verify.marker\"'",
       "",
     ].join("\n"),
     "utf8",
@@ -1365,6 +1366,26 @@ async function presetInstall(suite: Suite): Promise<void> {
   await waitForText(page, "已验证 2026-10-01");
   await waitForText(page, "~/e2e-skills");
 
+  const agentPanel = page.locator(".agent-skill-panel");
+  await agentPanel.locator(".agent-skill-path .mono").waitFor();
+  const bundledPath = (await agentPanel.locator(".agent-skill-path .mono").innerText()).trim();
+  assert(fs.existsSync(bundledPath), `bundled agent skill missing: ${bundledPath}`);
+  assert(read(bundledPath).includes("vaultdesk"), "bundled agent skill content");
+  await agentPanel.locator("summary").filter({ hasText: "查看 SKILL.md" }).click();
+  await agentPanel.locator(".agent-skill-content").waitFor();
+
+  await page.getByRole("button", { name: "验证命令" }).click();
+  const verifyModal = await dialog(page);
+  await waitForText(page, 'printf "desktop-ok"');
+  assert(!fs.existsSync(path.join(home, "preset-verify.marker")), "preview must not run the verify command");
+  equal(await verifyModal.locator(".verify-output").count(), 0, "no verify output before running");
+  await verifyModal.getByRole("button", { name: "运行验证命令" }).click();
+  await waitForText(page, "退出码 0");
+  await verifyModal.locator(".verify-output").filter({ hasText: "desktop-ok" }).waitFor();
+  assert(fs.existsSync(path.join(home, "preset-verify.marker")), "confirmed verify command ran under sandbox HOME");
+  await verifyModal.locator(".modal-footer").getByRole("button", { name: "关闭" }).click();
+  await verifyModal.waitFor({ state: "hidden" });
+
   await openSection(page, "安装目标");
   await page.getByRole("button", { name: "安装到目录" }).click();
   const install = await dialog(page);
@@ -1383,7 +1404,7 @@ async function presetInstall(suite: Suite): Promise<void> {
   assert(read(path.join(vaultPath, "vault.yml")).includes("e2e-tool"), "preset target registered");
   const realHomeTarget = path.join(process.env.HOME ?? "", "e2e-skills", "alpha", ".vault-managed");
   assert(!fs.existsSync(realHomeTarget), "preset install did not escape the sandbox HOME");
-  console.log("      custom preset file, verified badge, preset chip destination and sandboxed ~/ install OK");
+  console.log("      custom preset file, agent skill panel, verify preview/run, preset chip destination and sandboxed ~/ install OK");
 }
 
 interface AxeViolation {

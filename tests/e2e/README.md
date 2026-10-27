@@ -31,7 +31,7 @@ macOS desktop session; the default suites need no network.
 
 | Scenario | Coverage |
 | --- | --- |
-| Help, version, JSON envelope and usage errors | Human and JSON output, envelope shape, usage exit code, built-in presets. |
+| Help, version, JSON envelope and usage errors | Human and JSON output, envelope shape, usage exit code, built-in presets, bundled agent skill, preset verify preview and confirmed run. |
 | Init, status, validate, imports and build | Init preview/apply, status, validation, standalone/collection/package imports, generated build output. |
 | Target install, verify, remove, restore | Preview plan, unmanaged backup, symlink replacement, marker files, drift verification, reinstall, unregister, re-register, backup restore. |
 | Git status, explicit-path commit and push | Status, staged-file preservation, commit limited to named paths, preview gate, push to a real bare remote. |
@@ -57,7 +57,7 @@ macOS desktop session; the default suites need no network.
 | Boot auto-check honors the 24h interval | Recent timestamp skips the boot check; a 25-hour-old timestamp triggers it and refreshes state. |
 | Auto-check runs once per vault per session | Two authenticated remotes: boot vault A, first activation of B, no repeat when switching back, manual check still reaches the server, roving tab keyboard navigation, titlebar close. |
 | Slow check, offline warning and journal recovery | Slow authenticated check, offline failure message, persisted source error, recovery banner lifecycle, no rollback of working files. |
-| Custom tool preset under a sandboxed HOME | Custom preset file, verification badge, preset chip destination, install into a sandboxed `~`. |
+| Custom tool preset under a sandboxed HOME | Custom preset file, verification badge, bundled agent skill panel, verify-command preview and confirmed run with output, preset chip destination, install into a sandboxed `~`. |
 | 120-skill vault renders and searches | 120 rows render under 20 seconds, local filter narrows and clears, palette search selects a skill. |
 | axe accessibility, focus trap and focus restore | Six views scanned with axe-core, palette and modal Tab traps, Escape close, focus restoration. |
 

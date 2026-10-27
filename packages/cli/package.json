@@ -20,7 +20,7 @@
     "node": ">=22"
   },
   "scripts": {
-    "build": "tsup",
+    "build": "tsup && node scripts/copy-agent-skill.mjs",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {

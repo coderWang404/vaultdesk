@@ -17,12 +17,12 @@ interface CliResult {
   };
 }
 
-function runCli(args: string[]): CliResult {
+function runCli(args: string[], extraEnv: Record<string, string> = {}): CliResult {
   const result = spawnSync(process.execPath, [path.join(repoRoot, "packages/cli/dist/index.js"), ...args], {
     cwd: repoRoot,
     encoding: "utf8",
     timeout: 60_000,
-    env: { ...process.env, NO_COLOR: "1" },
+    env: { ...process.env, NO_COLOR: "1", ...extraEnv },
   });
   if (result.error) throw result.error;
   let json: CliResult["json"];
@@ -199,5 +199,98 @@ describe("CLI contract", () => {
     const badFlags = runCli(["--json", "--vault", vaultPath, "source", "add", input, "--kind", "suite"]);
     expect(badFlags.status).toBe(2);
     expect(badFlags.json?.errors[0]?.code).toBe("invalid-input");
+  });
+
+  it("serves the bundled agent skill from the build output", () => {
+    const result = runCli(["--json", "agent", "skill"]);
+    expect(result.status).toBe(0);
+    const data = result.json?.data as {
+      name: string;
+      description: string;
+      path: string;
+      content: string;
+    };
+    expect(data.name).toBe("vaultdesk");
+    expect(data.description).toContain("VaultDesk");
+    expect(fs.existsSync(data.path)).toBe(true);
+    expect(data.path).toContain(path.join("agent-skill", "vaultdesk", "SKILL.md"));
+    expect(data.content).toContain("vaultdesk");
+
+    const human = runCli(["agent", "skill"]);
+    expect(human.status).toBe(0);
+    expect(human.stdout).toContain("Agent skill · vaultdesk");
+
+    const usage = runCli(["--json", "agent", "nonsense"]);
+    expect(usage.status).toBe(2);
+    expect(usage.json?.errors[0]?.code).toBe("invalid-input");
+  });
+
+  it("previews preset verify commands and runs them only with --yes", () => {
+    const presetsFile = path.join(tempDir("cli-presets"), "presets.yml");
+    fs.writeFileSync(
+      presetsFile,
+      [
+        "schema: 1",
+        "tools:",
+        "  - id: echo-tool",
+        "    label: Echo Tool",
+        "    dest: ~/echo-skills",
+        "    verified_at: null",
+        "    verified_version: null",
+        "    docs_url: null",
+        "    verification_required: true",
+        "    verify_command: \"printf preset-ok\"",
+        "  - id: fail-tool",
+        "    label: Fail Tool",
+        "    dest: ~/fail-skills",
+        "    verified_at: null",
+        "    verified_version: null",
+        "    docs_url: null",
+        "    verification_required: true",
+        "    verify_command: \"exit 7\"",
+        "  - id: plain-tool",
+        "    label: Plain Tool",
+        "    dest: ~/plain-skills",
+        "    verified_at: null",
+        "    verified_version: null",
+        "    docs_url: null",
+        "    verification_required: true",
+        "",
+      ].join("\n"),
+      "utf8",
+    );
+    const env = { VAULTDESK_PRESETS_FILE: presetsFile };
+
+    const preview = runCli(["--json", "presets", "verify", "echo-tool"], env);
+    expect(preview.status).toBe(0);
+    expect(preview.json?.data).toMatchObject({
+      id: "echo-tool",
+      label: "Echo Tool",
+      command: "printf preset-ok",
+      preview: true,
+    });
+
+    const applied = runCli(["--json", "--yes", "presets", "verify", "echo-tool"], env);
+    expect(applied.status).toBe(0);
+    expect(applied.json?.data).toMatchObject({
+      id: "echo-tool",
+      exitCode: 0,
+      stdout: "preset-ok",
+      timedOut: false,
+      truncated: false,
+    });
+
+    const failing = runCli(["--json", "--yes", "presets", "verify", "fail-tool"], env);
+    expect(failing.status).toBe(1);
+    expect(failing.json?.data).toMatchObject({ exitCode: 7 });
+
+    const unlisted = runCli(["--json", "--yes", "presets", "verify", "plain-tool"], env);
+    expect(unlisted.status).toBe(2);
+    expect(unlisted.json?.errors[0]?.code).toBe("invalid-input");
+    expect(unlisted.json?.errors[0]?.message).toContain("no verify_command");
+
+    const unknown = runCli(["--json", "presets", "verify", "nope"], env);
+    expect(unknown.status).toBe(2);
+    expect(unknown.json?.errors[0]?.code).toBe("invalid-input");
   });
 });

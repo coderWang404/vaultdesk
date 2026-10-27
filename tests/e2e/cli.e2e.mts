@@ -205,7 +205,41 @@ async function cliSurface(suite: CliSuite): Promise<void> {
 
   const presets = ok<Payload[]>(runCli(["presets", "list", "--json"], { workspace }), "presets list");
   assert(Array.isArray(presets) && presets.length > 0, "presets returned");
-  console.log("      help/version, envelope shape, JSON and human usage errors, presets OK");
+
+  const agentSkill = ok<Payload>(runCli(["agent", "skill", "--json"], { workspace }), "agent skill");
+  equal(agentSkill.name, "vaultdesk", "agent skill name");
+  assert(fs.existsSync(agentSkill.path), `bundled agent skill path: ${agentSkill.path}`);
+  assert(String(agentSkill.content).includes("vaultdesk"), "agent skill content");
+
+  const presetsFile = path.join(workspace.root, "presets.yml");
+  fs.writeFileSync(
+    presetsFile,
+    [
+      "schema: 1",
+      "tools:",
+      "  - id: e2e-tool",
+      "    label: E2E Tool",
+      "    dest: ~/e2e-tools",
+      "    verified_at: null",
+      "    verified_version: null",
+      "    docs_url: null",
+      "    verification_required: true",
+      "    verify_command: 'printf \"e2e-ok\"'",
+      "",
+    ].join("\n"),
+    "utf8",
+  );
+  const presetEnv = { ...cliEnv(workspace), VAULTDESK_PRESETS_FILE: presetsFile };
+  const presetPreview = ok<Payload>(runCli(["presets", "verify", "e2e-tool", "--json"], { env: presetEnv }), "preset preview");
+  equal(presetPreview.command, 'printf "e2e-ok"', "preset preview command");
+  equal(presetPreview.preview, true, "preset preview flag");
+  const presetRun = ok<Payload>(
+    runCli(["--yes", "presets", "verify", "e2e-tool", "--json"], { env: presetEnv }),
+    "preset run",
+  );
+  equal(presetRun.exitCode, 0, "preset run exit");
+  equal(presetRun.stdout, "e2e-ok", "preset run stdout");
+  console.log("      help/version, envelope shape, JSON and human usage errors, presets, agent skill OK");
 }
 
 async function vaultImportBuild(suite: CliSuite): Promise<void> {

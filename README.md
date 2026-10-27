@@ -27,6 +27,10 @@ facts and apply the same rules.
 - whole-root diffs and review-before-apply updates for GitHub plugin sources
 - a plugin registry page and metadata search that includes plugins and
   plugin-contained skills
+- tool presets with an optional, explicitly confirmed `verify_command`; its
+  output is shown but never treated as proof that an agent loaded a skill
+- a bundled `vaultdesk` agent skill that teaches agents to drive the CLI,
+  available as `vaultdesk agent skill`
 - explicit Git commit and push limited to the paths VaultDesk changed
 
 Builds are unsigned and not notarized. All write operations preview first: the
@@ -127,6 +131,8 @@ vaultdesk plugin list --vault ~/skills --json
 vaultdesk plugin show some-plugin --vault ~/skills --json
 vaultdesk target install local-notes --vault ~/skills --dest ~/.claude/skills
 vaultdesk target verify my-agents --vault ~/skills
+vaultdesk presets verify claude-code                    # preview only
+vaultdesk agent skill --json
 vaultdesk git commit --vault ~/skills --path vault.lock --message "update lock"
 ```
 
@@ -149,7 +155,9 @@ targets live in `vault.yml`; VaultDesk writes a `.vault-managed` marker into
 every managed slot so it can distinguish its own copies from unmanaged files.
 
 See [docs/DESIGN.md](docs/DESIGN.md) for the data model, safety rules, CLI
-contract, and release plan.
+contract, and release plan. See
+[docs/SKILLDECK-INTEROP.md](docs/SKILLDECK-INTEROP.md) for why VaultDesk does
+not share SkillDeck's lock file and how the two tools coexist.
 
 ## Known limits
 
@@ -157,8 +165,8 @@ contract, and release plan.
 - No signed or notarized release, no auto-update channel.
 - Plugin installation is delegated to the agent by design; VaultDesk only
   stores, validates, and displays plugin roots.
-- SkillDeck lockfile interoperability, custom verification commands, and a
-  packaged agent skill are not implemented yet.
+- SkillDeck coexistence is file-safe but has no shared lock or registry; see
+  [docs/SKILLDECK-INTEROP.md](docs/SKILLDECK-INTEROP.md).
 - The CLI is built from this repository; it is not published to npm at 0.6.0.
 
 ## License

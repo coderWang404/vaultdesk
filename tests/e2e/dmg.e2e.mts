@@ -78,6 +78,9 @@ function verifyBundle(): string {
   equal(archs, arch, "app architecture");
   const asar = path.join(appPath, "Contents/Resources/app.asar");
   assert(fs.existsSync(asar) && fs.statSync(asar).size > 100_000, "app.asar is present");
+  const agentSkill = path.join(appPath, "Contents/Resources/agent-skill/vaultdesk/SKILL.md");
+  assert(fs.existsSync(agentSkill), "packaged agent skill resource is present");
+  assert(read(agentSkill).includes("name: vaultdesk"), "packaged agent skill frontmatter");
 
   const signature = run("codesign", ["-dv", "--verbose=4", appPath]);
   const details = `${signature.stderr}${signature.stdout}`;
@@ -153,6 +156,15 @@ async function exerciseApp(appPath: string): Promise<void> {
   equal(await page.locator(".skill-table-row").count(), 4, "packaged skill count");
   await openSection(page, "安装目标");
   await waitForText(page, "fixture-agents");
+  await openSection(page, "设置");
+  const agentPanel = page.locator(".agent-skill-panel");
+  await agentPanel.locator(".agent-skill-path .mono").waitFor();
+  const bundledPath = (await agentPanel.locator(".agent-skill-path .mono").innerText()).trim();
+  assert(
+    bundledPath.includes("/Contents/Resources/agent-skill/vaultdesk/SKILL.md"),
+    `packaged agent skill path: ${bundledPath}`,
+  );
+  assert(fs.existsSync(bundledPath), "packaged app reads the bundled agent skill");
   await openSection(page, "总览");
   await page.getByRole("button", { name: "校验仓库" }).click();
   const validation = await dialog(page);

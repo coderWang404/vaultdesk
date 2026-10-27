@@ -113,6 +113,11 @@ export const ipcCommands = {
     limit: z.number().int().min(1).max(100).default(40),
   }),
   "presets.list": z.object({}),
+  "presets.verifyCommand": z.object({
+    id: z.string().min(1),
+    confirm: z.boolean().default(false),
+  }),
+  "agentSkill.show": z.object({}),
   "app.info": z.object({}),
   "app.settings": z.object({}),
   "app.setSettings": z.object({

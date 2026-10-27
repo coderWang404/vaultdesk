@@ -1,9 +1,10 @@
 import { useEffect, useState } from "react";
-import type { AppSettings, VaultSnapshot } from "@vaultdesk/core";
+import type { AppSettings, BundledAgentSkill, VaultSnapshot } from "@vaultdesk/core";
 import type { ToolPreset } from "@vaultdesk/schema";
 import { call, errorMessage } from "../api";
 import type { AppInfo } from "../types";
 import { Icon } from "./icons";
+import { PresetVerifyModal } from "./modals/PresetVerifyModal";
 import { Button, Callout, Field, SectionHeader, StatusPill } from "./ui";
 
 export function SettingsView({
@@ -27,6 +28,23 @@ export function SettingsView({
   const [retention, setRetention] = useState(String(settings.backupRetention));
   const [backupRoot, setBackupRoot] = useState(settings.backupRoot ?? "");
   const [saving, setSaving] = useState(false);
+  const [verifyPreset, setVerifyPreset] = useState<ToolPreset | null>(null);
+  const [agentSkill, setAgentSkill] = useState<BundledAgentSkill | null>(null);
+  const [agentSkillError, setAgentSkillError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    void call<BundledAgentSkill>("agentSkill.show", {})
+      .then((skill) => {
+        if (!cancelled) setAgentSkill(skill);
+      })
+      .catch((reason) => {
+        if (!cancelled) setAgentSkillError(errorMessage(reason));
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   useEffect(() => {
     setCheckInterval(String(settings.checkIntervalHours));
@@ -171,6 +189,16 @@ export function SettingsView({
                 <StatusPill tone={preset.verified_at ? "ok" : "warn"}>
                   {preset.verified_at ? `已验证 ${preset.verified_at}` : "未验证"}
                 </StatusPill>
+                {preset.verify_command ? (
+                  <Button
+                    size="sm"
+                    variant="quiet"
+                    icon="terminal"
+                    onClick={() => setVerifyPreset(preset)}
+                  >
+                    验证命令
+                  </Button>
+                ) : null}
                 {preset.docs_url ? (
                   <Button
                     size="sm"
@@ -189,6 +217,46 @@ export function SettingsView({
             </div>
           ))}
         </div>
+      </section>
+
+      <section className="panel agent-skill-panel">
+        <div className="panel-head">
+          <div>
+            <span className="eyebrow">随附 Agent 技能</span>
+            <h2>vaultdesk</h2>
+          </div>
+          <StatusPill tone="accent">随应用打包</StatusPill>
+        </div>
+        <p className="panel-copy">
+          这是工具自带的说明技能，教 agent 如何安全地调用 VaultDesk CLI。它与你的个人技能分开，不会被写入仓库或自动安装。
+        </p>
+        {agentSkillError ? (
+          <Callout tone="danger" title="无法读取随附技能">
+            <p>{agentSkillError}</p>
+          </Callout>
+        ) : agentSkill ? (
+          <>
+            <p className="agent-skill-description">{agentSkill.description}</p>
+            <div className="agent-skill-path">
+              <span className="mono">{agentSkill.path}</span>
+              <Button
+                size="sm"
+                variant="quiet"
+                icon="external"
+                onClick={() => onReveal(agentSkill.path)}
+              >
+                在 Finder 中显示
+              </Button>
+            </div>
+            <details className="agent-skill-details">
+              <summary>查看 SKILL.md</summary>
+              <pre className="agent-skill-content mono">{agentSkill.content.trimEnd()}</pre>
+            </details>
+            <p className="agent-skill-hint">
+              CLI 等价命令：<span className="mono">vaultdesk agent skill</span>
+            </p>
+          </>
+        ) : null}
       </section>
 
       <section className="panel about-panel">
@@ -236,6 +304,14 @@ export function SettingsView({
           </Button>
         </div>
       </section>
+
+      {verifyPreset ? (
+        <PresetVerifyModal
+          preset={verifyPreset}
+          onClose={() => setVerifyPreset(null)}
+          onError={onError}
+        />
+      ) : null}
     </div>
   );
 }

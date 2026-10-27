@@ -24,14 +24,17 @@ import {
   previewGithubPlugin,
   previewImport,
   previewPluginImport,
+  previewPresetVerify,
   previewUpdate,
   push,
+  readBundledAgentSkill,
   readSettings,
   readSkillContent,
   removeSource,
   resolveCommitPaths,
   removeTarget,
   restoreBackup,
+  runPresetVerifyCommand,
   searchVaults,
   sourceDiff,
   updateSources,
@@ -47,6 +50,7 @@ import { addRecent, readRecents, removeRecent } from "./recents.js";
 
 export interface CommandContext {
   version: string;
+  agentSkillDir: string;
 }
 
 type Handler<K extends IpcCommand> = (payload: IpcPayload<K>, context: CommandContext) => unknown;
@@ -177,6 +181,11 @@ const handlers: { [K in IpcCommand]: Handler<K> } = {
 
   "search.query": ({ vaults, query, limit }) => searchVaults({ query, vaults, limit }),
   "presets.list": () => listPresets(),
+  "presets.verifyCommand": async ({ id, confirm }) => {
+    if (!confirm) return previewPresetVerify(id);
+    return runPresetVerifyCommand(id, { confirm: true });
+  },
+  "agentSkill.show": (_payload, context) => readBundledAgentSkill(context.agentSkillDir),
 
   "app.info": async (_payload, context) => ({
     version: context.version,

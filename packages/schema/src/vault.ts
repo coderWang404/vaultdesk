@@ -213,6 +213,7 @@ export const presetSchema = z.object({
   verified_version: z.string().nullable(),
   docs_url: z.string().nullable(),
   verification_required: z.boolean().default(true),
+  verify_command: z.string().trim().min(1).nullable().default(null),
   notes: z.string().optional(),
 });
 

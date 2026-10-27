@@ -1,5 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import {
   VaultDeskError,
   addGithubPlugin,
@@ -24,12 +25,15 @@ import {
   previewGithubPlugin,
   previewImport,
   previewPluginImport,
+  previewPresetVerify,
   previewUpdate,
   push,
+  readBundledAgentSkill,
   removeSource,
   removeTarget,
   resolveCommitPaths,
   restoreBackup,
+  runPresetVerifyCommand,
   serializeError,
   sourceDiff,
   updateSources,
@@ -183,6 +187,21 @@ function version(): string {
   }
 }
 
+function bundledAgentSkillDir(): string {
+  const override = process.env.VAULTDESK_AGENT_SKILL_DIR;
+  if (override) return override;
+  const here = path.dirname(fileURLToPath(import.meta.url));
+  const candidates = [
+    path.join(here, "agent-skill", "vaultdesk"),
+    path.resolve(here, "../../../agent-skill/vaultdesk"),
+  ];
+  const found = candidates.find((candidate) => fs.existsSync(path.join(candidate, "SKILL.md")));
+  if (!found) {
+    throw new VaultDeskError("operation-failed", "The bundled agent skill is missing from this build.");
+  }
+  return found;
+}
+
 const HELP = `VaultDesk ${version()}
 Local-first skill and plugin vault manager.
 
@@ -211,10 +230,12 @@ Commands:
   target remove <id>               Unregister a target; optionally move files to backup
   target verify <id>               Verify files in place (no tool discovery claim)
   target restore <id> --backup <path> --name <skill>
+  agent skill                      Print the agent skill bundled with VaultDesk
   git status                       Show branch, HEAD, and changes
   git commit --path <path>... --message <text>
   git push                         Push the current branch
   presets list                     List candidate tool locations (unverified)
+  presets verify <id> [--yes]      Preview or run an optional preset verify_command
 
 Global options:
   --vault <path>   Vault directory (default: current directory)
@@ -236,6 +257,7 @@ interface CommandResult {
   data: unknown;
   warnings: string[];
   human: string[];
+  exitCode?: number;
 }
 
 function vaultPathOf(parsed: Parsed, override?: string): string {
@@ -1268,12 +1290,71 @@ async function dispatch(parsed: Parsed): Promise<CommandResult> {
       throw new VaultDeskError("invalid-input", `Unknown git action: ${action}`);
     }
 
-    case "presets": {
-      if (action !== "list" && action !== undefined) {
-        throw new VaultDeskError("invalid-input", `Unknown presets action: ${action}`);
+    case "agent": {
+      if (action !== "skill" || rest.length > 0) {
+        throw new VaultDeskError("invalid-input", "Usage: vaultdesk agent skill");
       }
-      const presets = listPresets();
-      return { data: presets, warnings: [], human: printPresets() };
+      const skill = readBundledAgentSkill(bundledAgentSkillDir());
+      return {
+        data: skill,
+        warnings: [],
+        human: [
+          bold(`Agent skill · ${skill.name}`),
+          `Path     ${skill.path}`,
+          `Summary  ${skill.description}`,
+          "",
+          skill.content.trimEnd(),
+        ],
+      };
+    }
+
+    case "presets": {
+      if (action === "list" || action === undefined) {
+        const presets = listPresets();
+        return { data: presets, warnings: [], human: printPresets() };
+      }
+      if (action === "verify") {
+        const id = rest[0];
+        if (!id) throw new VaultDeskError("invalid-input", "presets verify requires a preset id.");
+        const preview = previewPresetVerify(id);
+        if (!parsed.yes || hasFlag(options, "dry-run")) {
+          return {
+            data: preview,
+            warnings: [],
+            human: [
+              bold(`Verify preset · ${preview.label}`),
+              `Destination  ${preview.dest}`,
+              `Command      ${preview.command}`,
+              "",
+              yellow("This command comes from the preset file and runs with your user permissions."),
+              yellow("VaultDesk only shows its output; it does not claim the tool loaded any skill."),
+              "",
+              notice(parsed),
+            ],
+          };
+        }
+        const result = await runPresetVerifyCommand(id, { confirm: true });
+        return {
+          data: result,
+          warnings: result.timedOut
+            ? [`The verify command timed out after ${result.durationMs}ms and was killed.`]
+            : result.truncated
+              ? ["The verify command output was truncated."]
+              : [],
+          human: [
+            bold(`Verify preset · ${preview.label}`),
+            `Command  ${preview.command}`,
+            `Exit     ${result.exitCode ?? result.signal ?? "unknown"}${result.timedOut ? yellow(" (timed out)") : ""}`,
+            `Took     ${result.durationMs}ms`,
+            ...(result.stdout.trim() ? ["", bold("stdout"), result.stdout.trimEnd()] : []),
+            ...(result.stderr.trim() ? ["", bold("stderr"), result.stderr.trimEnd()] : []),
+            "",
+            dim("Path-level target verification is separate: vaultdesk target verify <id>."),
+          ],
+          exitCode: result.exitCode === 0 ? 0 : 1,
+        };
+      }
+      throw new VaultDeskError("invalid-input", `Unknown presets action: ${action}`);
     }
 
     default:
@@ -1329,6 +1410,7 @@ async function main(): Promise<void> {
         process.stderr.write(yellow(`warning: ${warning}`) + "\n");
       }
     }
+    if (typeof result.exitCode === "number") process.exitCode = result.exitCode;
   } catch (error) {
     const serialized = serializeError(error);
     if (parsed.json) {

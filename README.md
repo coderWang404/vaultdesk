@@ -22,7 +22,10 @@ facts and apply the same rules.
   timestamped backups, verification, and restore
 - editing local skills and forking GitHub skills into local copies
 - importing standalone skills and multi-skill packages from disk or GitHub
-- metadata search across all open vaults
+- registering whole plugin roots from disk or GitHub, with manifest and asset
+  validation, contained-skill discovery, and a hooks warning
+- a plugin registry page and metadata search that includes plugins and
+  plugin-contained skills
 - explicit Git commit and push limited to the paths VaultDesk changed
 
 Builds are unsigned and not notarized. All write operations preview first: the
@@ -33,7 +36,12 @@ app requires an explicit confirmation, and the CLI requires `--yes`.
 - The vault is the source of truth; install destinations are disposable copies.
 - Network fetches happen in a cache outside the vault. Nothing is written until
   the preview is confirmed.
-- GitHub-origin skills are read-only until forked.
+- GitHub-origin skills and plugins are read-only until forked.
+- Plugins are stored whole and never executed: hooks, scripts, and MCP servers
+  are not run, and no adapter or marketplace manifest is generated. VaultDesk
+  does not install, enable, or adapt plugins for an agent; the agent does that
+  itself through the vault-manager skill. `target install` refuses plugin
+  sources and plugin-contained skills.
 - Unmanaged directories are never discarded: they are moved to a timestamped
   backup before a managed copy takes the slot. VaultDesk keeps the ten most
   recent snapshots per target.
@@ -114,6 +122,8 @@ vaultdesk vault validate --vault ~/skills
 vaultdesk vault migrate --vault ~/skills            # preview only
 vaultdesk source check --vault ~/skills             # read-only upstream check
 vaultdesk source update --vault ~/skills some-source
+vaultdesk plugin list --vault ~/skills --json
+vaultdesk plugin show some-plugin --vault ~/skills --json
 vaultdesk target install local-notes --vault ~/skills --dest ~/.claude/skills
 vaultdesk target verify my-agents --vault ~/skills
 vaultdesk git commit --vault ~/skills --path vault.lock --message "update lock"
@@ -127,6 +137,7 @@ vault.lock
 sources/<name>.yml
 skills/<name>/
 packages/<pkg>/skills/<skill>/
+plugins/<name>/
 third_party/
 build/skills/<name>/
 .vault/state.json
@@ -143,6 +154,8 @@ contract, and release plan.
 
 - macOS only; no Windows or Linux desktop build.
 - No signed or notarized release, no auto-update channel.
+- Plugin installation is delegated to the agent by design; VaultDesk only
+  stores, validates, and displays plugin roots.
 - SkillDeck lockfile interoperability, custom verification commands, and a
   packaged agent skill are not implemented yet.
 - The CLI is built from this repository; it is not published to npm at 0.6.0.

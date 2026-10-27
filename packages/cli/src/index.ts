@@ -671,6 +671,37 @@ function printPlugin(plugin: PluginRecord): string[] {
   return lines;
 }
 
+function pluginPayload(vaultPath: string, plugin: PluginRecord): Record<string, unknown> {
+  return {
+    name: plugin.name,
+    origin: plugin.origin,
+    ...(plugin.repo ? { repo: plugin.repo } : {}),
+    ...(plugin.ref ? { ref: plugin.ref } : {}),
+    ...(plugin.contentPath ? { contentPath: plugin.contentPath } : {}),
+    ...(plugin.locked?.commit ? { commit: plugin.locked.commit } : {}),
+    status: plugin.status,
+    ...(plugin.version ? { version: plugin.version } : {}),
+    ...(plugin.description ? { description: plugin.description } : {}),
+    ...(plugin.license ? { license: plugin.license } : {}),
+    rootPath: plugin.workingPath,
+    ...(plugin.vendorRoot ? { vendorPath: plugin.vendorRoot } : {}),
+    vaultPath,
+    manifests: plugin.manifests,
+    assets: plugin.assets,
+    hasHooks: plugin.hasHooks,
+    containedSkills: plugin.skills.map((skill) => ({
+      name: skill.name,
+      path: skill.workingPath,
+      relativePath: skill.relativePath,
+      ...(skill.description ? { description: skill.description } : {}),
+    })),
+    ...(plugin.locked ? { locked: plugin.locked } : {}),
+    ...(plugin.lastCheckedAt ? { lastCheckedAt: plugin.lastCheckedAt } : {}),
+    ...(plugin.lastAppliedAt ? { lastAppliedAt: plugin.lastAppliedAt } : {}),
+    ...(plugin.lastError ? { lastError: plugin.lastError } : {}),
+  };
+}
+
 function printFork(preview: ForkPreview): string[] {
   const lines: string[] = [];
   lines.push(bold(`Fork ${preview.skill}`) + `  ${dim(`${preview.sourceName} -> ${preview.newSourceName}`)}`);
@@ -1015,7 +1046,7 @@ async function dispatch(parsed: Parsed): Promise<CommandResult> {
           return { data: [], warnings: snapshot.warnings, human: [dim("No plugins registered.")] };
         }
         return {
-          data: snapshot.plugins,
+          data: snapshot.plugins.map((plugin) => pluginPayload(snapshot.path, plugin)),
           warnings: snapshot.warnings,
           human: table(
             ["NAME", "ORIGIN", "VERSION", "MANIFESTS", "SKILLS", "ASSETS", "STATUS"],
@@ -1038,7 +1069,7 @@ async function dispatch(parsed: Parsed): Promise<CommandResult> {
           (entry) => entry.name === name || entry.skills.some((skill) => skill.name === name),
         );
         if (!plugin) throw new VaultDeskError("unknown-plugin", `Unknown plugin or plugin skill: ${name}`);
-        return { data: plugin, warnings: snapshot.warnings, human: printPlugin(plugin) };
+        return { data: pluginPayload(snapshot.path, plugin), warnings: snapshot.warnings, human: printPlugin(plugin) };
       }
       throw new VaultDeskError("invalid-input", `Unknown plugin action: ${action}`);
     }

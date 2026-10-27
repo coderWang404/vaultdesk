@@ -1,6 +1,6 @@
 # VaultDesk 插件登记设计
 
-- 状态：已确认，作为 0.7–0.9 的实现依据
+- 状态：0.7 与 0.8 的搜索/总览/安装 guard 已实现；更新、整根 diff、删除清理待完成
 - 日期：2026-10-27
 - 范围：Qoder、Claude Code、Codex 的插件登记与展示
 - 非范围：OpenCode 插件、插件安装、marketplace 生成、adapter manifest 生成、agent registry 写入
@@ -317,7 +317,7 @@ vaultdesk plugin list [--json]
 vaultdesk plugin show <name> [--json]
 ```
 
-`plugin list` 人类输出列：name、agents、version、skills、hooks、status、origin。
+`plugin list` 人类输出列：name、origin、version、manifests、skills、assets、status。
 
 `plugin show --json` 的 `data`：
 
@@ -365,7 +365,7 @@ vaultdesk plugin show <name> [--json]
 
 - `source list` 和 `source show` 包含 `shape: plugin` 条目。
 - `vault status` 的 counts 增加 `plugins` 和 `pluginSkills`。
-- `target install` 遇到插件 source 或插件内技能返回 `plugin-skill-not-installable`。
+- `target install` 遇到插件 source 或插件内技能返回 `plugin-not-installable`。
 - 退出码沿用 0/1/2/3。
 - `plugin` 命令全部只读，不需要 `--yes`。
 

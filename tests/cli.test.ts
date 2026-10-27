@@ -113,16 +113,35 @@ describe("CLI contract", () => {
 
   it("lists and shows plugins, and refuses to install plugin content", () => {
     const vaultPath = copyFixture("v2-plugins");
+    const vaultReal = fs.realpathSync(vaultPath);
 
     const list = runCli(["--json", "--vault", vaultPath, "plugin", "list"]);
     expect(list.status).toBe(0);
-    const plugins = list.json?.data as { name: string; skills: { name: string }[] }[];
+    const plugins = list.json?.data as {
+      name: string;
+      rootPath: string;
+      commit?: string;
+      containedSkills: { name: string; path: string }[];
+    }[];
     expect(plugins).toHaveLength(5);
-    expect(plugins.find((plugin) => plugin.name === "claude-kit")?.skills.map((skill) => skill.name)).toEqual(["review"]);
+    const listed = plugins.find((plugin) => plugin.name === "claude-kit");
+    expect(listed?.containedSkills.map((skill) => skill.name)).toEqual(["review"]);
+    expect(listed?.rootPath).toBe(path.join(vaultReal, "plugins/claude-kit"));
+    expect(listed?.commit).toBe("4444444444444444444444444444444444444444");
 
     const show = runCli(["--json", "--vault", vaultPath, "plugin", "show", "review"]);
     expect(show.status).toBe(0);
-    expect(show.json?.data).toMatchObject({ name: "claude-kit", hasHooks: true });
+    expect(show.json?.data).toMatchObject({
+      name: "claude-kit",
+      hasHooks: true,
+      status: "unknown",
+      vaultPath: vaultReal,
+      rootPath: path.join(vaultReal, "plugins/claude-kit"),
+      vendorPath: path.join(vaultReal, "third_party/claude-kit"),
+      commit: "4444444444444444444444444444444444444444",
+      containedSkills: [{ name: "review", path: path.join(vaultReal, "plugins/claude-kit/skills/review") }],
+    });
+    expect(show.json?.data).not.toHaveProperty("workingPath");
 
     const human = runCli(["--vault", vaultPath, "plugin", "show", "claude-kit"]);
     expect(human.stdout).toContain("Hooks are present");

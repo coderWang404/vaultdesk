@@ -1,6 +1,6 @@
 # VaultDesk 设计定稿
 
-- 状态：0.1–1.0 的实现依据；截至 2026-10-26，0.1–0.5 与 0.6 的 Git/跨库搜索部分已实现；0.7 起插件登记设计见 `docs/PLUGINS.md`
+- 状态：0.1–1.0 的实现依据；截至 2026-10-27，0.1–0.7 已实现，0.8 部分实现；插件登记设计见 `docs/PLUGINS.md`
 - 日期：2026-10-27
 - 产品名：VaultDesk（0.1 发布前仍可改名）
 - CLI：`vaultdesk`
@@ -18,9 +18,12 @@
 - 0.4 本地技能编辑与 GitHub fork-to-local 已实现。
 - 0.5 本地目录与 GitHub 来源导入、standalone/collection/suite 检测已实现。
 - 0.6 Git 提交/推送（仅限应用改动路径）与跨库元数据搜索已实现。SkillDeck 互操作、preset `verify_command`、打包 agent skill 未实现，顺延至 1.0 前，不在 0.6.0 中宣称。
-- 验证证据：26 个自动化测试通过；Electron 生产构建 smoke 通过并产出截图；`VaultDesk-0.6.0-arm64.dmg` 通过 `hdiutil verify`，包内应用可启动并打开 v2 fixture。
+- 0.6.x 技能页类型筛选与来源分组、suite 成员引用 warning 已实现。
+- 0.7 插件登记已实现：`shape: plugin` source、整根导入与存储、manifest/资产/contained skills 校验、`plugin list/show`（含稳定 agent 契约）、插件页、插件搜索、安装 guard、fixture 与桌面 E2E。hooks 只展示、不执行。
+- 0.8 部分实现：插件搜索、总览计数与安装 guard 已完成；插件更新、整根 diff 与删除清理待完成。
+- 验证证据：43 个 vitest 测试通过（11 个文件）；Electron 生产构建 smoke 通过并产出截图；插件桌面 E2E 覆盖计数、筛选、详情、hooks 警告、本地/GitHub 导入与搜索跳转；`VaultDesk-0.6.0-arm64.dmg` 通过 `hdiutil verify`，包内应用可启动并打开 v2 fixture。
 - 真实 v1 仓库只读验收：6 个来源、27 个技能、8 个安装目标，`vault validate` 无错误；迁移预览生成 9 个写入与 5 个删除；验收前后 `git status` 完全一致，未创建 `.vault/`。该仓库因已有未跟踪文件而 `cleanWorktree: false`，迁移按设计被阻止。
-- 插件登记：设计已确认（`docs/PLUGINS.md`），0.7 起实现。技能与插件的职责边界已定；插件只存储、校验、展示，不安装、不适配。
+- 插件边界：VaultDesk 只存储、校验、展示；不安装、不启用、不适配、不生成 marketplace/adapter manifest、不写 agent 注册表。agent 通过 vault-manager skill 自行安装。
 
 
 ## 1. 产品定义
@@ -312,10 +315,10 @@ vaultdesk presets list
 | 0.4 | 编辑、fork-to-local | 已实现 |
 | 0.5 | 导入向导（本地目录与 GitHub 来源） | 已实现 |
 | 0.6 | Git 提交/推送、跨 vault 搜索强化、SkillDeck 互操作 spike、preset verify_command、agent skill | 部分实现：Git 与搜索已完成，其余顺延 |
-| 0.6.x | 技能页类型筛选与来源分组；suite 成员引用 warning | 未开始 |
-| 0.7 | 插件登记：`shape: plugin` source、导入、存储、校验、`plugin list/show`、插件页、CLI JSON、vault-manager 契约、fixture | 未开始 |
-| 0.8 | 插件更新、整根 diff、搜索与总览、安装 guard、边界测试 | 未开始 |
-| 0.9 | 插件 E2E、DMG、文档、硬化 | 未开始 |
+| 0.6.x | 技能页类型筛选与来源分组；suite 成员引用 warning | 已实现 |
+| 0.7 | 插件登记：`shape: plugin` source、导入、存储、校验、`plugin list/show`、插件页、CLI JSON、vault-manager 契约、fixture | 已实现 |
+| 0.8 | 插件更新、整根 diff、搜索与总览、安装 guard、边界测试 | 部分实现：搜索、总览、guard 已完成；更新、整根 diff、删除清理待完成 |
+| 0.9 | 插件 E2E、DMG、文档、硬化 | 部分实现：插件桌面 E2E 已加入；DMG 与硬化待完成 |
 | 1.0 | 收口、完成延期 0.6 项、稳定化、Homebrew、按需公证 | 未开始 |
 
 ### 0.1 验收

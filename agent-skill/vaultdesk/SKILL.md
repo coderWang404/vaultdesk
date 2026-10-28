@@ -52,16 +52,16 @@ Omit `--vault` when the current directory is the vault.
 
 ### Import
 
-Before importing anything, ask the user what should manage it. Do not infer ownership from the path, a marker, or setup behavior, and do not import first and ask later.
+Before importing anything, inspect the skill and its tool, form a default recommendation, and ask the user to confirm it. Do not write before confirmation, and do not ask with no opinion.
 
-Ask in the user's language: "What should manage this skill: VaultDesk, the tool itself, or another manager?"
+Recommend:
 
-- **VaultDesk** owns edits and installs: import it as a normal source.
-- **The tool manages itself** (self-managed; it installs, rewrites, or validates the skill): record an external card and do not import it as a source. REA's bundled skill is this case.
-- **Another manager** owns it: leave that owner in place. If the user wants state tracked, record an external card with that manager as owner; never import over it.
-- **The user needs a separate copy**: fork to a new path and name; leave the original owner's copy alone.
+- **The tool manages itself** (it ships, installs, rewrites, or validates the skill): record an external card. REA's bundled skill is the default here.
+- **VaultDesk should manage it** (a normal standalone, package, or collection skill): import it as a source.
+- **Another manager owns it** (another lock file, registry, or tool owns the path): leave it there; if the user wants state tracked, record an external card with that manager as owner.
+- **The user needs a separate copy**: fork to a new path and name, and leave the original owner's copy alone.
 
-Use the path, `.vault-managed` marker, and setup behavior only to confirm the user's answer, not to replace it. One path has one owner.
+Say what you found and why you recommend one option, then ask the user to confirm or choose another. If the user already stated the owner, follow that and skip the question. Path traits, `.vault-managed` markers, and setup behavior support the recommendation; they do not replace the user's decision. One path has one owner.
 
 Steps:
 

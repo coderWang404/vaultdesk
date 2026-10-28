@@ -318,16 +318,16 @@ vaultdesk external adopt reverse-engineer-anything --vault "$VAULT" \
 
 It accepts only a standalone source with exactly one skill, outside the vault, with no marker or a marker owned by this vault. It removes the source metadata, lock entry, target references, managed content, vendor copy, and this vault's marker, then writes the external card. A marker owned by another vault blocks the adopt. `external remove` deletes only the card and never touches the external path.
 
-### Deciding ownership when a tool arrives
+### Recommending ownership when a tool arrives
 
-Before importing a new tool or its skills, ask the user what should manage it. Do not infer ownership from the path, a marker, or setup behavior.
+Before importing a new tool or its skills, inspect the path and its tool, form a default recommendation, and ask the user to confirm it. Do not write first, and do not ask with no opinion.
 
-- **VaultDesk** owns edits and installs: import it as a normal source.
-- **The tool manages itself** (self-managed): record an external card; do not import it as a source. This is the REA case.
-- **Another manager** already owns it: leave that owner in place. If the user wants state tracked, record an external card with that manager as owner; never import over it.
-- **You need a separate copy**: fork to a different path and name, and leave the original owner's copy alone.
+- **The tool manages itself** (it ships, installs, rewrites, or validates the skill): recommend an external card. REA is the default example.
+- **VaultDesk should manage it**: recommend a normal source.
+- **Another manager owns it**: recommend leaving it in place; optionally record an external card with that manager as owner.
+- **A separate copy is needed**: recommend a fork to a new path and name.
 
-The path, setup behavior, and `.vault-managed` marker are evidence for confirming the user's answer, not a substitute for asking. One path has one owner.
+State the evidence and the recommendation in one line: "REA's setup rewrites this skill, so I recommend an external card owned by rea-agents. Confirm?" If the user already named the owner, follow it. Path traits and markers are evidence, not a substitute for confirmation. One path has one owner.
 
 `vaultdesk build` writes `build/external-skills.json` with `observed_hash`, `observed_version`, and `status` for each card. Agents read the card, the index, or `external show --json`, then install and update the tool themselves.
 
@@ -448,7 +448,7 @@ Issues and pull requests are welcome. Before changing behavior, read:
 - [docs/PLUGINS.md](docs/PLUGINS.md) for plugin detection, validation, and update rules
 - [agent-skill/vaultdesk/SKILL.md](agent-skill/vaultdesk/SKILL.md) for the agent-facing contract
 
-Keep the boundary intact. VaultDesk stores, validates, records, and displays. It does not install or execute plugins, tools, or MCP servers, does not write a tool-managed skill path, does not generate marketplace or adapter manifests, and does not write agent configuration. When adding a new asset type, ask the user what manages the path before writing any code.
+Keep the boundary intact. VaultDesk stores, validates, records, and displays. It does not install or execute plugins, tools, or MCP servers, does not write a tool-managed skill path, does not generate marketplace or adapter manifests, and does not write agent configuration. When adding a new asset type, recommend an owner and confirm it with the user before writing any code.
 
 ```bash
 pnpm install

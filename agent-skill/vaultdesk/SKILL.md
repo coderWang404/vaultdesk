@@ -52,12 +52,16 @@ Omit `--vault` when the current directory is the vault.
 
 ### Import
 
-Before importing anything, decide who owns the path:
+Before importing anything, ask the user what should manage it. Do not infer ownership from the path, a marker, or setup behavior, and do not import first and ask later.
 
-- **The tool ships the skill and rewrites or validates it.** Do not import it as a source. Record an external card instead. REA's bundled skill is this case.
-- **VaultDesk should own editing and installs.** Import it as a normal source.
-- **The user needs an independent copy.** Fork it to a new path and name; leave the tool's copy alone.
-- **The path already has a `.vault-managed` marker.** Another owner exists. Stop and report it; do not import over it.
+Ask in the user's language: "What should manage this skill: VaultDesk, the tool itself, or another manager?"
+
+- **VaultDesk** owns edits and installs: import it as a normal source.
+- **The tool manages itself** (self-managed; it installs, rewrites, or validates the skill): record an external card and do not import it as a source. REA's bundled skill is this case.
+- **Another manager** owns it: leave that owner in place. If the user wants state tracked, record an external card with that manager as owner; never import over it.
+- **The user needs a separate copy**: fork to a new path and name; leave the original owner's copy alone.
+
+Use the path, `.vault-managed` marker, and setup behavior only to confirm the user's answer, not to replace it. One path has one owner.
 
 Steps:
 

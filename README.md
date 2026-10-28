@@ -72,7 +72,7 @@ The four asset types have deliberately different boundaries:
 - **Skills** are fully managed by VaultDesk. They are built into `build/skills/` and copied into explicit install targets.
 - **Plugins** are registered as `shape: plugin` sources. VaultDesk stores the whole root, validates it, and tracks changes, but the agent installs and adapts the plugin itself.
 - **Tool cards** are records for things VaultDesk does not host at all: MCP servers, CLIs, desktop tools, and multi-tool suites such as REA. Agents read the card and install the tool from the official source.
-- **External skills** are owned by the tool that ships or rewrites them. VaultDesk records the path, pins an optional hash, and reports drift or conflicts, but never writes the path. This is how a tool that validates its own bundled skill (REA, for example) keeps ownership without fighting the vault.
+- **External skills** are owned by a tool or another manager. VaultDesk records the path, pins an optional hash, and reports drift or conflicts, but never writes the path. This is how a tool that validates its own bundled skill (REA, for example) keeps ownership without fighting the vault.
 
 ## Desktop app
 
@@ -320,12 +320,14 @@ It accepts only a standalone source with exactly one skill, outside the vault, w
 
 ### Deciding ownership when a tool arrives
 
-Before importing a new tool or its skills, answer one question: who will write this path?
+Before importing a new tool or its skills, ask the user what should manage it. Do not infer ownership from the path, a marker, or setup behavior.
 
-1. **The tool ships the skill and rewrites or validates it.** Record an external card. Do not import it as a source. This is the REA case.
-2. **VaultDesk should own edits and installs.** Import it as a normal source.
-3. **You need an independent copy.** Fork it to a different path and name, and let the tool keep its own copy.
-4. **Two owners want the same path.** Stop; one owner per path. Pick external, or fork to a new path.
+- **VaultDesk** owns edits and installs: import it as a normal source.
+- **The tool manages itself** (self-managed): record an external card; do not import it as a source. This is the REA case.
+- **Another manager** already owns it: leave that owner in place. If the user wants state tracked, record an external card with that manager as owner; never import over it.
+- **You need a separate copy**: fork to a different path and name, and leave the original owner's copy alone.
+
+The path, setup behavior, and `.vault-managed` marker are evidence for confirming the user's answer, not a substitute for asking. One path has one owner.
 
 `vaultdesk build` writes `build/external-skills.json` with `observed_hash`, `observed_version`, and `status` for each card. Agents read the card, the index, or `external show --json`, then install and update the tool themselves.
 
@@ -446,7 +448,7 @@ Issues and pull requests are welcome. Before changing behavior, read:
 - [docs/PLUGINS.md](docs/PLUGINS.md) for plugin detection, validation, and update rules
 - [agent-skill/vaultdesk/SKILL.md](agent-skill/vaultdesk/SKILL.md) for the agent-facing contract
 
-Keep the boundary intact. VaultDesk stores, validates, records, and displays. It does not install or execute plugins, tools, or MCP servers, does not write a tool-managed skill path, does not generate marketplace or adapter manifests, and does not write agent configuration. When adding a new asset type, decide who owns the path before writing any code.
+Keep the boundary intact. VaultDesk stores, validates, records, and displays. It does not install or execute plugins, tools, or MCP servers, does not write a tool-managed skill path, does not generate marketplace or adapter manifests, and does not write agent configuration. When adding a new asset type, ask the user what manages the path before writing any code.
 
 ```bash
 pnpm install

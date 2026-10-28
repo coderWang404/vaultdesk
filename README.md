@@ -10,6 +10,10 @@
 </p>
 
 <p align="center">
+  <a href="README.md">English</a> · <a href="README.zh-CN.md">简体中文</a>
+</p>
+
+<p align="center">
   <a href="https://github.com/coderWang404/vaultdesk/actions/workflows/ci.yml"><img src="https://github.com/coderWang404/vaultdesk/actions/workflows/ci.yml/badge.svg?branch=main" alt="CI"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-Apache--2.0-blue.svg" alt="License: Apache-2.0"></a>
   <img src="https://img.shields.io/badge/platform-macOS%2013%2B-lightgrey.svg" alt="Platform: macOS 13+">
@@ -88,7 +92,7 @@ The desktop app is an Electron + React shell around the shared core. It provides
 - Read-only record pages for plugins, tool cards, and MCP servers
 - Tool-managed skills grouped by owner, with an external filter and an observation-only inspector
 
-The desktop UI copy is currently Chinese. The CLI output, JSON envelopes, and public documentation are English.
+The desktop UI copy is currently Chinese. CLI output and JSON envelopes are English. Documentation is bilingual: this README has a Simplified Chinese edition, and the design notes under `docs/` are a mix of Chinese and English.
 
 ## Screenshots
 
@@ -457,7 +461,7 @@ pnpm test
 pnpm test:e2e
 ```
 
-Small, focused pull requests with a test that covers the change are easiest to review.
+Small, focused pull requests with a test that covers the change are easiest to review. When behavior changes, update [README.md](README.md) and [README.zh-CN.md](README.zh-CN.md) together.
 
 ## License
 

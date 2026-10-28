@@ -244,7 +244,12 @@ export function Overview({
                 <div className="skill-card-meta">
                   <span>{skill.sourceName}</span>
                   <span>{originLabel(skill.origin)}</span>
-                  {skill.installed.length > 0 ? <span className="installed-dot">已安装</span> : null}
+                  {skill.installed.length > 0 ? (
+                    <span className="installed-label">
+                      <span className="installed-dot" />
+                      已安装
+                    </span>
+                  ) : null}
                 </div>
               </button>
             ))}

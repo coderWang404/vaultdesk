@@ -137,7 +137,9 @@ export async function runPresetVerifyCommand(
     .join(path.delimiter);
 
   return await new Promise<PresetVerifyResult>((resolve, reject) => {
-    const child = spawn("/bin/zsh", ["-lc", command], {
+    const envShell = process.env.SHELL;
+    const shell = envShell && isFile(envShell) ? envShell : "/bin/sh";
+    const child = spawn(shell, ["-lc", command], {
       cwd: home,
       env: { ...process.env, PATH: pathParts },
       stdio: ["ignore", "pipe", "pipe"],

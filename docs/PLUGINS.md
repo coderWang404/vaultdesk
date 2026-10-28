@@ -1,7 +1,7 @@
 # VaultDesk 插件登记设计
 
 - 状态：0.7 与 0.8 已实现；插件导入、整根 diff、更新、删除清理、搜索、总览与安装 guard 均有单元/集成/CLI/桌面 E2E 覆盖
-- 日期：2026-10-27
+- 日期：2026-10-28
 - 范围：Qoder、Claude Code、Codex 的插件登记与展示
 - 非范围：OpenCode 插件、插件安装、marketplace 生成、adapter manifest 生成、agent registry 写入
 
@@ -13,6 +13,8 @@ VaultDesk 是 Git 仓库承载的技能与插件登记库。
 - 插件：由 VaultDesk 存储、校验、展示，agent 通过随 CLI 提供的 `vaultdesk` skill 自行安装和适配。
 
 VaultDesk 不负责让插件在 agent 中生效。插件页没有安装按钮，也不显示 agent 侧的 installed/enabled 状态。
+
+不保存插件源码、只记录官方安装入口的外部工具（例如 MCP 服务、CLI、REA 这类多工具套件）使用工具卡，见 `docs/DESIGN.md` 4.7。工具卡不是 source，不参与插件更新流程。
 
 边界理由：
 

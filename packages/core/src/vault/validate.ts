@@ -1,6 +1,6 @@
 import path from "node:path";
 import YAML from "yaml";
-import { sourceFileSchema, vaultFileSchema, type SourceFile } from "@vaultdesk/schema";
+import { sourceFileSchema, toolCardSchema, vaultFileSchema, type SourceFile } from "@vaultdesk/schema";
 import {
   canonicalPath,
   exists,
@@ -37,6 +37,22 @@ const V2_SOURCE_KEYS = new Set([
   "forked_from",
 ]);
 const V2_TARGET_KEYS = new Set(["id", "dest", "names", "install_after_update"]);
+const V2_TOOL_KEYS = new Set([
+  "schema",
+  "name",
+  "kind",
+  "title",
+  "summary",
+  "homepage",
+  "docs",
+  "recorded_version",
+  "install",
+  "run",
+  "requirements",
+  "related_skills",
+  "tags",
+  "notes",
+]);
 const V2_SKILL_KEYS = new Set(["name", "source_path", "vendor_path", "target_path", "user_invocable", "description"]);
 const V1_SOURCE_SKILL_KEYS = new Set([
   "name",
@@ -574,6 +590,62 @@ async function checkV2Files(snapshot: VaultSnapshot, issues: ValidationIssue[]):
     }
     seen.add(actualName);
   }
+
+  const toolsDir = path.join(snapshot.path, "tools");
+  const toolNames = new Set<string>();
+  for (const entry of listDirectory(toolsDir)) {
+    if (!entry.isFile() || !entry.name.endsWith(".yml")) continue;
+    const filePath = path.join(toolsDir, entry.name);
+    const raw = parseYamlContent(readText(filePath));
+    if (raw.error) {
+      push(issues, "error", "tool.invalid-yaml", `tools/${entry.name}: ${raw.error}`);
+      continue;
+    }
+    const record = asRecord(raw.value);
+    for (const key of unknownKeys(record, V2_TOOL_KEYS)) {
+      push(issues, "warning", "tool.unknown-key", `tools/${entry.name} has an unknown key: ${key}`);
+    }
+    const parsed = toolCardSchema.safeParse(raw.value);
+    if (!parsed.success) {
+      for (const issue of parsed.error.issues) {
+        push(issues, "error", "schema.invalid", `tools/${entry.name} ${issue.path.join(".")}: ${issue.message}`);
+      }
+    }
+    const expectedName = entry.name.replace(/\.yml$/, "");
+    const actualName = typeof record.name === "string" ? record.name : expectedName;
+    if (actualName !== expectedName) {
+      push(
+        issues,
+        "error",
+        "tool.filename-mismatch",
+        `tools/${entry.name}: name ${JSON.stringify(actualName)} does not match file name`,
+      );
+    }
+    if (toolNames.has(actualName)) {
+      push(issues, "error", "tool.duplicate-name", `Duplicate tool name: ${actualName}`);
+    }
+    toolNames.add(actualName);
+  }
+}
+
+function checkTools(snapshot: VaultSnapshot, issues: ValidationIssue[]): void {
+  const knownSkills = new Set<string>([
+    ...snapshot.skills.map((skill) => skill.name),
+    ...snapshot.plugins.flatMap((plugin) => plugin.skills.map((skill) => skill.name)),
+  ]);
+  for (const tool of snapshot.tools) {
+    for (const related of tool.related_skills) {
+      if (!knownSkills.has(related)) {
+        push(
+          issues,
+          "warning",
+          "tool.related-skill-unknown",
+          `Tool ${tool.name} references skill ${related}, which is not in this vault`,
+          tool.relativePath,
+        );
+      }
+    }
+  }
 }
 
 async function checkV1Files(snapshot: VaultSnapshot, issues: ValidationIssue[]): Promise<void> {
@@ -749,6 +821,7 @@ export async function collectIssues(snapshot: VaultSnapshot): Promise<Validation
   for (const plugin of snapshot.plugins) {
     checkPlugin(plugin, snapshot, issues);
   }
+  checkTools(snapshot, issues);
 
   if (!snapshot.name.trim()) {
     push(issues, "error", "vault.name-missing", "Vault name is empty");

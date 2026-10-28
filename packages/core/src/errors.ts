@@ -13,6 +13,7 @@ export type ErrorCode =
   | "unknown-skill"
   | "unknown-target"
   | "unknown-plugin"
+  | "unknown-tool"
   | "plugin-not-installable"
   | "not-a-plugin"
   | "source-not-found"
@@ -51,6 +52,7 @@ export function defaultExitCode(code: ErrorCode): 1 | 2 | 3 {
     case "unknown-skill":
     case "unknown-target":
     case "unknown-plugin":
+    case "unknown-tool":
     case "plugin-not-installable":
     case "not-a-plugin":
       return 2;

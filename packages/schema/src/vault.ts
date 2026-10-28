@@ -222,6 +222,34 @@ export const presetsFileSchema = z.object({
   tools: z.array(presetSchema),
 });
 
+const httpUrlSchema = z
+  .string()
+  .url()
+  .refine((value) => /^https?:\/\//.test(value), { message: "must be an http or https URL" });
+
+export const toolKindSchema = z.enum(["plugin", "mcp", "cli", "app"]);
+export const toolInstallSchema = z.object({
+  label: z.string().trim().min(1),
+  command: z.string().trim().min(1),
+});
+
+export const toolCardSchema = z.object({
+  schema: z.literal(1).default(1),
+  name: slugSchema,
+  kind: toolKindSchema,
+  title: z.string().trim().min(1),
+  summary: z.string().trim().min(1),
+  homepage: httpUrlSchema,
+  docs: httpUrlSchema.optional(),
+  recorded_version: z.string().trim().min(1).optional(),
+  install: z.array(toolInstallSchema).min(1),
+  run: z.string().trim().min(1).optional(),
+  requirements: z.array(z.string().trim().min(1)).default([]),
+  related_skills: z.array(slugSchema).default([]),
+  tags: z.array(z.string().regex(/^[a-z0-9][a-z0-9-]*$/, "must be lowercase tags")).default([]),
+  notes: z.string().trim().min(1).optional(),
+});
+
 export type Origin = z.infer<typeof originSchema>;
 export type Shape = z.infer<typeof shapeSchema>;
 export type PackageKind = z.infer<typeof packageKindSchema>;
@@ -235,3 +263,6 @@ export type VaultState = z.infer<typeof vaultStateSchema>;
 export type Operation = z.infer<typeof operationSchema>;
 export type OperationStep = z.infer<typeof operationStepSchema>;
 export type ToolPreset = z.infer<typeof presetSchema>;
+export type ToolKind = z.infer<typeof toolKindSchema>;
+export type ToolInstall = z.infer<typeof toolInstallSchema>;
+export type ToolCard = z.infer<typeof toolCardSchema>;

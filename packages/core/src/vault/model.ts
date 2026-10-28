@@ -31,6 +31,7 @@ import { getGitSummary } from "../git.js";
 import { parseFrontmatter, frontmatterDescription, frontmatterName } from "../frontmatter.js";
 import { readJournal } from "../journal.js";
 import { inspectPlugin } from "../plugins/discover.js";
+import { listToolCards } from "../tools.js";
 import type {
   CheckStatus,
   InstalledSkill,
@@ -542,6 +543,8 @@ async function loadV2(vaultPath: string): Promise<{
   }
 
   const skills = sources.flatMap((source) => source.skills);
+  const tools = listToolCards(vaultPath);
+  warnings.push(...tools.warnings);
   const targets = metadata.targets.map((target) => ({
     id: target.id,
     dest: target.dest,
@@ -567,9 +570,10 @@ async function loadV2(vaultPath: string): Promise<{
       sources,
       skills,
       plugins,
+      tools: tools.tools,
       targets,
       warnings,
-      counts: countSnapshot(sources, skills, plugins, targets),
+      counts: countSnapshot(sources, skills, plugins, tools.tools.length, targets),
       metadata,
       locked: lock,
       state,
@@ -662,6 +666,7 @@ function countSnapshot(
   sources: SourceRecord[],
   skills: SkillRecord[],
   plugins: PluginRecord[],
+  toolCount: number,
   targets: TargetRecord[],
 ): VaultSnapshot["counts"] {
   return {
@@ -670,6 +675,7 @@ function countSnapshot(
     skills: skills.length,
     plugins: plugins.length,
     pluginSkills: plugins.reduce((total, plugin) => total + plugin.skills.length, 0),
+    tools: toolCount,
     targets: targets.length,
     managedInstalls: targets.reduce(
       (total, target) => total + target.installed.filter((entry) => entry.managed && entry.matches !== false).length,
@@ -851,9 +857,10 @@ async function loadV1(vaultPath: string): Promise<{
       sources,
       skills,
       plugins: [],
+      tools: [],
       targets,
       warnings,
-      counts: countSnapshot(sources, skills, [], targets),
+      counts: countSnapshot(sources, skills, [], 0, targets),
       metadata: {
         schema: 1,
         name: path.basename(vaultPath),

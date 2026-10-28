@@ -1,0 +1,19 @@
+schema: 1
+name: kit-cli
+kind: cli
+title: Kit CLI
+summary: A recorded command-line helper used alongside the kit plugin.
+homepage: https://example.com/kit-cli
+docs: https://example.com/kit-cli/docs
+recorded_version: 1.2.0
+install:
+  - label: Install
+    command: npm install --global kit-cli
+run: kit-cli --help
+requirements:
+  - Node.js 22+
+related_skills:
+  - plain-skill
+tags:
+  - cli
+notes: Recorded for display only; VaultDesk never runs this tool.

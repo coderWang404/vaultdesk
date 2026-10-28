@@ -6,6 +6,7 @@ import type {
   SkillRecord,
   SourceRecord,
   TargetRecord,
+  ToolRecord,
   ValidationIssue,
   VaultSnapshot,
 } from "@vaultdesk/core";
@@ -83,6 +84,19 @@ export function originLabel(origin: SkillRecord["origin"]): string {
 export function sourceShapeLabel(source: SourceRecord): string {
   if (source.shape === "standalone") return "独立技能";
   return source.kind === "suite" ? "套件" : "合集";
+}
+
+export function toolKindLabel(kind: ToolRecord["kind"]): string {
+  switch (kind) {
+    case "plugin":
+      return "插件分发";
+    case "mcp":
+      return "MCP 服务";
+    case "cli":
+      return "命令行";
+    case "app":
+      return "桌面应用";
+  }
 }
 
 export function skillCountLabel(target: TargetRecord): string {

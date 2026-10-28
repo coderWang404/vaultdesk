@@ -16,8 +16,10 @@ import {
   forkSkill,
   initVault,
   installSkills,
+  isFile,
   listPresets,
   openVault,
+  parseToolCard,
   planInstall,
   planMigration,
   previewAddGithub,
@@ -36,9 +38,13 @@ import {
   runPresetVerifyCommand,
   serializeError,
   sourceDiff,
+  toolCardPath,
   updateSources,
   validateVault,
   verifyTarget,
+  withWriteLock,
+  writeToolCard,
+  writeToolsArtifact,
   type CheckReport,
   type ForkPreview,
   type ImportPreview,
@@ -49,10 +55,12 @@ import {
   type PluginRecord,
   type SourceDiff,
   type SourceRecord,
+  type ToolRecord,
   type UpdateResult,
   type ValidationReport,
   type VaultSnapshot,
 } from "@vaultdesk/core";
+import { toolKindSchema } from "@vaultdesk/schema";
 
 const VALUE_FLAGS = new Set([
   "vault",
@@ -67,6 +75,17 @@ const VALUE_FLAGS = new Set([
   "as",
   "backup",
   "message",
+  "title",
+  "summary",
+  "homepage",
+  "docs",
+  "recorded-version",
+  "install-command",
+  "run",
+  "requirement",
+  "related-skill",
+  "tag",
+  "notes",
 ]);
 const BOOLEAN_FLAGS = new Set([
   "json",
@@ -205,7 +224,7 @@ function bundledAgentSkillDir(): string {
 }
 
 const HELP = `VaultDesk ${version()}
-Local-first skill and plugin vault manager.
+Local-first vault for agent skills, plugins, and external tool records.
 
 Usage:
   vaultdesk <group> <action> [arguments] [options]
@@ -239,6 +258,15 @@ Commands:
   git push                         Push the current branch
   presets list                     List candidate tool locations (unverified)
   presets verify <id> [--yes]      Preview or run an optional preset verify_command
+  tool list [--kind <kind>]        List recorded external tool cards
+  tool show <name>                 Show one tool card, install methods, and links
+  tool add <name> [options]        Record an external tool card (preview by default)
+
+Tool card options (tool add):
+  --kind plugin|mcp|cli|app  --title <text>  --summary <text>  --homepage <url>
+  --install-command <label=command> (repeat)  --docs <url>  --recorded-version <v>
+  --run <command>  --requirement <text> (repeat)  --related-skill <name> (repeat)
+  --tag <tag> (repeat)  --notes <text>  --force
 
 Global options:
   --vault <path>   Vault directory (default: current directory)
@@ -333,6 +361,7 @@ function printSnapshot(snapshot: VaultSnapshot): string[] {
   lines.push(
     `Sources  ${snapshot.counts.sources} sources · ${snapshot.counts.packages} packages · ${snapshot.counts.skills} skills · ${snapshot.counts.plugins} plugins · ${snapshot.counts.pluginSkills} plugin skills`,
   );
+  lines.push(`Tools    ${snapshot.counts.tools} external tool cards · ${snapshot.tools.filter((tool) => tool.kind === "mcp").length} MCP`);
   lines.push(
     `Targets  ${snapshot.counts.targets} targets · ${snapshot.counts.managedInstalls} managed installs`,
   );
@@ -769,6 +798,69 @@ function printPresets(): string[] {
   ];
 }
 
+function toolKindText(kind: ToolRecord["kind"]): string {
+  switch (kind) {
+    case "plugin":
+      return "plugin";
+    case "mcp":
+      return "mcp";
+    case "cli":
+      return "cli";
+    case "app":
+      return "app";
+  }
+}
+
+function printTool(tool: ToolRecord): string[] {
+  const lines: string[] = [];
+  const tags = tool.tags.length > 0 ? ` · ${tool.tags.map((tag) => `#${tag}`).join(" ")}` : "";
+  lines.push(bold(tool.name) + `  ${dim(`${toolKindText(tool.kind)}${tags}`)}`);
+  lines.push(tool.title);
+  lines.push(tool.summary);
+  lines.push("");
+  lines.push(`Homepage ${tool.homepage}`);
+  if (tool.docs) lines.push(`Docs     ${tool.docs}`);
+  if (tool.recorded_version) lines.push(`Version  ${tool.recorded_version}`);
+  lines.push("");
+  lines.push(bold("Install"));
+  for (const method of tool.install) lines.push(`  ${method.label.padEnd(10)} ${method.command}`);
+  if (tool.run) {
+    lines.push("");
+    lines.push(bold(tool.kind === "mcp" ? "Connect" : "Run"));
+    lines.push(`  ${tool.run}`);
+  }
+  if (tool.requirements.length > 0) {
+    lines.push("");
+    lines.push(bold("Requirements"));
+    for (const requirement of tool.requirements) lines.push(`  ${requirement}`);
+  }
+  if (tool.related_skills.length > 0) {
+    lines.push("");
+    lines.push(`Related skills ${tool.related_skills.join(", ")}`);
+  }
+  if (tool.notes) {
+    lines.push("");
+    lines.push(tool.notes);
+  }
+  lines.push("");
+  lines.push(
+    dim(
+      tool.kind === "mcp"
+        ? `Card ${tool.relativePath} · record only; VaultDesk does not install, start, or register this MCP server.`
+        : `Card ${tool.relativePath} · record only; VaultDesk does not install or run this tool.`,
+    ),
+  );
+  return lines;
+}
+
+function parseInstallFlag(value: string): { label: string; command: string } {
+  const equals = value.indexOf("=");
+  if (equals <= 0) {
+    throw new VaultDeskError("invalid-input", `--install-command expects label=command, got: ${value}`);
+  }
+  return { label: value.slice(0, equals).trim(), command: value.slice(equals + 1).trim() };
+}
+
 async function dispatch(parsed: Parsed): Promise<CommandResult> {
   const [group, action, ...rest] = parsed.positionals;
   const command = [group, action].filter(Boolean).join(".");
@@ -1110,11 +1202,16 @@ async function dispatch(parsed: Parsed): Promise<CommandResult> {
       if (!parsed.yes || hasFlag(options, "dry-run")) {
         const snapshot = await openVault(vaultPath);
         return {
-          data: { skills: snapshot.skills.map((skill) => skill.name), preview: true },
+          data: {
+            skills: snapshot.skills.map((skill) => skill.name),
+            tools: snapshot.tools.map((tool) => tool.name),
+            preview: true,
+          },
           warnings: snapshot.warnings,
           human: [
-            bold(`Rebuild ${snapshot.skills.length} skills`),
+            bold(`Rebuild ${snapshot.skills.length} skills and ${snapshot.tools.length} tool cards`),
             ...snapshot.skills.map((skill) => `  ${skill.name}`),
+            ...snapshot.tools.map((tool) => `  ${tool.name} ${dim("(tool card)")}`),
             "",
             notice(parsed),
           ],
@@ -1124,7 +1221,10 @@ async function dispatch(parsed: Parsed): Promise<CommandResult> {
       return {
         data: result,
         warnings: [],
-        human: [green(`Built ${result.skills.length} skills into build/skills.`)],
+        human: [
+          green(`Built ${result.skills.length} skills into build/skills.`),
+          green(`Wrote ${result.tools.length} tool cards to build/tools.json.`),
+        ],
       };
     }
 
@@ -1378,6 +1478,140 @@ async function dispatch(parsed: Parsed): Promise<CommandResult> {
         };
       }
       throw new VaultDeskError("invalid-input", `Unknown presets action: ${action}`);
+    }
+
+    case "tool": {
+      const vaultPath = vaultPathOf(parsed);
+      if (action === "list" || action === undefined) {
+        const snapshot = await openVault(vaultPath);
+        const kindValue = valueOf(options, "kind");
+        const parsedKind = kindValue ? toolKindSchema.safeParse(kindValue) : null;
+        if (parsedKind && !parsedKind.success) {
+          throw new VaultDeskError(
+            "invalid-input",
+            `--kind expects plugin, mcp, cli, or app, got: ${kindValue}`,
+          );
+        }
+        const tools = parsedKind?.success
+          ? snapshot.tools.filter((tool) => tool.kind === parsedKind.data)
+          : snapshot.tools;
+        if (tools.length === 0) {
+          return {
+            data: [],
+            warnings: snapshot.warnings,
+            human: [
+              dim(
+                parsedKind?.success
+                  ? `No ${parsedKind.data} tool cards recorded.`
+                  : "No tool cards recorded.",
+              ),
+              dim("Add one with: vaultdesk tool add <name> --kind <kind> --title <text> ..."),
+            ],
+          };
+        }
+        return {
+          data: tools,
+          warnings: snapshot.warnings,
+          human: table(
+            ["NAME", "KIND", "TITLE", "VERSION", "TAGS", "CARD"],
+            tools.map((tool) => [
+              tool.name,
+              toolKindText(tool.kind),
+              tool.title,
+              tool.recorded_version ?? "-",
+              tool.tags.map((tag) => `#${tag}`).join(" ") || "-",
+              tool.relativePath,
+            ]),
+          ),
+        };
+      }
+      if (action === "show") {
+        const name = rest[0];
+        if (!name) throw new VaultDeskError("invalid-input", "tool show requires a tool name.");
+        if (rest.length > 1) throw new VaultDeskError("invalid-input", "tool show takes one tool name.");
+        const snapshot = await openVault(vaultPath);
+        const tool = snapshot.tools.find((entry) => entry.name === name);
+        if (!tool) throw new VaultDeskError("unknown-tool", `Unknown tool card: ${name}`);
+        return { data: tool, warnings: [], human: printTool(tool) };
+      }
+      if (action === "add") {
+        const name = rest[0];
+        if (!name) throw new VaultDeskError("invalid-input", "tool add requires a tool name.");
+        if (rest.length > 1) throw new VaultDeskError("invalid-input", "tool add takes one tool name.");
+        const snapshot = await openVault(vaultPath);
+        if (snapshot.format !== "v2") {
+          throw new VaultDeskError("not-writable-v1", "Migrate this vault before recording tool cards.");
+        }
+        const kind = valueOf(options, "kind");
+        const title = valueOf(options, "title");
+        const summary = valueOf(options, "summary");
+        const homepage = valueOf(options, "homepage");
+        const installValues = valuesOf(options, "install-command");
+        const missing = [
+          !kind ? "--kind" : null,
+          !title ? "--title" : null,
+          !summary ? "--summary" : null,
+          !homepage ? "--homepage" : null,
+          installValues.length === 0 ? "--install-command" : null,
+        ].filter((entry): entry is string => Boolean(entry));
+        if (missing.length > 0) {
+          throw new VaultDeskError("invalid-input", `tool add requires ${missing.join(", ")}.`);
+        }
+        const recordedVersion = valueOf(options, "recorded-version");
+        const docs = valueOf(options, "docs");
+        const run = valueOf(options, "run");
+        const notes = valueOf(options, "notes");
+        const card = parseToolCard({
+          name,
+          kind,
+          title,
+          summary,
+          homepage,
+          ...(docs ? { docs } : {}),
+          ...(recordedVersion ? { recorded_version: recordedVersion } : {}),
+          install: installValues.map(parseInstallFlag),
+          ...(run ? { run } : {}),
+          requirements: valuesOf(options, "requirement"),
+          related_skills: valuesOf(options, "related-skill"),
+          tags: valuesOf(options, "tag"),
+          ...(notes ? { notes } : {}),
+        });
+        const file = toolCardPath(vaultPath, card.name);
+        const exists = isFile(file);
+        if (exists && !hasFlag(options, "force")) {
+          throw new VaultDeskError("path-conflict", `Tool card already exists: tools/${card.name}.yml`, {
+            details: ["Pass --force to replace it."],
+          });
+        }
+        const previewRecord: ToolRecord = {
+          ...card,
+          path: file,
+          relativePath: `tools/${card.name}.yml`,
+        };
+        if (!parsed.yes || hasFlag(options, "dry-run")) {
+          return {
+            data: { ...previewRecord, preview: true, replaces: exists },
+            warnings: [],
+            human: [...printTool(previewRecord), "", notice(parsed)],
+          };
+        }
+        const record = await withWriteLock(vaultPath, async () =>
+          writeToolCard(vaultPath, card, { force: true }),
+        );
+        const fresh = await openVault(vaultPath);
+        writeToolsArtifact(fresh);
+        return {
+          data: { ...record, artifact: "build/tools.json" },
+          warnings: fresh.warnings,
+          human: [
+            green(`Recorded tool card ${record.name}.`),
+            record.relativePath,
+            "Wrote build/tools.json.",
+            dim("Record only: VaultDesk did not install or run this tool."),
+          ],
+        };
+      }
+      throw new VaultDeskError("invalid-input", `Unknown tool action: ${action}`);
     }
 
     default:

@@ -1,6 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
-import { shell } from "electron";
+import { clipboard, shell } from "electron";
 import {
   addGithubPlugin,
   addGithubSource,
@@ -218,6 +218,10 @@ const handlers: { [K in IpcCommand]: Handler<K> } = {
     }
     await shell.openExternal(parsed.toString());
     return { opened: parsed.toString() };
+  },
+  "app.copyText": ({ text }) => {
+    clipboard.writeText(text);
+    return { copied: text.length };
   },
 };
 

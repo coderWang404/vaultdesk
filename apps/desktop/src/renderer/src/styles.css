@@ -1039,6 +1039,10 @@ pre {
   line-height: 1.65;
 }
 
+.empty code {
+  color: var(--ink-soft);
+}
+
 .empty-action {
   margin-top: 14px;
 }
@@ -4736,4 +4740,223 @@ kbd {
 
 .import-plugin-summary .callout {
   margin: 0;
+}
+
+.origin-external {
+  color: var(--gold);
+  background: linear-gradient(180deg, #f8f0df, #f0e3c9);
+  border-color: rgba(168, 130, 63, 0.22);
+}
+
+.tool-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(330px, 1fr));
+  gap: 12px;
+  align-items: start;
+}
+
+.tool-card {
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+  padding: 14px 15px 13px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.42);
+  box-shadow: var(--shadow-sm);
+}
+
+.tool-card-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.tool-card-title {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+
+.tool-card-title h2 {
+  font-family: var(--serif);
+  font-size: 17px;
+  font-weight: 600;
+  line-height: 1.3;
+  letter-spacing: 0.005em;
+  overflow-wrap: anywhere;
+}
+
+.tool-card-name {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 5px;
+  font-size: 10.5px;
+  color: var(--ink-faint);
+}
+
+.tool-card-name .mono {
+  font-size: 10.5px;
+  color: var(--ink-muted);
+}
+
+.tool-glyph {
+  width: 34px;
+  height: 34px;
+  border-radius: 9px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  border: 1px solid rgba(168, 130, 63, 0.22);
+  background: linear-gradient(180deg, #f8f0df, #f0e3c9);
+  color: var(--gold);
+}
+
+.tool-summary {
+  font-size: 11.5px;
+  line-height: 1.65;
+  color: var(--ink-soft);
+}
+
+.tool-section {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  padding-top: 8px;
+  border-top: 1px dashed rgba(32, 29, 23, 0.08);
+}
+
+.tool-section-label {
+  font-size: 9.5px;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  color: var(--ink-faint);
+}
+
+.tool-command {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 5px 6px 5px 8px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--paper-wash);
+}
+
+.tool-command-label {
+  flex: 0 0 auto;
+  max-width: 96px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 9.5px;
+  color: var(--ink-faint);
+}
+
+.tool-command code {
+  flex: 1;
+  min-width: 0;
+  padding: 0;
+  background: none;
+  font-size: 10.5px;
+  line-height: 1.5;
+  color: var(--ink-soft);
+  overflow-wrap: anywhere;
+}
+
+.tool-command .icon-btn {
+  flex: 0 0 auto;
+  width: 24px;
+  height: 24px;
+  border-radius: 5px;
+}
+
+.tool-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.tool-chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--paper-raised);
+  font-size: 10px;
+  color: var(--ink-muted);
+  line-height: 1.5;
+}
+
+.tool-chip.is-link {
+  color: var(--accent);
+  border-color: rgba(176, 69, 48, 0.18);
+  background: var(--accent-wash);
+}
+
+.tool-chip.is-link:hover {
+  border-color: rgba(176, 69, 48, 0.34);
+  color: var(--accent-deep);
+}
+
+.tool-notes {
+  padding: 7px 9px;
+  border-left: 2px solid rgba(168, 130, 63, 0.4);
+  background: rgba(168, 130, 63, 0.06);
+  font-size: 10.5px;
+  line-height: 1.6;
+  color: var(--ink-muted);
+  overflow-wrap: anywhere;
+}
+
+.tool-links {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-top: auto;
+  padding-top: 8px;
+  border-top: 1px solid var(--line);
+}
+
+.tool-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 10.5px;
+  color: var(--ink-muted);
+}
+
+.tool-link:hover {
+  color: var(--accent);
+}
+
+.tool-card-path {
+  margin-left: auto;
+  font-size: 9.5px;
+  color: var(--ink-faint);
+  overflow-wrap: anywhere;
+  text-align: right;
+}
+
+.tool-boundary {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  margin-top: 16px;
+  padding-top: 12px;
+  border-top: 1px solid var(--line);
+  font-size: 10.5px;
+  line-height: 1.6;
+  color: var(--ink-faint);
+}
+
+.tool-boundary svg {
+  flex: 0 0 auto;
+  margin-top: 1px;
 }

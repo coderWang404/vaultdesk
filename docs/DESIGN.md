@@ -1,7 +1,7 @@
 # VaultDesk 设计定稿
 
-- 状态：0.1–1.0 已实现；截至 2026-10-27，1.0.0 已构建并通过本地 DMG 验收，尚未发布；插件登记设计见 `docs/PLUGINS.md`，SkillDeck 互操作结论见 `docs/SKILLDECK-INTEROP.md`，发布状态与 Homebrew/公证评估见 `docs/RELEASE.md`
-- 日期：2026-10-27
+- 状态：0.1–1.0 已实现；截至 2026-10-28，1.0.0 已构建并通过本地 DMG 验收，尚未发布；插件登记设计见 `docs/PLUGINS.md`，SkillDeck 互操作结论见 `docs/SKILLDECK-INTEROP.md`，发布状态与 Homebrew/公证评估见 `docs/RELEASE.md`
+- 日期：2026-10-28
 - 产品名：VaultDesk
 - CLI：`vaultdesk`
 - 仓库：`github.com/coderWang404/vaultdesk`
@@ -10,8 +10,11 @@
 - 平台：macOS（1.0 验收产物为 Apple Silicon；Intel 可从源码构建）
 - 技术栈：Electron + React + TypeScript，pnpm monorepo
 
-## 实现状态（2026-10-27）
+## 实现状态（2026-10-28）
 
+> 1.0 的状态记录保留在下方；工具卡记录层是本轮新增、尚未随版本发布的功能。
+
+- 工具卡记录层（未发布）：`tools/<name>.yml` 独立记录、schema 与校验、`tool list/show/add`、`tool list --kind`、`build/tools.json`、搜索、桌面只读工具页与 MCP 页、随 CLI 分发的 `vaultdesk` skill 契约已实现。
 - 0.1 只读浏览、校验、上游检查与 diff、迁移预览、多 tab、跨库 Cmd+K 已实现。
 - 0.2 迁移写盘（独立分支、要求干净工作区、提交不推送）已实现。
 - 0.3 安装、目标管理、槽位判定、备份/恢复、文件级验证已实现。
@@ -21,7 +24,7 @@
 - 0.6.x 技能页类型筛选与来源分组、suite 成员引用 warning 已实现。
 - 0.7 插件登记已实现：`shape: plugin` source、整根导入与存储、manifest/资产/contained skills 校验、`plugin list/show`（含稳定 agent 契约）、插件页、插件搜索、安装 guard、fixture 与桌面 E2E。hooks 只展示、不执行。
 - 0.8 已实现：插件整根 diff、review-before-apply 更新、source 元数据刷新、conflict/--force guard、纯插件更新跳过 build 与 install、删除清理；搜索与总览、安装 guard 同前。
-- 验证证据：55 个 vitest 测试通过（13 个文件）；插件集成测试覆盖整根 diff、更新、force guard、content_path 与删除清理；preset 测试覆盖 verify_command 解析、显式确认、退出码/输出捕获、超时杀进程与 64KB 截断；CLI 与桌面 E2E 覆盖插件导入、检查、diff、更新、删除与 hooks 不执行，以及 agent skill、验证命令预览/执行；Electron 生产构建 smoke 通过并产出截图；`VaultDesk-1.0.0-arm64.dmg`（125,189,367 字节，SHA-256 `d1b76e4f4c7ce31617240b103aea843093f09718ffca956626d643271bfa47c6`）通过 `hdiutil verify`，ad-hoc 签名为有效 bundle 签名（`codesign --verify --deep --strict` 通过，Identifier 为 `com.coderwang404.vaultdesk`），包内 agent skill 存在，安装后的应用可启动、校验并编辑 v2 fixture，应用退出后编辑仍在。
+- 验证证据：66 个 vitest 测试通过（14 个文件）；tool 测试覆盖卡片写入与 force 覆盖、字段校验、文件名/重复/关联技能检查、确定性 `build/tools.json`、搜索命中（含 `toolKind`）、`tool list --kind` 过滤与非法 kind，以及安装命令不被执行；插件集成测试覆盖整根 diff、更新、force guard、content_path 与删除清理；preset 测试覆盖 verify_command 解析、显式确认、退出码/输出捕获、超时杀进程与 64KB 截断；CLI 与桌面 E2E 覆盖插件导入、检查、diff、更新、删除与 hooks 不执行，工具卡与 MCP 页展示、复制、跳转、搜索路由与 v1 空状态，以及 agent skill、验证命令预览/执行；9 个视图 axe 扫描 0 violations；Electron 生产构建 smoke 通过并产出截图；`VaultDesk-1.0.0-arm64.dmg`（125,189,367 字节，SHA-256 `d1b76e4f4c7ce31617240b103aea843093f09718ffca956626d643271bfa47c6`）通过 `hdiutil verify`，ad-hoc 签名为有效 bundle 签名（`codesign --verify --deep --strict` 通过，Identifier 为 `com.coderwang404.vaultdesk`），包内 agent skill 存在，安装后的应用可启动、校验并编辑 v2 fixture，应用退出后编辑仍在。
 - 真实 v1 仓库只读验收：6 个来源、27 个技能、8 个安装目标，`vault validate` 无错误；迁移预览生成 9 个写入与 5 个删除；验收前后 `git status` 完全一致，未创建 `.vault/`。该仓库因已有未跟踪文件而 `cleanWorktree: false`，迁移按设计被阻止。
 - 插件边界：VaultDesk 只存储、校验、展示；不安装、不启用、不适配、不生成 marketplace/adapter manifest、不写 agent 注册表。agent 通过随 CLI 提供的 `vaultdesk` skill 自行安装。
 
@@ -34,6 +37,7 @@ VaultDesk 是一个本地优先的 skill / plugin 资产管理器。它把一个
 
 - 技能：VaultDesk 负责构建、安装、校验、备份和恢复。SKILL.md 是跨 agent 的稳定格式。
 - 插件：VaultDesk 负责登记、存储、校验和展示；实际安装与适配由 agent 在使用时自行完成，接口是随 CLI 提供的 `vaultdesk` skill。
+- 工具卡：只记录外部工具的官方地址、安装方式和运行入口，不保存工具源码，不执行安装或运行。适用于 MCP 服务、CLI、桌面应用，以及 REA 这类内含多个工具、以插件形式分发的套件。MCP 管理模块是 `kind: mcp` 的工具卡视图，不单独存储。
 - VaultDesk 不生成 marketplace 或 adapter manifest，不写入 agent 的插件注册表，不显示 agent 侧的 installed/enabled 状态。
 
 目标用户：同时使用多个 agent 工具、自己维护技能库、需要知道「装了什么、来自哪里、哪个版本、装到哪、有没有更新」的个人开发者。
@@ -51,6 +55,7 @@ VaultDesk 是一个本地优先的 skill / plugin 资产管理器。它把一个
 
 - 不做 12 个 agent 工具的 symlink 分发农场。VaultDesk 只向用户指定的目录复制产物，工具发现规则由 agent 自己核实。
 - 不做插件安装器、marketplace 生成器或 adapter manifest 生成器；不写 agent 插件注册表。
+- 不做工具安装器或版本检查器；工具卡只记录人工确认过的官方入口。
 - 不做技能市场、评分、云同步。
 - 不追求原生 SwiftUI 手感。
 - 不读取或改写其他管理器（如 SkillDeck）的私有锁文件。
@@ -100,8 +105,10 @@ sources/<name>.yml
 skills/<name>/
 packages/<pkg>/skills/<skill>/
 plugins/<name>/
+tools/<name>.yml
 third_party/
 build/skills/<name>/
+build/tools.json
 .vault/state.json
 .vault/operation.json
 ```
@@ -213,6 +220,46 @@ sources:
 
 插件只进 vault，不进 `build/skills/`，不进入安装目标解析。manifest 是可选元数据：没有 manifest 时按 `skills/` 加 MCP/commands/agents/hooks 等组合识别，也可由用户显式强制或关闭。完整规则、插件识别、资产清单和校验项见 `docs/PLUGINS.md`。
 
+### 4.7 工具卡
+
+工具卡用于记录 VaultDesk 不托管源码的外部工具，例如 MCP 服务、CLI、桌面应用，以及 REA 这类内含多个工具、以插件形式分发的套件。`kind` 描述分发形态，不描述协议；协议信息放进 `tags`（如 `mcp`、`cli`）。
+
+工具卡不是 source：没有 `origin`、`ref`、`vault.lock` 记录，不参与上游检查、diff、更新、build 或安装。工具卡也不写入 agent 配置。
+
+```yaml
+schema: 1
+name: rea
+kind: plugin                  # plugin | mcp | cli | app
+title: REA · Reverse Engineer Anything
+summary: 逆向工程工具箱，含 CLI 与 MCP 服务。
+homepage: https://rea.tools/
+docs: https://github.com/morluto/rea/blob/main/docs/installation.md
+recorded_version: "6.8.0"
+install:
+  - label: 接入 agent
+    command: npx rea-agents setup
+run: rea --mcp
+requirements:
+  - Node.js ^22.23.4 || ^24.22.1 || >=26.12.1
+related_skills: [reverse-engineer-anything]
+tags: [mcp, cli, reverse-engineering]
+notes: 技能版不会注册 MCP，需要运行安装命令并重启 agent。
+```
+
+规则：
+
+- 必填：`name`、`kind`、`title`、`summary`、`homepage`、`install`；`install` 至少一项，每项为 `{label, command}`。
+- 可选：`docs`、`recorded_version`、`run`、`requirements`、`related_skills`、`tags`、`notes`。
+- `name` 必须是 slug，且与文件名一致；`homepage`、`docs` 只接受 http(s)。
+- `tags` 为小写 slug；`related_skills` 指向 vault 内技能，缺失时只产生 warning。
+- 非法 YAML 或字段错误会作为 snapshot warning 显示，并使 `vault validate` 报错。
+- 工具卡是人工记录的快照，不检查新版本，也不代表本机已安装。禁止写入 token、密钥或私有 URL。
+- `build/tools.json` 是可选的生成索引，内容为规范化后的卡片数组，不含时间戳。
+
+接口：CLI 提供 `tool list [--kind <kind>]`、`tool show <name>`、`tool add <name>`（预览后 `--yes` 落盘）；桌面「工具」页只读展示并支持搜索。agent 通过 `tool show --json`、`build/tools.json` 和随 CLI 分发的 `vaultdesk` skill 读取卡片，再按自己的安装规则处理。
+
+MCP 管理模块不引入独立数据模型：MCP 服务仍是 `kind: mcp` 的工具卡，与其他工具卡共用 `tools/`、`build/tools.json` 和搜索索引。桌面侧边栏「MCP」是工具页按 `kind` 过滤的只读视图，总览单列 MCP 卡数量；CLI 用 `tool list --kind mcp` 得到同一集合。MCP 卡用「连接 / 启动」呈现 `run`，复制按钮只复制命令文本，不检测端口、不启动进程，也不判断是否已注册到任何 agent。
+
 ## 5. 更新与安装语义
 
 ### 5.1 检查
@@ -268,6 +315,7 @@ sources:
 vaultdesk vault status|init|migrate|validate
 vaultdesk source list|show|check|diff|update|add|remove|fork
 vaultdesk plugin list|show
+vaultdesk tool list [--kind <kind>]|show|add
 vaultdesk build
 vaultdesk target list|install|remove|verify|restore
 vaultdesk git status|commit|push
@@ -303,7 +351,7 @@ vaultdesk agent skill
 - 不启动本地 HTTP 服务。
 - 外部链接交给系统浏览器，拒绝 `file://` 与未知协议。
 - 多 vault 用 tab 打开，各自持有独立锁；同一 vault 不重复打开。
-- 搜索为 Cmd+K 元数据搜索（名称、描述、来源、包、origin、插件 manifest），不做全文搜索。
+- 搜索为 Cmd+K 元数据搜索（名称、描述、来源、包、origin、插件 manifest、工具卡），不做全文搜索。
 - 打开、检查、diff 在 0.1 阶段全部只读。0.2 起新增写入口，但一律先预览、再显式确认，CLI 需要 `--yes`。
 
 ## 8. 版本路线
@@ -343,8 +391,8 @@ vaultdesk agent skill
 
 ## 9. 测试与发布门槛
 
-- core 单元测试：schema、路径、哈希、校验规则、迁移、安装槽位、fork、导入检测、搜索、Git 路径过滤、插件发现与校验。
-- fixture 集成测试：v1 与 v2 各一套，覆盖 local/GitHub、standalone/package/suite/collection；插件 fixture 覆盖 Claude/Codex/Qoder/manifest 冲突/hooks/路径逃逸，以及无 manifest 的组合识别与显式强制导入。
+- core 单元测试：schema、路径、哈希、校验规则、迁移、安装槽位、fork、导入检测、搜索、Git 路径过滤、插件发现与校验、工具卡与 MCP 解析及产物。
+- fixture 集成测试：v1 与 v2 各一套，覆盖 local/GitHub、standalone/package/suite/collection；插件 fixture 覆盖 Claude/Codex/Qoder/manifest 冲突/hooks/路径逃逸，以及无 manifest 的组合识别与显式强制导入。工具卡覆盖合法/非法字段、`tool list/show/add`、`tool list --kind` 过滤与非法 kind、重复写入与 `--force`、`build/tools.json`、搜索命中（含 `toolKind`）。
 - 迁移 golden：固定 fixture 的 dry-run 输出与 golden 文件一致，重复调用结果稳定。
 - CLI 测试：JSON 信封、退出码、`--yes` 门禁、只读命令不写盘。
 - Electron smoke：本地脚本启动生产构建，打开临时 fixture，校验渲染文本并截图；CI 的 macOS 任务运行同一脚本。
@@ -390,3 +438,6 @@ vaultdesk agent skill
 | 26 | 插件安装交给 agent，随 CLI 提供的 `vaultdesk` skill 是接口 |
 | 27 | OpenCode 不在插件适配范围 |
 | 28 | suite 成员关系用校验 warning 维护，不生成额外技能 |
+| 29 | 工具卡是独立记录，不是 source，不参与检查、更新、build 或安装 |
+| 30 | 工具卡写入只走 CLI，桌面工具页只读；agent 自行安装，VaultDesk 不代劳 |
+| 31 | MCP 模块复用工具卡，按 `kind: mcp` 过滤；不建独立存储，不注册、不启动 MCP 服务 |

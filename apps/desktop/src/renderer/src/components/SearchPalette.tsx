@@ -9,21 +9,23 @@ interface SearchReport {
   warnings: string[];
 }
 
-function shapeLabel(shape: SearchHit["shape"]): string {
-  switch (shape) {
+function shapeLabel(hit: SearchHit): string {
+  switch (hit.shape) {
     case "standalone":
       return "独立";
     case "package-skill":
       return "包内";
     case "plugin-skill":
       return "插件内";
+    case "tool":
+      return hit.toolKind === "mcp" ? "MCP" : "工具";
     default:
       return "插件";
   }
 }
 
 function shapeTone(shape: SearchHit["shape"]): "muted" | "accent" {
-  return shape === "plugin" || shape === "plugin-skill" ? "accent" : "muted";
+  return shape === "plugin" || shape === "plugin-skill" || shape === "tool" ? "accent" : "muted";
 }
 
 export function SearchPalette({
@@ -115,8 +117,8 @@ export function SearchPalette({
             value={query}
             onChange={(event) => setQuery(event.target.value)}
             onKeyDown={onKeyDown}
-            placeholder="搜索技能、插件、manifest、来源或安装目标…"
-            aria-label="搜索技能与插件"
+            placeholder="搜索技能、插件、MCP、工具卡或来源…"
+            aria-label="搜索技能、插件、MCP 与工具卡"
             spellCheck={false}
           />
           {loading ? <Spinner size={15} /> : <kbd>esc</kbd>}
@@ -124,7 +126,7 @@ export function SearchPalette({
 
         <div className="palette-body">
           {vaults.length === 0 ? (
-            <p className="palette-note">先打开一个仓库，再搜索技能与插件元数据。</p>
+            <p className="palette-note">先打开一个仓库，再搜索技能、插件、MCP 与工具卡元数据。</p>
           ) : query.trim().length === 0 ? (
             <div className="palette-idle">
               <p className="palette-note">搜索已打开的 {vaults.length} 个仓库的元数据。</p>
@@ -145,7 +147,7 @@ export function SearchPalette({
           ) : error ? (
             <p className="palette-note is-danger">{error}</p>
           ) : empty ? (
-            <p className="palette-note">没有匹配的技能或插件。搜索只覆盖元数据，不读取文件全文。</p>
+            <p className="palette-note">没有匹配的技能、插件、MCP 或工具卡。搜索只覆盖元数据，不读取文件全文。</p>
           ) : (
             <div className="palette-results">
               {hits.map((hit, index) => (
@@ -157,22 +159,36 @@ export function SearchPalette({
                 >
                   <span className={`origin-glyph origin-${hit.origin}`}>
                     <Icon
-                      name={hit.shape === "plugin" ? "sparkle" : hit.origin === "github" ? "git" : "folder"}
+                      name={
+                        hit.shape === "tool"
+                          ? hit.toolKind === "mcp"
+                            ? "server"
+                            : "terminal"
+                          : hit.shape === "plugin"
+                            ? "sparkle"
+                            : hit.origin === "github"
+                              ? "git"
+                              : "folder"
+                      }
                       size={14}
                     />
                   </span>
                   <span className="palette-hit-main">
                     <span className="palette-hit-title">
                       <strong>{hit.skill}</strong>
-                      <StatusPill tone={shapeTone(hit.shape)}>{shapeLabel(hit.shape)}</StatusPill>
+                      <StatusPill tone={shapeTone(hit.shape)}>{shapeLabel(hit)}</StatusPill>
                       {hit.installedTargets.length > 0 ? (
                         <StatusPill tone="ok">{hit.installedTargets.length} 个安装</StatusPill>
                       ) : null}
                     </span>
                     <span className="palette-hit-meta">
-                      {hit.shape === "plugin-skill" && hit.pluginName
-                        ? `插件 ${hit.pluginName} · ${hit.vaultName}`
-                        : `${hit.sourceName} · ${hit.vaultName}`}
+                      {hit.shape === "tool"
+                        ? hit.toolKind === "mcp"
+                          ? `MCP 服务 · ${hit.vaultName}`
+                          : `外部工具 · ${hit.vaultName}`
+                        : hit.shape === "plugin-skill" && hit.pluginName
+                          ? `插件 ${hit.pluginName} · ${hit.vaultName}`
+                          : `${hit.sourceName} · ${hit.vaultName}`}
                       {hit.installedTargets.length > 0 ? ` · ${hit.installedTargets.join("、")}` : ""}
                     </span>
                   </span>
@@ -186,7 +202,7 @@ export function SearchPalette({
         </div>
 
         <div className="palette-foot">
-          <span>跨仓库搜索技能与插件元数据，不修改任何内容</span>
+          <span>跨仓库搜索技能、插件、MCP 与工具卡元数据，不修改任何内容</span>
           {report && hits.length > 0 ? <span>{hits.length} 个结果</span> : null}
         </div>
       </div>

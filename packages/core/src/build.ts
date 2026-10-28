@@ -1,14 +1,16 @@
 import fs from "node:fs";
 import path from "node:path";
-import { ensureDir, isDirectory, isFile, listDirectory, movePath, removePath } from "./fsx.js";
+import { ensureDir, isDirectory, isFile, listDirectory, movePath, removePath, writeJsonAtomic } from "./fsx.js";
 import { VaultDeskError } from "./errors.js";
 import { loadVault } from "./vault/model.js";
 import { detectVaultFormat } from "./vault/model.js";
 import { hashDirectory } from "./fsx.js";
+import { toolDocument } from "./tools.js";
 import type { VaultSnapshot } from "./types.js";
 
 export interface BuildResult {
   skills: string[];
+  tools: string[];
   artifacts: Record<string, string>;
   hashes: Record<string, string>;
 }
@@ -68,7 +70,20 @@ export function buildSnapshot(snapshot: VaultSnapshot): BuildResult {
     throw error;
   }
 
-  return { skills, artifacts, hashes };
+  writeToolsArtifact(snapshot);
+  const tools = snapshot.tools.map((tool) => tool.name);
+
+  return { skills, tools, artifacts, hashes };
+}
+
+export function writeToolsArtifact(snapshot: VaultSnapshot): string {
+  const file = path.join(snapshot.path, "build", "tools.json");
+  writeJsonAtomic(file, {
+    schema: 1,
+    vault: snapshot.name,
+    tools: snapshot.tools.map((tool) => toolDocument(tool)),
+  });
+  return file;
 }
 
 export function listBuildArtifacts(vaultPath: string): string[] {

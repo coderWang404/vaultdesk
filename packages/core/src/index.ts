@@ -6,6 +6,7 @@ export * from "./frontmatter.js";
 export * from "./journal.js";
 export * from "./settings.js";
 export * from "./presets.js";
+export * from "./tools.js";
 export * from "./agent-skill.js";
 export * from "./search.js";
 export * from "./init.js";

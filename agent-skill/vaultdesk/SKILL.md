@@ -1,17 +1,19 @@
 ---
 name: vaultdesk
-description: Manage a VaultDesk vault and its skills and plugins through the `vaultdesk` CLI. Use when the user asks to inspect vault status, import or update skills, install skills into agent directories, review plugin contents, validate a vault, or recover an interrupted operation.
+description: Manage a VaultDesk vault and its skills, plugins, and external tool cards through the `vaultdesk` CLI. Use when the user asks to inspect vault status, import or update skills, install skills into agent directories, review plugin contents, look up a recorded tool's official install method, validate a vault, or recover an interrupted operation.
 ---
 
 # VaultDesk
 
-VaultDesk stores skills and plugin roots in a Git-backed vault. The CLI and the desktop app share one core, so `--json` output is the stable contract. Inspect first, preview writes, and apply only after the user approves the change.
+VaultDesk stores skills, plugin roots, and external tool records in a Git-backed vault. The CLI and the desktop app share one core, so `--json` output is the stable contract. Inspect first, preview writes, and apply only after the user approves the change.
 
 ## Inspect first
 
 - `vaultdesk --vault <path> vault status --json`
 - `vaultdesk --vault <path> source list --json`
 - `vaultdesk --vault <path> plugin list --json`
+- `vaultdesk --vault <path> tool list --json`
+- `vaultdesk --vault <path> tool list --kind mcp --json`
 
 Omit `--vault` when the current directory is the vault.
 
@@ -19,6 +21,9 @@ Omit `--vault` when the current directory is the vault.
 
 - VaultDesk stores and validates plugins; it does not install, enable, or adapt them. If the user wants a plugin active, follow that agent's current plugin rules yourself. Never run plugin hooks.
 - A plugin does not need a manifest. VaultDesk also recognizes `skills/<name>/SKILL.md` plus MCP, commands, agents, hooks, rules, or workflows. When `manifests` is empty, plan the install from `assets` and `containedSkills` in the agent's own configuration.
+- Tool cards are records, not installations. VaultDesk never downloads, installs, or runs them. Follow the card's `homepage` and `docs`, then use the agent's own rules; never claim VaultDesk installed, enabled, or registered anything.
+- MCP servers are tool cards with `kind: mcp`. VaultDesk does not register, start, or health-check them and does not write agent MCP configuration; registering the server is your job when the user asks.
+- Never put tokens, API keys, private URLs, or other secrets in a tool card or any vault file.
 - Never edit `third_party/<name>/`; it is the pristine upstream copy. Edit `plugins/<name>/` only when the user explicitly asks, and expect update conflicts until the change is forked or discarded.
 - GitHub-origin skills are read-only until forked with `source fork`. Do not hand-edit their working copies.
 - Do not pass `--yes` without the user's explicit approval of the preview or diff. Show them what will change.
@@ -48,6 +53,20 @@ Omit `--vault` when the current directory is the vault.
 - Review the detected shape (standalone, package, plugin) and target paths before applying with `--yes`.
 - `--plugin` forces plugin registration; `--no-plugin` stores the folder as a skill or package. They are mutually exclusive.
 - Plugin roots are stored under `plugins/<name>/` and are never written to an agent directory.
+
+### Use a tool card
+
+1. Run `tool list --json` or `tool list --kind mcp --json`; use `tool show <name> --json` for the full card. After `build`, the same records are in `build/tools.json`.
+2. Read `homepage`, `docs`, `install`, `run`, `requirements`, and `related_skills`. Prefer the official page and the agent's current rules over the recorded command.
+3. Check requirements first. Ask before running any install or run command; do not assume the recorded version is still current.
+4. Do not write the tool's config, credentials, or installed state back into the vault.
+
+### Record a tool card
+
+- `tool add <name> --kind plugin|mcp|cli|app --title <text> --summary <text> --homepage <url> --install-command <label=command>`
+- Repeat `--install-command`, `--requirement`, `--related-skill`, and `--tag` as needed. Add `--docs`, `--recorded-version`, `--run`, and `--notes` when known.
+- The command previews first; apply with `--yes` after approval. Use `--force` only to replace an existing card.
+- `tools/<name>.yml` is the source of truth. The desktop tools page is read-only.
 
 ### Validate and recover
 

@@ -1,0 +1,20 @@
+schema: 1
+name: filesystem-mcp
+kind: mcp
+title: Filesystem MCP
+summary: A recorded stdio MCP server for reading a local workspace.
+homepage: https://example.com/filesystem-mcp
+docs: https://example.com/filesystem-mcp/docs
+recorded_version: 1.0.0
+install:
+  - label: Install
+    command: npm install --global @modelcontextprotocol/server-filesystem
+run: mcp-server-filesystem /tmp
+requirements:
+  - Node.js 22+
+related_skills:
+  - plain-skill
+tags:
+  - mcp
+  - filesystem
+notes: Recorded for display only; VaultDesk never installs, starts, or registers this MCP server.

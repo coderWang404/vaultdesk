@@ -136,6 +136,7 @@ export const ipcCommands = {
   "app.removeRecent": z.object({ path: vaultPath }),
   "app.reveal": z.object({ path: vaultPath }),
   "app.openExternal": z.object({ url: z.string().url() }),
+  "app.copyText": z.object({ text: z.string() }),
 } as const;
 
 export type IpcCommands = typeof ipcCommands;

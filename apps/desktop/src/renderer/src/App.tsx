@@ -23,6 +23,7 @@ import { SkillsView } from "./components/SkillsView";
 import { SourcesView } from "./components/SourcesView";
 import { TargetsView } from "./components/TargetsView";
 import { TitleBar } from "./components/TitleBar";
+import { ToolsView } from "./components/ToolsView";
 import { Welcome } from "./components/Welcome";
 import { BackupsModal } from "./components/modals/BackupsModal";
 import { DiffModal } from "./components/modals/DiffModal";
@@ -298,6 +299,27 @@ export function App() {
     setSelection({ kind: "plugin", name: plugin.name });
   }, []);
 
+  const copyText = useCallback(
+    (text: string): void => {
+      void call("app.copyText", { text })
+        .then(() => notify("已复制到剪贴板", "ok"))
+        .catch((reason) => notify(errorMessage(reason), "danger"));
+    },
+    [notify],
+  );
+
+  const openExternal = useCallback(
+    (url: string): void => {
+      void call("app.openExternal", { url }).catch((reason) => notify(errorMessage(reason), "danger"));
+    },
+    [notify],
+  );
+
+  const openRelatedSkill = useCallback((name: string): void => {
+    setSection("skills");
+    setSelection({ kind: "skill", name });
+  }, []);
+
   const handleSearchHit = useCallback(
     async (hit: SearchHit): Promise<void> => {
       setSearchOpen(false);
@@ -313,6 +335,11 @@ export function App() {
       if (hit.shape === "plugin-skill" && hit.pluginName) {
         setSection("plugins");
         setSelection({ kind: "plugin", name: hit.pluginName });
+        return;
+      }
+      if (hit.shape === "tool") {
+        setSection(hit.toolKind === "mcp" ? "mcp" : "tools");
+        setSelection(EMPTY_SELECTION);
         return;
       }
       setSection("skills");
@@ -548,6 +575,25 @@ export function App() {
             selected={selection.kind === "plugin" ? selection.name : null}
             onSelect={selectPlugin}
             onImport={openImport}
+          />
+        );
+      case "mcp":
+        return (
+          <ToolsView
+            vault={activeVault}
+            mode="mcp"
+            onCopy={copyText}
+            onOpen={openExternal}
+            onSkill={openRelatedSkill}
+          />
+        );
+      case "tools":
+        return (
+          <ToolsView
+            vault={activeVault}
+            onCopy={copyText}
+            onOpen={openExternal}
+            onSkill={openRelatedSkill}
           />
         );
       case "targets":

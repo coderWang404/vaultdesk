@@ -31,7 +31,9 @@ export type IconName =
   | "shield"
   | "branch"
   | "terminal"
+  | "server"
   | "backup"
+  | "copy"
   | "info";
 
 const paths: Record<IconName, ReactNode> = {
@@ -192,6 +194,13 @@ const paths: Record<IconName, ReactNode> = {
       <path d="m7 9 3 3-3 3M12.5 15H17" />
     </>
   ),
+  server: (
+    <>
+      <rect x="3.5" y="4" width="17" height="6" rx="1.6" />
+      <rect x="3.5" y="14" width="17" height="6" rx="1.6" />
+      <path d="M7 7h.01M7 17h.01M11 7h5M11 17h5" />
+    </>
+  ),
   backup: (
     <>
       <path d="M4 8.5A8 8 0 1 1 4.6 15" />
@@ -203,6 +212,12 @@ const paths: Record<IconName, ReactNode> = {
     <>
       <circle cx="12" cy="12" r="8.5" />
       <path d="M12 11v5M12 7.8v.2" />
+    </>
+  ),
+  copy: (
+    <>
+      <rect x="9" y="9" width="11" height="11" rx="2" />
+      <path d="M15 9V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v7a2 2 0 0 0 2 2h3" />
     </>
   ),
 };

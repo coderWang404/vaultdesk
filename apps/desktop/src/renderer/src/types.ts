@@ -1,6 +1,15 @@
 import type { VaultSnapshot, ValidationReport } from "@vaultdesk/core";
 
-export type Section = "overview" | "sources" | "skills" | "plugins" | "targets" | "git" | "settings";
+export type Section =
+  | "overview"
+  | "sources"
+  | "skills"
+  | "plugins"
+  | "mcp"
+  | "tools"
+  | "targets"
+  | "git"
+  | "settings";
 
 export interface OpenVault {
   snapshot: VaultSnapshot;

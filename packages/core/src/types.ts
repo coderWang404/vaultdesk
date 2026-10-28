@@ -4,6 +4,7 @@ import type {
   Origin,
   PackageKind,
   Shape,
+  ToolCard,
   UpdateMode,
   VaultState,
   VaultFile,
@@ -144,6 +145,11 @@ export interface PluginAsset {
   relativePath: string;
 }
 
+export interface ToolRecord extends ToolCard {
+  path: string;
+  relativePath: string;
+}
+
 export interface PluginRecord {
   name: string;
   origin: Origin;
@@ -178,6 +184,7 @@ export interface VaultSnapshot {
   sources: SourceRecord[];
   skills: SkillRecord[];
   plugins: PluginRecord[];
+  tools: ToolRecord[];
   targets: TargetRecord[];
   git: GitSummary;
   issues: ValidationIssue[];
@@ -188,6 +195,7 @@ export interface VaultSnapshot {
     skills: number;
     plugins: number;
     pluginSkills: number;
+    tools: number;
     targets: number;
     managedInstalls: number;
   };
@@ -363,8 +371,9 @@ export interface SearchHit {
   skill: string;
   sourceName: string;
   pluginName?: string;
-  origin: Origin;
-  shape: "standalone" | "package-skill" | "plugin-skill" | "plugin";
+  origin: Origin | "external";
+  shape: "standalone" | "package-skill" | "plugin-skill" | "plugin" | "tool";
+  toolKind?: ToolCard["kind"];
   description?: string;
   relativePath: string;
   installedTargets: string[];

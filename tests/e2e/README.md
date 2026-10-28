@@ -58,8 +58,9 @@ macOS desktop session; the default suites need no network.
 | Auto-check runs once per vault per session | Two authenticated remotes: boot vault A, first activation of B, no repeat when switching back, manual check still reaches the server, roving tab keyboard navigation, titlebar close. |
 | Slow check, offline warning and journal recovery | Slow authenticated check, offline failure message, persisted source error, recovery banner lifecycle, no rollback of working files. |
 | Custom tool preset under a sandboxed HOME | Custom preset file, verification badge, bundled agent skill panel, verify-command preview and confirmed run with output, preset chip destination, install into a sandboxed `~`. |
+| Tool cards and the MCP view | Read-only tool cards, kind labels, install/connect copy, related-skill jump, `--kind` counts, MCP page filtering, MCP search routing and v1 empty state. |
 | 120-skill vault renders and searches | 120 rows render under 20 seconds, local filter narrows and clears, palette search selects a skill. |
-| axe accessibility, focus trap and focus restore | Six views scanned with axe-core, palette and modal Tab traps, Escape close, focus restoration. |
+| axe accessibility, focus trap and focus restore | Nine views scanned with axe-core, palette and modal Tab traps, Escape close, focus restoration. |
 
 ## DMG scenario
 

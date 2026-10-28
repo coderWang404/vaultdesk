@@ -136,6 +136,14 @@ async function v1ReadOnly(suite: Suite): Promise<void> {
     await waitForText(launched.page, "v1 仓库只读");
     equal(await launched.page.locator(".change-row input:checked").count(), 0, "v1 git selections");
 
+    await openSection(launched.page, "工具");
+    await waitForText(launched.page, "旧版仓库不支持工具卡");
+    equal(await launched.page.locator(".tool-card").count(), 0, "v1 tool cards");
+
+    await openSection(launched.page, "MCP");
+    await waitForText(launched.page, "旧版仓库不支持 MCP 卡");
+    equal(await launched.page.locator(".tool-card").count(), 0, "v1 MCP cards");
+
     await launched.page.locator(".nav-item", { hasText: "总览" }).click();
     await launched.page.getByRole("button", { name: "校验仓库" }).click();
     const validation = await dialog(launched.page);
@@ -413,8 +421,8 @@ async function searchAndSettings(suite: Suite): Promise<void> {
 
   await page.keyboard.press("Meta+k");
   const palette = await dialog(page);
-  await palette.getByLabel("搜索技能与插件").waitFor();
-  await palette.getByLabel("搜索技能与插件").fill("beta");
+  await palette.getByLabel("搜索技能、插件、MCP 与工具卡").waitFor();
+  await palette.getByLabel("搜索技能、插件、MCP 与工具卡").fill("beta");
   const hit = palette.locator(".palette-hit").filter({ hasText: "beta" }).first();
   await hit.waitFor({ state: "visible", timeout: 30_000 });
   const hitMeta = await hit.locator(".palette-hit-meta").innerText();
@@ -426,7 +434,7 @@ async function searchAndSettings(suite: Suite): Promise<void> {
 
   await page.keyboard.press("Meta+k");
   const emptySearch = await dialog(page);
-  await emptySearch.getByLabel("搜索技能与插件").fill("no-such-skill");
+  await emptySearch.getByLabel("搜索技能、插件、MCP 与工具卡").fill("no-such-skill");
   await waitForText(page, "没有匹配的技能", 30_000);
   await page.keyboard.press("Escape");
   await emptySearch.waitFor({ state: "hidden" });
@@ -555,7 +563,7 @@ async function pluginsFlow(suite: Suite): Promise<void> {
 
   await page.keyboard.press("Meta+k");
   const palette = await dialog(page);
-  await palette.getByLabel("搜索技能与插件").fill("security");
+  await palette.getByLabel("搜索技能、插件、MCP 与工具卡").fill("security");
   const hit = palette.locator(".palette-hit").filter({ hasText: "security-scan" }).first();
   await hit.waitFor({ state: "visible", timeout: 30_000 });
   const hitText = await hit.innerText();
@@ -731,6 +739,106 @@ async function pluginsFlow(suite: Suite): Promise<void> {
   await waitFor(async () => (await page.locator(".plugin-row").count()) === 7, "plugin row removed", 30_000);
 
   console.log("      plugin page, filters, search routing, hooks warning, imports, composition, diff, update, remove OK");
+}
+
+async function toolsFlow(suite: Suite): Promise<void> {
+  const workspace = suite.workspace("tools");
+  const vaultPath = path.join(workspace.root, "tools-vault");
+  copyFixture("v2-plugins", vaultPath);
+  initGitRepo(vaultPath);
+  const launched = await suite.launch({ workspace, initialVault: vaultPath });
+  const page = launched.page;
+
+  const toolStat = page.locator(".stat-card").filter({ hasText: "外部工具卡" });
+  await toolStat.waitFor();
+  equal(await toolStat.locator("strong").innerText(), "2", "overview tool count");
+  const mcpStat = page.locator(".stat-card").filter({ hasText: "独立 MCP 服务" });
+  equal(await mcpStat.locator("strong").innerText(), "1", "overview MCP count");
+
+  await openSection(page, "工具");
+  const card = page.locator(".tool-card").filter({ hasText: "Kit CLI" });
+  await card.waitFor();
+  equal(await page.locator(".tool-card").count(), 2, "fixture tool card count");
+  const text = await card.innerText();
+  assert(text.includes("Kit CLI"), "tool card title");
+  assert(text.includes("npm install --global kit-cli"), "tool card install command");
+  assert(text.includes("Node.js 22+"), "tool card requirement");
+  assert(text.includes("plain-skill"), "tool card related skill");
+  assert(text.toLowerCase().includes("recorded for display only"), "tool card notes");
+  assert(text.includes("tools/kit-cli.yml"), "tool card path");
+  equal(await card.locator("button[title='复制安装命令']").count(), 1, "install copy button");
+
+  await page.getByLabel("筛选工具卡").fill("kit-cli");
+  equal(await page.locator(".tool-card").count(), 1, "tool filter keeps the card");
+  await page.getByLabel("筛选工具卡").fill("no-such-tool");
+  await waitForText(page, "没有匹配的工具卡");
+  equal(await page.locator(".tool-card").count(), 0, "tool filter empties the grid");
+  await page.getByRole("button", { name: "清除筛选" }).click();
+  await waitFor(async () => (await page.locator(".tool-card").count()) === 2, "tool filter cleared");
+
+  await card.getByRole("button", { name: "复制安装命令" }).click();
+  await waitForText(page, "已复制到剪贴板");
+
+  await card.getByRole("button", { name: "plain-skill" }).click();
+  await page.locator(".nav-item.is-active").filter({ hasText: "技能" }).waitFor();
+  await page.locator(".inspector").getByRole("heading", { name: "plain-skill" }).waitFor();
+
+  await page.locator(".search-trigger").click();
+  const palette = await dialog(page);
+  await palette.getByLabel("搜索技能、插件、MCP 与工具卡").fill("kit-cli");
+  const hit = palette.locator(".palette-hit").filter({ hasText: "kit-cli" }).first();
+  await hit.waitFor({ state: "visible", timeout: 30_000 });
+  const hitText = await hit.innerText();
+  assert(hitText.includes("工具"), "tool search hit shape label");
+  assert(hitText.includes("外部工具"), "tool search hit meta");
+  await hit.click();
+  await palette.waitFor({ state: "hidden" });
+  await page.locator(".nav-item.is-active").filter({ hasText: "工具" }).waitFor();
+  await page.locator(".tool-card").filter({ hasText: "Kit CLI" }).waitFor();
+  assert(!fs.existsSync(path.join(vaultPath, "tools", "kit-cli.yml.tmp")), "tool page writes nothing");
+
+  await openSection(page, "MCP");
+  const mcpCard = page.locator(".tool-card").filter({ hasText: "Filesystem MCP" });
+  await mcpCard.waitFor();
+  equal(await page.locator(".tool-card").count(), 1, "MCP page filters tool cards by kind");
+  const mcpText = await mcpCard.innerText();
+  assert(mcpText.includes("MCP 服务"), "MCP card kind label");
+  assert(mcpText.includes("npm install --global @modelcontextprotocol/server-filesystem"), "MCP install command");
+  assert(mcpText.includes("mcp-server-filesystem /tmp"), "MCP connect command");
+  assert(mcpText.includes("连接 / 启动"), "MCP connection section");
+  assert(mcpText.includes("Node.js 22+"), "MCP requirement");
+  assert(mcpText.includes("plain-skill"), "MCP related skill");
+  assert(mcpText.includes("tools/filesystem-mcp.yml"), "MCP card path");
+  const mcpBoundary = await page.locator(".tool-boundary").innerText();
+  assert(mcpBoundary.includes("不检查新版本"), "MCP boundary copy");
+  assert(mcpBoundary.includes("不代表已注册到任何 agent"), "MCP boundary register copy");
+  equal(await mcpCard.locator("button[title='复制连接命令']").count(), 1, "MCP connect copy button");
+
+  await page.getByLabel("筛选 MCP 卡").fill("no-such-mcp");
+  await waitForText(page, "没有匹配的 MCP 卡");
+  equal(await page.locator(".tool-card").count(), 0, "MCP filter empties the grid");
+  await page.getByRole("button", { name: "清除筛选" }).click();
+  await waitFor(async () => (await page.locator(".tool-card").count()) === 1, "MCP filter cleared");
+
+  await mcpCard.getByRole("button", { name: "复制连接命令" }).click();
+  await waitForText(page, "已复制到剪贴板");
+
+  await page.locator(".search-trigger").click();
+  const mcpPalette = await dialog(page);
+  await mcpPalette.getByLabel("搜索技能、插件、MCP 与工具卡").fill("filesystem-mcp");
+  const mcpHit = mcpPalette.locator(".palette-hit").filter({ hasText: "filesystem-mcp" }).first();
+  await mcpHit.waitFor({ state: "visible", timeout: 30_000 });
+  const mcpHitText = await mcpHit.innerText();
+  assert(mcpHitText.includes("MCP"), "MCP search hit shape label");
+  assert(mcpHitText.includes("MCP 服务"), "MCP search hit meta");
+  await mcpHit.click();
+  await mcpPalette.waitFor({ state: "hidden" });
+  await page.locator(".nav-item.is-active").filter({ hasText: "MCP" }).waitFor();
+  await page.locator(".tool-card").filter({ hasText: "Filesystem MCP" }).waitFor();
+  assert(!fs.existsSync(path.join(vaultPath, "tools", "filesystem-mcp.yml.tmp")), "MCP page writes nothing");
+
+  await suite.close(launched);
+  console.log("      tool and MCP pages, filters, copy, related-skill jump and search routing OK");
 }
 
 async function autoCheckThrottle(suite: Suite): Promise<void> {
@@ -1345,7 +1453,7 @@ async function desktopScale(suite: Suite): Promise<void> {
 
   await page.keyboard.press("Meta+k");
   const palette = await dialog(page);
-  await palette.getByLabel("搜索技能与插件").fill("scale-skill-077");
+  await palette.getByLabel("搜索技能、插件、MCP 与工具卡").fill("scale-skill-077");
   await palette.locator(".palette-hit").filter({ hasText: "scale-skill-077" }).first().waitFor({ timeout: 30_000 });
   await page.keyboard.press("Enter");
   await palette.waitFor({ state: "hidden" });
@@ -1517,7 +1625,7 @@ async function accessibilityAndKeyboard(suite: Suite): Promise<void> {
   });
   await page.evaluate(fs.readFileSync(axeSourcePath, "utf8"));
   const scans = [await auditPage(page, "overview")];
-  for (const section of ["来源", "技能", "插件", "安装目标", "Git", "设置"]) {
+  for (const section of ["来源", "技能", "插件", "MCP", "工具", "安装目标", "Git", "设置"]) {
     await openSection(page, section);
     scans.push(await auditPage(page, section));
   }
@@ -1527,10 +1635,10 @@ async function accessibilityAndKeyboard(suite: Suite): Promise<void> {
   await installButton.focus();
   await page.keyboard.press("Meta+k");
   const palette = await dialog(page);
-  await palette.getByLabel("搜索技能与插件").waitFor();
+  await palette.getByLabel("搜索技能、插件、MCP 与工具卡").waitFor();
   equal(
     await page.evaluate(() => document.activeElement?.getAttribute("aria-label")),
-    "搜索技能与插件",
+    "搜索技能、插件、MCP 与工具卡",
     "palette focuses its search input",
   );
   for (let index = 0; index < 6; index += 1) {
@@ -1579,6 +1687,7 @@ async function main(): Promise<void> {
   await run("install, backup, verify, restore, remove and re-register target", installFlow);
   await run("cross-vault search, settings validation and persistence", searchAndSettings);
   await run("plugin page, filters, search and imports", pluginsFlow);
+  await run("tool page, filters, copy and search routing", toolsFlow);
   await run("boot auto-check honors the 24h interval", autoCheckThrottle);
   await run("auto-check runs once per vault per session", autoCheckSessionOnce);
   await run("slow check, offline warning and journal recovery banner", slowOfflineAndRecovery);

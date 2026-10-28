@@ -9,6 +9,8 @@ const NAV: { id: Section; label: string; icon: IconName }[] = [
   { id: "sources", label: "来源", icon: "source" },
   { id: "skills", label: "技能", icon: "skill" },
   { id: "plugins", label: "插件", icon: "sparkle" },
+  { id: "mcp", label: "MCP", icon: "server" },
+  { id: "tools", label: "工具", icon: "terminal" },
   { id: "targets", label: "安装目标", icon: "target" },
   { id: "git", label: "Git", icon: "git" },
   { id: "settings", label: "设置", icon: "settings" },
@@ -33,11 +35,14 @@ export function Sidebar({
 }) {
   const updates = vault.sources.filter((source) => source.status === "update-available").length;
   const errorCount = vault.issues.filter((issue) => issue.severity === "error").length;
+  const mcpCount = vault.tools.filter((tool) => tool.kind === "mcp").length;
   const counts: Record<Section, number | undefined> = {
     overview: undefined,
     sources: vault.counts.sources,
     skills: vault.counts.skills,
     plugins: vault.counts.plugins,
+    mcp: mcpCount,
+    tools: vault.counts.tools,
     targets: vault.counts.targets,
     git: vault.git.changes.length || undefined,
     settings: undefined,

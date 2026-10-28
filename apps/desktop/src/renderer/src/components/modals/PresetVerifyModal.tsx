@@ -85,8 +85,7 @@ export function PresetVerifyModal({
     >
       <div className="preset-verify">
         <Callout tone="warn" title="命令来自预设文件">
-          <p>VaultDesk 只负责执行并展示输出，不判断该工具是否真的加载了技能。</p>
-          <p>确认命令内容可信后再运行。命令以你的用户权限执行，最长 15 秒。</p>
+          <p>以你的权限执行，最长 15 秒；只展示输出，不判断工具是否加载技能。</p>
         </Callout>
 
         {preview ? (
@@ -130,7 +129,7 @@ export function PresetVerifyModal({
               <p className="verify-empty">命令没有产生输出。</p>
             ) : null}
             <p className="verify-hint">
-              这只证明命令执行完成。目标目录里文件是否存在，请用“验证安装”检查。
+              只证明命令执行完成；文件是否存在请用验证安装。
             </p>
           </div>
         ) : null}

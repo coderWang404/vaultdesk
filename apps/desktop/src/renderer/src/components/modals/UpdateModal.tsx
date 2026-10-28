@@ -85,7 +85,7 @@ export function UpdateModal({
   return (
     <Modal
       title={source ? `应用更新 · ${source}` : "应用上游更新"}
-      subtitle="抓取结果先进入缓存。确认后才会写 vendor、工作副本、lock，并按选项构建与安装。"
+      subtitle="先抓取到缓存，确认后写入仓库并按选项构建、安装。"
       onClose={onClose}
       width="xwide"
       dismissable={!applying}
@@ -148,7 +148,6 @@ export function UpdateModal({
             <div className="update-summary-row">
               <span>{preview.changes.length} 个来源</span>
               <span>{fileCount} 个文件</span>
-              <span>逐来源审阅</span>
             </div>
             <div className="update-diff-layout">
               <div className="diff-files">
@@ -200,7 +199,7 @@ export function UpdateModal({
             </div>
 
             <div className="update-options">
-              <Field label="提交信息（可选）" hint="只有勾选「同时创建提交」时才使用。">
+              <Field label="提交信息（可选）">
                 <input
                   className="input"
                   value={message}
@@ -225,11 +224,11 @@ export function UpdateModal({
                 checked={force}
                 onChange={setForce}
                 label="覆盖本地对技能内容的改动"
-                hint="默认阻止更新；只有确认本地改动不再需要时才打开。"
+                hint="默认阻止；确认本地改动可丢弃后再打开。"
               />
               {force ? (
                 <Callout tone="warn">
-                  <p>本地改动会被上游内容覆盖。Git 历史与备份是唯一的恢复手段。</p>
+                  <p>本地改动将被覆盖，只能从 Git 或备份恢复。</p>
                 </Callout>
               ) : null}
               {preview.warnings.map((warning) => (

@@ -204,7 +204,6 @@ export async function installSkills(inputPath: string, options: InstallOptions):
         checked: 0,
         missing: [],
         modified: [],
-        unmanagedByTarget: [],
       },
     };
   }
@@ -325,7 +324,6 @@ export function verifyTargetRecord(snapshot: VaultSnapshot, targetId: string): I
   }
   const missing: string[] = [];
   const modified: string[] = [];
-  const unmanagedByTarget: string[] = [];
   let checked = 0;
 
   for (const skillName of target.skills) {
@@ -355,19 +353,12 @@ export function verifyTargetRecord(snapshot: VaultSnapshot, targetId: string): I
     }
   }
 
-  for (const entry of target.installed) {
-    if (entry.managedByThisVault && !target.skills.includes(path.basename(entry.path))) {
-      unmanagedByTarget.push(path.basename(entry.path));
-    }
-  }
-
   return {
     targetId,
     filesInPlace: missing.length === 0 && modified.length === 0,
     checked,
     missing,
     modified,
-    unmanagedByTarget,
   };
 }
 

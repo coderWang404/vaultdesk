@@ -3,7 +3,7 @@ import type { VaultSnapshot } from "@vaultdesk/core";
 import { call, errorMessage } from "../api";
 import { shortSha } from "../format";
 import { Icon } from "./icons";
-import { Button, Callout, ConfirmDialog, EmptyState, Field, SectionHeader, StatusPill } from "./ui";
+import { Button, Callout, ConfirmDialog, EmptyState, Field, SectionHeader, StatusMark, StatusPill } from "./ui";
 
 function statusCode(status: string): { label: string; tone: "ok" | "warn" | "danger" | "neutral" | "accent" } {
   if (status.includes("?")) return { label: "新文件", tone: "accent" };
@@ -91,9 +91,7 @@ export function GitView({
   return (
     <div className="view git-view">
       <SectionHeader
-        eyebrow="Git"
-        title="提交与推送"
-        description="只暂存你勾选的路径。VaultDesk 不会使用 git add -A，也不会自动 pull、rebase 或 force push。"
+        title="Git"
         actions={
           <Button icon="refresh" onClick={() => void onRefresh()}>
             刷新
@@ -102,19 +100,20 @@ export function GitView({
       />
 
       {!vault.git.isRepo ? (
-        <EmptyState icon="git" title="这个仓库不使用 Git">
-          在仓库目录运行 <code>git init</code>，或通过 VaultDesk 新建一个带 Git 的仓库。
-          <div className="empty-action">
+        <EmptyState
+          icon="git"
+          title="未启用 Git"
+          action={
             <Button size="sm" onClick={() => onReveal(vault.path)}>
               在 Finder 中打开
             </Button>
-          </div>
-        </EmptyState>
+          }
+        />
       ) : (
         <>
           {readOnly ? (
             <Callout tone="warn" title="v1 仓库只读">
-              <p>可以查看分支与变更，但不会暂存、提交或推送。先迁移到 v2 再使用 Git 写入。</p>
+              <p>迁移到 v2 后再写入。</p>
             </Callout>
           ) : null}
           <section className="git-hero panel">
@@ -163,10 +162,7 @@ export function GitView({
           <div className="git-columns">
             <section className="panel">
               <div className="panel-head">
-                <div>
-                  <span className="eyebrow">工作区</span>
-                  <h2>未提交变更</h2>
-                </div>
+                <h2>变更</h2>
                 <label className="select-all">
                   <input
                     type="checkbox"
@@ -182,12 +178,9 @@ export function GitView({
 
               {changeList.length === 0 ? (
                 <div className="quiet-state">
-                  <span className="quiet-mark">
-                    <Icon name="check" size={18} />
-                  </span>
+                  <StatusMark tone="ok" label="工作区干净" size={22} />
                   <div>
                     <strong>工作区干净</strong>
-                    <p>没有需要提交的变更。</p>
                   </div>
                 </div>
               ) : (
@@ -222,12 +215,9 @@ export function GitView({
 
             <section className="panel commit-panel">
               <div className="panel-head">
-                <div>
-                  <span className="eyebrow">提交</span>
-                  <h2>只为这次变更留言</h2>
-                </div>
+                <h2>提交</h2>
               </div>
-              <Field label="提交信息" hint="提交信息必填。只暂存左侧勾选的路径。">
+              <Field label="提交信息" hint="只暂存勾选的路径">
                 <textarea
                   className="input textarea"
                   value={message}
@@ -238,7 +228,7 @@ export function GitView({
                 />
               </Field>
               <div className="commit-summary">
-                <span>{selected.length} 个路径已选择</span>
+                <span>{selected.length} 个路径</span>
                 <Button
                   variant="primary"
                   icon="check"
@@ -249,9 +239,10 @@ export function GitView({
                   创建提交
                 </Button>
               </div>
-              <Callout tone="info">
-                <p>推送会直接写入远端分支。确认远端与当前分支后再操作。</p>
-              </Callout>
+              <p className="git-guard">
+                <Icon name="lock" size={12} />
+                只提交勾选路径 · 不执行 force push
+              </p>
             </section>
           </div>
         </>
@@ -266,7 +257,7 @@ export function GitView({
               <strong>{vault.git.upstream ?? "上游分支"}</strong>。
             </>
           }
-          detail="VaultDesk 不会执行 force push。若远端有新提交，push 会失败并保持本地状态不变。"
+          detail="不执行 force push。远端有新提交时 push 会失败。"
           confirmLabel="推送"
           busy={busy}
           onCancel={() => setConfirmPush(false)}

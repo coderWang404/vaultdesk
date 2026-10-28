@@ -40,7 +40,7 @@ export function DiffModal({
   return (
     <Modal
       title={`上游差异 · ${source}`}
-      subtitle="工作副本与当前上游提交的逐文件比较。此操作只读取，不写盘。"
+      subtitle="工作副本与上游逐文件比较，只读。"
       onClose={onClose}
       width="xwide"
       footer={
@@ -60,7 +60,7 @@ export function DiffModal({
         </div>
       ) : diff.files.length === 0 ? (
         <Callout tone="ok" title="没有文件差异">
-          <p>工作副本与上游提交 {shortSha(diff.toCommit, 10)} 一致。</p>
+          <p>与上游 {shortSha(diff.toCommit, 10)} 一致。</p>
         </Callout>
       ) : (
         <div className="diff-layout">
@@ -99,18 +99,18 @@ export function DiffModal({
                 </div>
                 {file.binary ? (
                   <Callout tone="info">
-                    <p>二进制文件只报告大小变化，不生成文本差异。</p>
+                    <p>二进制文件仅显示大小变化。</p>
                   </Callout>
                 ) : file.truncated ? (
                   <Callout tone="warn">
-                    <p>文件过大，未生成补丁。请直接比较本地与上游文件。</p>
+                    <p>文件过大，未生成补丁。</p>
                   </Callout>
                 ) : (
                   <PatchView patch={file.patch} />
                 )}
               </>
             ) : (
-              <div className="patch-empty">选择一个文件查看差异。</div>
+              <div className="patch-empty">选择一个文件</div>
             )}
           </div>
         </div>

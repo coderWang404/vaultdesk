@@ -49,7 +49,7 @@ export function NewVaultModal({
   return (
     <Modal
       title="新建仓库"
-      subtitle="创建一个 v2 技能的目录骨架。仓库是唯一事实源，安装目录只是产物。"
+      subtitle="创建 v2 仓库骨架。"
       onClose={onClose}
       dismissable={!busy}
       footer={
@@ -64,7 +64,7 @@ export function NewVaultModal({
       }
     >
       <div className="new-vault">
-        <Field label="仓库目录" hint="目录必须为空，或尚不存在。VaultDesk 会写入 vault.yml、vault.lock、sources/ 与 .vault/。">
+        <Field label="仓库目录" hint="空目录或尚不存在。">
           <div className="input-with-button">
             <input
               className="input mono"
@@ -92,7 +92,7 @@ export function NewVaultModal({
           checked={git}
           onChange={setGit}
           label="初始化 Git 仓库"
-          hint="强烈建议。更新与迁移要求工作区干净，Git 也是恢复手段。"
+          hint="建议启用；更新与迁移要求工作区干净。"
         />
         <div className="new-vault-tree">
           <span className="eyebrow">将创建</span>
@@ -109,7 +109,7 @@ README.md`}</pre>
           </Callout>
         ) : null}
         <p className="muted-small">
-          <Icon name="shield" size={12} /> 新建不会修改任何已有的技能或安装目录。
+          <Icon name="shield" size={12} /> 不影响已有技能与安装目录
         </p>
       </div>
     </Modal>

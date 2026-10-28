@@ -34,7 +34,7 @@ const CANDIDATES: ToolPreset[] = [
     docs_url: null,
     verification_required: true,
     verify_command: null,
-    notes: "Convention used by several agent tools. Confirm your tools read this directory before installing.",
+    notes: "多个 agent 工具共用。安装前确认你的工具会读取此目录。",
   },
   {
     id: "claude-code",
@@ -45,7 +45,7 @@ const CANDIDATES: ToolPreset[] = [
     docs_url: "https://docs.anthropic.com/en/docs/claude-code/skills",
     verification_required: true,
     verify_command: null,
-    notes: "Confirm the current skill discovery rules in the Claude Code documentation.",
+    notes: "安装前按 Claude Code 文档确认当前技能发现规则。",
   },
   {
     id: "codex",
@@ -56,7 +56,7 @@ const CANDIDATES: ToolPreset[] = [
     docs_url: null,
     verification_required: true,
     verify_command: null,
-    notes: "Candidate location. Verify against the installed Codex version before installing.",
+    notes: "候选目录。安装前对照已安装的 Codex 版本核实。",
   },
   {
     id: "qoder",
@@ -67,7 +67,7 @@ const CANDIDATES: ToolPreset[] = [
     docs_url: null,
     verification_required: true,
     verify_command: null,
-    notes: "Candidate location. Verify against the installed Qoder version before installing.",
+    notes: "候选目录。安装前对照已安装的 Qoder 版本核实。",
   },
 ];
 

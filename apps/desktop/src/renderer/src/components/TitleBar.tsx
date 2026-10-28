@@ -1,6 +1,6 @@
 import type { VaultSnapshot } from "@vaultdesk/core";
 import { Icon } from "./icons";
-import { IconButton, Spinner } from "./ui";
+import { IconButton } from "./ui";
 
 export function TitleBar({
   vaults,
@@ -58,7 +58,7 @@ export function TitleBar({
                 target?.focus();
                 onSelect(targetVault.path);
               }}
-              title={vault.path}
+              title={vault.format === "v1" ? `${vault.path} · v1 只读` : vault.path}
             >
               <span className={`tab-dot ${vault.format === "v1" ? "is-v1" : ""}`} />
               <span className="tab-name">{vault.name}</span>
@@ -95,7 +95,7 @@ export function TitleBar({
           <IconButton icon="x" label={`关闭 ${activeVault.name}`} onClick={() => onClose(activeVault.path)} />
         ) : null}
         <IconButton
-          icon={checking ? "refresh" : "refresh"}
+          icon="refresh"
           label={checking ? "正在检查更新" : "检查上游更新"}
           onClick={onCheck}
           className={checking ? "is-spinning" : ""}
@@ -103,7 +103,6 @@ export function TitleBar({
         />
         <IconButton icon="settings" label="设置" onClick={onSettings} disabled={!activePath} />
       </div>
-      {checking ? <Spinner size={13} /> : null}
     </header>
   );
 }

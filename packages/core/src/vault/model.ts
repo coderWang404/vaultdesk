@@ -557,6 +557,7 @@ async function loadV2(vaultPath: string): Promise<{
     exists: exists(expandHome(target.dest)),
     skills: resolveTargetSkills(target.names, sources, skills),
     installed: [],
+    otherManaged: [],
     lastInstalledAt: state?.targets[target.id]?.last_installed_at,
     installedHash: state?.targets[target.id]?.installed_hash,
   }));
@@ -623,7 +624,8 @@ async function scanTargets(vaultPath: string, targets: TargetRecord[], skills: S
       if (entry.name.startsWith(".")) continue;
       const slotPath = path.join(dest, entry.name);
       const skill = skillByName.get(entry.name);
-      if (!skill && !target.skills.includes(entry.name)) continue;
+      const owned = target.skills.includes(entry.name);
+      if (!skill && !owned) continue;
 
       let stat: fs.Stats;
       try {
@@ -634,6 +636,7 @@ async function scanTargets(vaultPath: string, targets: TargetRecord[], skills: S
       const isSymlink = stat.isSymbolicLink();
       if (!isSymlink && !stat.isDirectory()) continue;
       const marker = readMarker(slotPath);
+      if (!owned && !marker) continue;
       const markerVault = typeof marker?.vault === "string" ? canonicalPath(marker.vault) : undefined;
       const installed: InstalledSkill = {
         targetId: target.id,
@@ -653,8 +656,12 @@ async function scanTargets(vaultPath: string, targets: TargetRecord[], skills: S
           installed.matches = false;
         }
       }
-      target.installed.push(installed);
-      if (skill) skill.installed.push(installed);
+      if (owned) {
+        target.installed.push(installed);
+        if (skill) skill.installed.push(installed);
+      } else {
+        target.otherManaged.push(installed);
+      }
     }
     if (!target.lastInstalledAt) {
       const times = target.installed
@@ -849,6 +856,7 @@ async function loadV1(vaultPath: string): Promise<{
         skills,
       ),
       installed: [],
+      otherManaged: [],
     }));
 
   await scanTargets(vaultPath, targets, skills);

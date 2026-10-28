@@ -2,7 +2,7 @@ import type { VaultSnapshot } from "@vaultdesk/core";
 import type { Section } from "../types";
 import { shortSha, relativeTime } from "../format";
 import { Icon, type IconName } from "./icons";
-import { Button, StatusPill } from "./ui";
+import { Button, StatusMark, StatusPill } from "./ui";
 
 const NAV: { id: Section; label: string; icon: IconName }[] = [
   { id: "overview", label: "总览", icon: "overview" },
@@ -101,9 +101,8 @@ export function Sidebar({
       {vault.format === "v1" ? (
         <div className="sidebar-note">
           <span className="sidebar-note-title">
-            <Icon name="info" size={14} /> 旧版仓库
+            <Icon name="info" size={14} /> v1 只读
           </span>
-          <p>当前以只读方式打开 v1 元数据。迁移预览不会写盘。</p>
           <Button size="sm" variant="quiet" onClick={onMigration}>
             预览迁移
           </Button>
@@ -112,15 +111,17 @@ export function Sidebar({
 
       <div className="source-health">
         <div className="source-health-head">
-          <span>上游状态</span>
-          <span className={`health-dot ${updates > 0 ? "has-updates" : ""}`} />
+          <span>上游</span>
+          <StatusMark
+            tone={updates > 0 ? "warn" : "ok"}
+            label={updates > 0 ? `${updates} 个来源有更新` : "所有已检查来源均为最新"}
+            size={13}
+          />
         </div>
-        <p>
-          {updates > 0 ? `${updates} 个来源有更新` : "所有已检查来源均为最新"}
-        </p>
-        <div className="health-meta">
+        <p>{updates > 0 ? `${updates} 个更新` : "已是最新"}</p>
+        <div className="health-meta" title="上次检查">
           <Icon name="clock" size={12} />
-          <span>上次检查 {relativeTime(vault.state?.last_checked_at)}</span>
+          <span>{relativeTime(vault.state?.last_checked_at)}</span>
         </div>
         <Button size="sm" variant="ghost" icon="refresh" onClick={onCheck} loading={checking}>
           立即检查

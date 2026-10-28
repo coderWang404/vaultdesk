@@ -102,7 +102,7 @@ export function InstallModal({
   return (
     <Modal
       title={target ? `安装到 ${target.id}` : "安装技能"}
-      subtitle="先构建，再写入目标目录。受管目录原地替换，符号链接只删链接，未受管目录先移动到备份。"
+      subtitle="先构建再写入。受管目录原地替换，符号链接只删链接，未受管目录先备份。"
       onClose={onClose}
       width="wide"
       dismissable={!busy}
@@ -147,7 +147,7 @@ export function InstallModal({
       ) : null}
 
       <div className="install-form">
-        <Field label="安装目标目录" hint="必须是绝对路径或以 ~/ 开头。不能位于仓库内部。">
+        <Field label="安装目标目录" hint="绝对路径或 ~/ 开头，不能位于仓库内。">
           <input
             className="input mono"
             value={dest}
@@ -157,7 +157,7 @@ export function InstallModal({
             }}
           />
         </Field>
-        <Field label="目标 ID" hint="用于在 vault.yml 与备份目录里识别这个目标。">
+        <Field label="目标 ID" hint="用于 vault.yml 与备份目录。">
           <input
             className="input"
             value={id}
@@ -167,7 +167,7 @@ export function InstallModal({
             }}
           />
         </Field>
-        <Field label="快速填入" hint="候选位置均未经验证，请核对工具文档。">
+        <Field label="快速填入" hint="均未验证，请核对工具文档。">
           <div className="preset-chips">
             {presets.map((preset) => (
               <button className="preset-chip" key={preset.id} onClick={() => applyPreset(preset)}>
@@ -243,11 +243,11 @@ export function InstallModal({
                 <StatusPill tone={slotActionTone(slot.action)}>{slotStateLabel(slot.state)}</StatusPill>
                 <span className="muted-small">
                   {slot.action === "backup-and-replace"
-                    ? "未受管目录将先移动到备份"
+                    ? "先备份"
                     : slot.action === "replace-symlink"
-                      ? "只移除符号链接，不触碰链接目标"
+                      ? "只删链接"
                       : slot.action === "replace-managed"
-                        ? "VaultDesk 受管目录，原地替换"
+                        ? "原地替换"
                         : "新建目录"}
                 </span>
               </div>
@@ -266,11 +266,11 @@ export function InstallModal({
             <Callout tone={result.verification.filesInPlace ? "ok" : "warn"}>
               <p>
                 {result.verification.filesInPlace
-                  ? `files in place：${result.verification.checked} 个文件哈希一致。`
+                  ? `校验通过 · ${result.verification.checked} 个文件一致`
                   : `文件校验失败：${result.verification.missing.length} 缺失、${result.verification.modified.length} 被修改。`}
               </p>
               {result.backups.length > 0 ? (
-                <p>已备份 {result.backups.length} 个未受管目录到备份根目录。</p>
+                <p>已备份 {result.backups.length} 个目录。</p>
               ) : null}
             </Callout>
           )}

@@ -71,7 +71,7 @@ export function ForkModal({
   return (
     <Modal
       title={`Fork ${skill}`}
-      subtitle="GitHub 来源只读。Fork 会复制一份到本地技能目录，origin 改为 local，并记录 forked_from。"
+      subtitle="GitHub 来源只读；Fork 复制为本地来源。"
       onClose={onClose}
       dismissable={!busy}
       footer={
@@ -92,7 +92,7 @@ export function ForkModal({
       }
     >
       <div className="fork-body">
-        <Field label="新来源名称" optional hint="留空时自动使用 <技能名>-local。这个名字会成为独立的 sources/<name>.yml。">
+        <Field label="新来源名称" optional hint="留空使用 <技能名>-local。">
           <input
             className="input mono"
             value={as}
@@ -132,7 +132,7 @@ export function ForkModal({
             ) : null}
             {preview.removesFromPackage ? (
               <Callout tone="warn">
-                <p>这个技能会脱离原包，成为独立的本地 standalone。原包的其他技能不受影响。</p>
+                <p>脱离原包，其他技能不受影响。</p>
               </Callout>
             ) : null}
             {preview.warnings.map((warning) => (

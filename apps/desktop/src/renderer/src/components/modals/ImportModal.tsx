@@ -148,7 +148,7 @@ export function ImportModal({
   return (
     <Modal
       title="添加来源"
-      subtitle="检测插件 manifest、组合资产（skills + MCP/commands/hooks 等）与 SKILL.md。插件只写入 vault，识别不准时可在下方手动指定形态。"
+      subtitle="自动识别插件、技能与组合资产；插件只写入仓库，可手动指定形态。"
       onClose={onClose}
       width="wide"
       dismissable={!busy}
@@ -186,7 +186,7 @@ export function ImportModal({
 
       {mode === "local" ? (
         <div className="import-form">
-          <Field label="来源目录" hint="技能内容会被复制进 vault；原目录不受影响。">
+          <Field label="来源目录" hint="复制进仓库，原目录不变。">
             <div className="input-with-button">
               <input
                 className="input mono"
@@ -244,7 +244,7 @@ export function ImportModal({
       <div className="import-form">
         <Field
           label="来源形态"
-          hint="自动识别优先看 manifest，其次看 skills 与 MCP/commands/agents/hooks 的组合。"
+          hint="优先看 manifest，其次看资产组合。"
         >
           <select
             className="input"
@@ -291,7 +291,7 @@ export function ImportModal({
         <Field
           label="套件入口"
           optional
-          hint={pluginPreview || shape === "plugin" ? "插件不使用入口。" : "suite 必填；名字必须属于导入的技能。"}
+          hint={pluginPreview || shape === "plugin" ? "插件不使用入口。" : "suite 必填，且须在导入技能内。"}
         >
           <input
             className="input"
@@ -316,7 +316,7 @@ export function ImportModal({
         >
           预览分类
         </Button>
-        <span className="muted-small">预览只读取，不写盘。</span>
+        <span className="muted-small">预览不写盘</span>
       </div>
 
       {error ? (
@@ -402,10 +402,7 @@ export function ImportModal({
               ) : null}
               {pluginPreview.hasHooks ? (
                 <Callout tone="warn" title="插件包含 hooks">
-                  <p>
-                    hooks 会随插件写入仓库，但 VaultDesk 永不执行。安装与适配由 agent 完成，请先在 agent
-                    侧确认 hooks 行为。
-                  </p>
+                  <p>hooks 会写入仓库，VaultDesk 不执行；请先在 agent 侧确认行为。</p>
                 </Callout>
               ) : null}
             </div>
@@ -438,7 +435,7 @@ export function ImportModal({
             <Callout tone="ok" title="导入完成">
               <p>已写入 {applied.wrote.length} 个路径，来源 {applied.sourceName}。</p>
               {applied.shape === "plugin" ? (
-                <p>插件只写入 vault，不会安装到任何 agent。安装与适配由 agent 自己完成。</p>
+                <p>插件已写入仓库，未安装到 agent。</p>
               ) : null}
             </Callout>
           ) : null}

@@ -89,18 +89,136 @@ export function Button({
 export function IconButton({
   icon,
   label,
+  loading = false,
   className = "",
   ...rest
-}: { icon: IconName; label: string; className?: string } & ButtonHTMLAttributes<HTMLButtonElement>) {
+}: {
+  icon: IconName;
+  label: string;
+  loading?: boolean;
+  className?: string;
+} & ButtonHTMLAttributes<HTMLButtonElement>) {
   return (
-    <button className={`icon-btn ${className}`.trim()} title={label} aria-label={label} {...rest}>
-      <Icon name={icon} size={17} />
+    <button
+      className={`icon-btn ${className}`.trim()}
+      title={label}
+      aria-label={label}
+      disabled={rest.disabled || loading}
+      {...rest}
+    >
+      {loading ? <Spinner size={14} /> : <Icon name={icon} size={17} />}
     </button>
   );
 }
 
 export function Spinner({ size = 16 }: { size?: number }) {
   return <span className="spinner" style={{ width: size, height: size }} aria-label="加载中" />;
+}
+
+export type StatusTone = "ok" | "warn" | "danger" | "muted";
+
+function StatusGlyph({ tone }: { tone: StatusTone }) {
+  if (tone === "ok") {
+    return (
+      <svg viewBox="0 0 16 16" width="100%" height="100%" aria-hidden="true">
+        <circle cx="8" cy="8" r="7" fill="currentColor" />
+        <path d="m4.8 8.2 2.1 2.1 4.3-4.6" fill="none" stroke="var(--paper-raised)" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" />
+      </svg>
+    );
+  }
+  if (tone === "muted") {
+    return (
+      <svg viewBox="0 0 16 16" width="100%" height="100%" aria-hidden="true">
+        <circle cx="8" cy="8" r="5.5" fill="none" stroke="currentColor" strokeWidth="1.4" />
+      </svg>
+    );
+  }
+  return (
+    <svg viewBox="0 0 16 16" width="100%" height="100%" aria-hidden="true">
+      <path d="M8 1.6 15 14H1z" fill="currentColor" />
+      <path d="M8 6v3.6M8 11.6v.2" fill="none" stroke="var(--paper-raised)" strokeWidth="1.5" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+export function StatusMark({
+  tone = "ok",
+  label,
+  size = 15,
+}: {
+  tone?: StatusTone;
+  label: string;
+  size?: number;
+}) {
+  return (
+    <span
+      className={`status-mark tone-${tone}`}
+      style={{ width: size, height: size }}
+      role="img"
+      aria-label={label}
+      title={label}
+    >
+      <StatusGlyph tone={tone} />
+    </span>
+  );
+}
+
+export interface SlotItem {
+  key: string;
+  name: string;
+  tone?: StatusTone;
+  label?: string;
+}
+
+function monogram(name: string): string {
+  const parts = name.split(/[-_.\s]+/).filter(Boolean);
+  if (parts.length >= 2) return `${parts[0]?.[0] ?? ""}${parts[1]?.[0] ?? ""}`.toUpperCase();
+  return name.slice(0, 2).toUpperCase();
+}
+
+export function SlotStrip({ items, emptyLabel }: { items: SlotItem[]; emptyLabel?: string }) {
+  if (items.length === 0) {
+    return emptyLabel ? <span className="slot-strip-empty">{emptyLabel}</span> : null;
+  }
+  return (
+    <span className="slot-strip">
+      {items.map((item) => (
+        <span
+          className="slot-chip"
+          key={item.key}
+          role="img"
+          aria-label={item.label ?? item.name}
+          title={item.label ?? item.name}
+        >
+          <span className="slot-chip-name">{monogram(item.name)}</span>
+          <span className={`slot-chip-corner tone-${item.tone ?? "ok"}`} aria-hidden="true">
+            <StatusGlyph tone={item.tone ?? "ok"} />
+          </span>
+        </span>
+      ))}
+    </span>
+  );
+}
+
+export function FlowStrip({ steps }: { steps: Array<{ icon: IconName; label: string; detail?: string }> }) {
+  return (
+    <div className="flow-strip">
+      {steps.map((step, index) => (
+        <span className="flow-part" key={`${step.label}-${index}`}>
+          {index > 0 ? (
+            <span className="flow-arrow" aria-hidden="true">
+              <Icon name="arrow-right" size={11} />
+            </span>
+          ) : null}
+          <span className="flow-step">
+            <Icon name={step.icon} size={13} />
+            <span>{step.label}</span>
+            {step.detail ? <span className="flow-detail">{step.detail}</span> : null}
+          </span>
+        </span>
+      ))}
+    </div>
+  );
 }
 
 export function StatusPill({

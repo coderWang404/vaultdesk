@@ -56,7 +56,7 @@ export function MigrationModal({
   return (
     <Modal
       title="迁移预览 · v1 → v2"
-      subtitle="v1 的三份元数据会合并为 vault.yml 与 sources/*.yml。迁移在独立分支完成，不推送。"
+      subtitle="合并为 vault.yml 与 sources/，在独立分支完成，不推送。"
       onClose={onClose}
       width="wide"
       dismissable={!busy}
@@ -101,7 +101,7 @@ export function MigrationModal({
       {!plan && !error ? (
         <div className="modal-loading">
           <Spinner size={20} />
-          <p>正在读取 v1 元数据并生成确定性差异…</p>
+          <p>正在读取 v1 元数据…</p>
         </div>
       ) : plan ? (
         <>
@@ -147,7 +147,7 @@ export function MigrationModal({
             <div>
               <span className="eyebrow">删除</span>
               {plan.deletes.length === 0 ? (
-                <p className="muted-small">没有需要删除的 v1 文件。</p>
+                <p className="muted-small">没有 v1 文件需要删除。</p>
               ) : (
                 <ul className="file-list">
                   {plan.deletes.map((item) => (
@@ -184,14 +184,14 @@ export function MigrationModal({
                 {result.commit ? `，提交 ${shortSha(result.commit, 10)}` : ""}。尚未推送。
               </p>
               {result.validation.ok ? (
-                <p>迁移后的仓库通过校验，没有错误。</p>
+                <p>迁移后校验通过。</p>
               ) : (
-                <p>迁移后有 {result.validation.errors.length} 个校验错误，请检查。</p>
+                <p>迁移后有 {result.validation.errors.length} 个校验错误。</p>
               )}
             </Callout>
           ) : (
             <Callout tone="info">
-              <p>写入顺序：创建分支、写 vault.yml 与 sources、重建 build、执行校验、提交。任一步失败会保留操作日志，不自动回滚。</p>
+              <p>写完后重建 build 并校验；失败保留日志，不自动回滚。</p>
             </Callout>
           )}
         </>

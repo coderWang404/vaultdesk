@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import type { AppSettings, BundledAgentSkill, VaultSnapshot } from "@vaultdesk/core";
 import type { ToolPreset } from "@vaultdesk/schema";
 import { call, errorMessage } from "../api";
+import { relativeTime } from "../format";
 import type { AppInfo } from "../types";
 import { Icon } from "./icons";
 import { PresetVerifyModal } from "./modals/PresetVerifyModal";
@@ -90,21 +91,16 @@ export function SettingsView({
 
   return (
     <div className="view settings-view">
-      <SectionHeader
-        eyebrow="设置"
-        title="应用与仓库偏好"
-        description="这些设置保存在本机的 Application Support 目录，不写入仓库。"
-      />
+      <SectionHeader title="设置" />
 
       <div className="settings-columns">
         <section className="panel settings-panel">
           <div className="panel-head">
             <div>
-              <span className="eyebrow">更新检查</span>
-              <h2>启动时检查上游</h2>
+              <h2>更新检查</h2>
             </div>
           </div>
-          <Field label="检查间隔（小时）" hint="设为 0 可关闭启动检查。运行期间不设置定时器，手动刷新始终可用。">
+          <Field label="启动时检查间隔（小时）" hint="0 表示启动时不检查。">
             <input
               className="input"
               type="number"
@@ -114,20 +110,29 @@ export function SettingsView({
               onChange={(event) => setCheckInterval(event.target.value)}
             />
           </Field>
-          <Callout tone="info">
-            <p>上次检查：{vault.state?.last_checked_at ? new Date(vault.state.last_checked_at).toLocaleString("zh-CN") : "从未"}</p>
-            <p>当前仓库格式：{vault.format}</p>
-          </Callout>
+          <div className="settings-meta">
+            <span
+              title={
+                vault.state?.last_checked_at
+                  ? new Date(vault.state.last_checked_at).toLocaleString("zh-CN")
+                  : undefined
+              }
+            >
+              <Icon name="clock" size={12} /> 上次检查 {relativeTime(vault.state?.last_checked_at)}
+            </span>
+            <span>
+              <Icon name="vault" size={12} /> {vault.format}
+            </span>
+          </div>
         </section>
 
         <section className="panel settings-panel">
           <div className="panel-head">
             <div>
-              <span className="eyebrow">安装备份</span>
-              <h2>保留与存放位置</h2>
+              <h2>安装备份</h2>
             </div>
           </div>
-          <Field label="每个目标保留备份数" hint="更早的备份不会被自动删除，需要你手动清理。">
+          <Field label="每个目标保留备份数" hint="更早的备份不会自动删除。">
             <input
               className="input"
               type="number"
@@ -137,13 +142,13 @@ export function SettingsView({
               onChange={(event) => setRetention(event.target.value)}
             />
           </Field>
-          <Field label="备份根目录" hint="留空使用 ~/Library/Application Support/VaultDesk/backups。">
+          <Field label="备份根目录">
             <div className="input-with-button">
               <input
                 className="input mono"
                 value={backupRoot}
                 onChange={(event) => setBackupRoot(event.target.value)}
-                placeholder="默认位置"
+                placeholder="~/Library/Application Support/VaultDesk/backups"
               />
               <Button variant="quiet" icon="folder" onClick={() => void chooseRoot()}>
                 选择
@@ -163,20 +168,15 @@ export function SettingsView({
         <Button variant="primary" icon="check" onClick={() => void save()} loading={saving}>
           保存设置
         </Button>
-        <span>只影响本机，不写入 vault.yml。</span>
+        <span>仅保存在本机</span>
       </div>
 
       <section className="panel">
         <div className="panel-head">
           <div>
-            <span className="eyebrow">工具预设</span>
-            <h2>候选安装位置</h2>
+            <h2>候选目录</h2>
           </div>
-          <StatusPill tone="warn">均未经验证</StatusPill>
         </div>
-        <p className="panel-copy">
-          VaultDesk 不硬编码任何 agent 工具的发现规则。以下只是候选目录，安装前请核对对应工具的当前文档。
-        </p>
         <div className="preset-list">
           {presets.map((preset) => (
             <div className="preset-row" key={preset.id}>
@@ -222,14 +222,11 @@ export function SettingsView({
       <section className="panel agent-skill-panel">
         <div className="panel-head">
           <div>
-            <span className="eyebrow">随附 Agent 技能</span>
+            <span className="eyebrow">随附技能</span>
             <h2>vaultdesk</h2>
           </div>
           <StatusPill tone="accent">随应用打包</StatusPill>
         </div>
-        <p className="panel-copy">
-          这是工具自带的说明技能，教 agent 如何安全地调用 VaultDesk CLI。它与你的个人技能分开，不会被写入仓库或自动安装。
-        </p>
         {agentSkillError ? (
           <Callout tone="danger" title="无法读取随附技能">
             <p>{agentSkillError}</p>
@@ -266,7 +263,6 @@ export function SettingsView({
           </span>
           <div>
             <h2>VaultDesk</h2>
-            <p>本地优先的技能仓库管理器。桌面与 CLI 共用一套核心。</p>
           </div>
         </div>
         <div className="about-meta">

@@ -99,7 +99,7 @@ export function BackupsModal({
   return (
     <Modal
       title="安装备份"
-      subtitle="每次替换受管目录或备份未受管目录时，VaultDesk 都会留下带时间戳的快照。"
+      subtitle="替换或备份受管目录时留下的快照。"
       onClose={onClose}
       width="wide"
       dismissable={!busy}
@@ -145,9 +145,7 @@ export function BackupsModal({
             <p>正在读取备份目录…</p>
           </div>
         ) : grouped.length === 0 ? (
-          <EmptyState icon="backup" title="还没有备份">
-            首次安装或替换受管目录后，这里会出现按目标与时间归档的快照。
-          </EmptyState>
+          <EmptyState icon="backup" title="还没有备份" />
         ) : (
           grouped.map(([name, entries]) => {
             const registered = targets.some((target) => target.id === name);
@@ -166,7 +164,7 @@ export function BackupsModal({
                 {registered ? null : (
                   <Callout tone="warn">
                     <p>
-                      安装目标 {name} 已从仓库注销，VaultDesk 不知道它现在指向哪个目录，因此不能恢复。先重新注册同名目标，再回到这里恢复。
+                      目标已注销，无法确定目录。重新注册同名目标后可恢复。
                     </p>
                   </Callout>
                 )}
@@ -185,7 +183,7 @@ export function BackupsModal({
                         </button>
                       </div>
                       {entry.skills.length === 0 ? (
-                        <p className="muted-small">这个快照里没有技能目录。</p>
+                        <p className="muted-small">没有技能目录。</p>
                       ) : (
                         <div className="backup-skills">
                           {entry.skills.map((skill) => (
@@ -214,7 +212,7 @@ export function BackupsModal({
         )}
 
         <Callout tone="info">
-          <p>恢复只会写入这个技能在目标目录中的同名槽位。未受管目录不会被覆盖；如果槽位已被复制的受管目录占用，会先移到新的备份。</p>
+          <p>只恢复到同名槽位；未受管目录不覆盖，受管副本先备份。</p>
         </Callout>
       </div>
 
@@ -227,7 +225,7 @@ export function BackupsModal({
               {pending.entry.targetId} 的快照 {pending.entry.timestamp} 恢复到目标目录。
             </>
           }
-          detail="目标目录中同名的受管副本会被替换并先备份。未受管目录会被拒绝覆盖。"
+          detail="同名受管副本先备份后替换；未受管目录不覆盖。"
           confirmLabel="恢复"
           busy={busy}
           onCancel={() => setPending(null)}

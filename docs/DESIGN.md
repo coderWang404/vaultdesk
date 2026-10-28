@@ -12,8 +12,9 @@
 
 ## 实现状态（2026-10-28）
 
-> 1.0 的状态记录保留在下方；工具卡与外部技能记录层是本轮新增、尚未随版本发布的功能。
+> 1.0 的状态记录保留在下方；工具卡、外部技能记录层与界面重做是本轮新增、尚未随版本发布的功能。
 
+- 界面重做（未发布）：九个导航页、欢迎页、搜索面板、标题栏与全部对话框统一到自解释视觉语法；目标归属细化为槽位级；新增 flow strip、slot strip 与状态字形；行内动作改为带 `title`/`aria-label` 的图标按钮；无拖拽交互。
 - 工具卡记录层（未发布）：`tools/<name>.yml` 独立记录、schema 与校验、`tool list/show/add`、`tool list --kind`、`build/tools.json`、搜索、桌面只读工具页与 MCP 页、随 CLI 分发的 `vaultdesk` skill 契约已实现。
 - 外部技能记录层（未发布）：`external-skills/<name>.yml` 卡片、只读观察（路径、目录哈希、description、`metadata.version`、`.vault-managed` 标记）、`external list/show/add/remove/adopt`、`build/external-skills.json`、搜索、技能页外部托管分组与只读 inspector、校验规则已实现。VaultDesk 不写入外部路径。
 - 0.1 只读浏览、校验、上游检查与 diff、迁移预览、多 tab、跨库 Cmd+K 已实现。
@@ -25,7 +26,7 @@
 - 0.6.x 技能页类型筛选与来源分组、suite 成员引用 warning 已实现。
 - 0.7 插件登记已实现：`shape: plugin` source、整根导入与存储、manifest/资产/contained skills 校验、`plugin list/show`（含稳定 agent 契约）、插件页、插件搜索、安装 guard、fixture 与桌面 E2E。hooks 只展示、不执行。
 - 0.8 已实现：插件整根 diff、review-before-apply 更新、source 元数据刷新、conflict/--force guard、纯插件更新跳过 build 与 install、删除清理；搜索与总览、安装 guard 同前。
-- 验证证据：75 个 vitest 测试通过（15 个文件）；tool 测试覆盖卡片写入与 force 覆盖、字段校验、文件名/重复/关联技能检查、确定性 `build/tools.json`、搜索命中（含 `toolKind`）、`tool list --kind` 过滤与非法 kind，以及安装命令不被执行；外部技能测试覆盖只读观察、drift/missing/marker 冲突、路径与命名冲突拒绝、目标引用拒绝、搜索索引、adopt 全流程、拒绝他库标记，以及 CLI add/show/list/remove/adopt 与路径/名称校验；插件集成测试覆盖整根 diff、更新、force guard、content_path 与删除清理；preset 测试覆盖 verify_command 解析、显式确认、退出码/输出捕获、超时杀进程与 64KB 截断；CLI 与桌面 E2E 覆盖插件导入、检查、diff、更新、删除与 hooks 不执行，工具卡与 MCP 页展示、复制、跳转、搜索路由与 v1 空状态，外部技能卡片、过滤、inspector、搜索路由与源文件不变，以及 agent skill、验证命令预览/执行；各视图 axe 扫描 0 violations；Electron 生产构建 smoke 通过并产出截图；`VaultDesk-1.0.0-arm64.dmg`（125,189,367 字节，SHA-256 `d1b76e4f4c7ce31617240b103aea843093f09718ffca956626d643271bfa47c6`）通过 `hdiutil verify`，ad-hoc 签名为有效 bundle 签名（`codesign --verify --deep --strict` 通过，Identifier 为 `com.coderwang404.vaultdesk`），包内 agent skill 存在，安装后的应用可启动、校验并编辑 v2 fixture，应用退出后编辑仍在。
+- 验证证据：76 个 vitest 测试通过（15 个文件）；tool 测试覆盖卡片写入与 force 覆盖、字段校验、文件名/重复/关联技能检查、确定性 `build/tools.json`、搜索命中（含 `toolKind`）、`tool list --kind` 过滤与非法 kind，以及安装命令不被执行；外部技能测试覆盖只读观察、drift/missing/marker 冲突、路径与命名冲突拒绝、目标引用拒绝、搜索索引、adopt 全流程、拒绝他库标记，以及 CLI add/show/list/remove/adopt 与路径/名称校验；插件集成测试覆盖整根 diff、更新、force guard、content_path 与删除清理；preset 测试覆盖 verify_command 解析、显式确认、退出码/输出捕获、超时杀进程与 64KB 截断；CLI 与桌面 E2E 覆盖插件导入、检查、diff、更新、删除与 hooks 不执行，工具卡与 MCP 页展示、复制、跳转、搜索路由与 v1 空状态，外部技能卡片、过滤、inspector、搜索路由与源文件不变，以及 agent skill、验证命令预览/执行；各视图 axe 扫描 0 violations；Electron 生产构建 smoke 通过并产出截图；`VaultDesk-1.0.0-arm64.dmg`（125,189,367 字节，SHA-256 `d1b76e4f4c7ce31617240b103aea843093f09718ffca956626d643271bfa47c6`）通过 `hdiutil verify`，ad-hoc 签名为有效 bundle 签名（`codesign --verify --deep --strict` 通过，Identifier 为 `com.coderwang404.vaultdesk`），包内 agent skill 存在，安装后的应用可启动、校验并编辑 v2 fixture，应用退出后编辑仍在。界面重做轮次：桌面 E2E 15 个场景全部通过，axe 扫描 9 页 0 违规。
 - 真实 v1 仓库只读验收：6 个来源、27 个技能、8 个安装目标，`vault validate` 无错误；迁移预览生成 9 个写入与 5 个删除；验收前后 `git status` 完全一致，未创建 `.vault/`。该仓库因已有未跟踪文件而 `cleanWorktree: false`，迁移按设计被阻止。
 - 插件边界：VaultDesk 只存储、校验、展示；不安装、不启用、不适配、不生成 marketplace/adapter manifest、不写 agent 注册表。agent 通过随 CLI 提供的 `vaultdesk` skill 自行安装。
 
@@ -350,6 +351,9 @@ notes: 由 rea-agents 管理；工具升级后重新 pin。
 - 验证只到文件层面：期望文件存在且哈希匹配，文案为「files in place」，不声称工具已识别。
 - 插件不参与安装。`target install` 遇到插件 source 或插件内技能时返回 `plugin-not-installable`。
 - 外部技能不参与安装。target 引用外部技能时校验报 `target.external-not-installable`；安装路径由归属工具负责。
+- 目标是一条命名安装规则，指向一个目录，目标本身不等于目录；多个目标可以共用同一个 `dest`。
+- 槽位归属只看 `names`：列在本目标 `names` 中的槽位计入 `installed`；同目录下带 `.vault-managed` 标记但不在 `names` 中的槽位计入 `otherManaged`，可能来自其他目标或其他 vault。
+- 注销目标只处理本目标的槽位，`otherManaged` 保持原样；目录是否存在单独用 `exists` 表示，不参与归属判断。
 
 ### 5.4 编辑与 fork
 
@@ -377,6 +381,15 @@ notes: 由 rea-agents 管理；工具升级后重新 pin。
 - 提交信息必填。
 - push 与 commit 分离，使用 `GIT_TERMINAL_PROMPT=0`。
 - 不做 pull、rebase、merge、force push。
+
+### 5.7 桌面界面
+
+- 界面靠布局与交互自解释，非必要的说明文字不展示；需要解释的内容放在检查器与危险操作确认里。
+- 页面级动作带文字；行内与卡片动作使用图标按钮，必须有 `title` 与 `aria-label`。
+- 状态不单靠颜色表达：正常用对勾圆点，异常用三角，必要时补文字标签。
+- 安装关系用两段图形表达：flow strip 展示 vault → 构建产物 → 目标目录；slot strip 用技能方块与角标展示槽位状态，同目录的其他受管槽位以 `+N 同目录` 附在末尾。
+- 空状态统一为图标、短标题、一个动作；检查器是选中项的证据层，不承担说明文档。
+- 不提供拖拽交互，归属与操作全部通过按钮完成。
 
 ## 6. CLI 契约
 

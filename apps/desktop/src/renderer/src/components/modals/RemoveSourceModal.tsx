@@ -86,19 +86,19 @@ export function RemoveSourceModal({
           <>
             <Callout tone="warn" title="会写入仓库">
               <p>
-                将从 sources/ 删除 {source}.yml，并从 vault.yml 的安装目标中移除
-                {record.skills.length > 0 ? ` ${record.skills.length} 个技能名` : "相关技能名"}，然后重新构建与校验。
+                删除 sources/{source}.yml，并从 vault.yml 目标移除
+                {record.skills.length > 0 ? ` ${record.skills.length} 个技能名` : "相关技能名"}，然后重建与校验。
               </p>
             </Callout>
 
             {installedOnly.length > 0 ? (
               <Callout tone="danger" title="目标目录中的副本不会被删除">
                 <p>
-                  {installedOnly.length} 个技能已经安装到
+                  {installedOnly.length} 个技能已安装到
                   {[...new Set(installedOnly.flatMap((skill) => skill.installed.map((entry) => entry.targetId)))].join(
                     "、",
                   )}
-                  。移除来源后，这些目录里的文件仍会留在磁盘上；如需清理，请到对应目标目录手动处理。
+                  。目标目录中的文件会保留，需要时请手动清理。
                 </p>
               </Callout>
             ) : null}
@@ -126,7 +126,7 @@ export function RemoveSourceModal({
               checked={deleteFiles}
               onChange={setDeleteFiles}
               label="同时删除仓库内的工作副本与 vendor 目录"
-              hint="只删除这个来源在仓库里的目录。安装目标中的副本不受影响。"
+              hint="只删仓库内目录，目标目录不受影响。"
             />
 
             {deleteFiles ? (
@@ -136,7 +136,7 @@ export function RemoveSourceModal({
             ) : null}
 
             <Callout tone="info">
-              <p>建议先创建一次 Git 提交，方便随时回滚。</p>
+              <p>建议先提交一次 Git。</p>
             </Callout>
 
             <label className="field">
@@ -152,7 +152,7 @@ export function RemoveSourceModal({
                 spellCheck={false}
               />
               <span className="field-hint">
-                这是不可撤销的元数据操作。输入 <code>{source}</code> 后才能继续。
+                输入 <code>{source}</code> 以确认。
               </span>
             </label>
 

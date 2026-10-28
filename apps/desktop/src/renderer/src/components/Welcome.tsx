@@ -39,11 +39,6 @@ export function Welcome({
             </span>
             <span className="welcome-word">VaultDesk</span>
           </div>
-          <h1>把技能仓库放回它该在的位置。</h1>
-          <p className="welcome-lede">
-            本地优先的技能仓库管理器。查看来源、在写入前审阅上游差异、安全地安装到 agent 工具目录。
-            桌面端与 CLI 共用一套核心，v1 仓库以只读方式打开。
-          </p>
           <div className="welcome-actions">
             <Button variant="primary" size="md" icon="folder" onClick={onBrowse}>
               打开仓库
@@ -52,26 +47,13 @@ export function Welcome({
               新建仓库
             </Button>
           </div>
-          <div className="welcome-promises">
-            <span>
-              <Icon name="shield" size={14} /> 不自动删除已安装技能
-            </span>
-            <span>
-              <Icon name="file" size={14} /> 写入前先看差异
-            </span>
-            <span>
-              <Icon name="branch" size={14} /> Git 只提交你选中的路径
-            </span>
-          </div>
         </section>
 
         <section className="welcome-recents panel">
           <header className="welcome-recents-head">
             <div>
-              <span className="eyebrow">最近打开</span>
-              <h2>继续之前的仓库</h2>
+              <h2>最近打开</h2>
             </div>
-            <StatusPill tone="muted">本机记录</StatusPill>
           </header>
 
           {loading ? (
@@ -80,9 +62,7 @@ export function Welcome({
               <span>正在读取最近记录…</span>
             </div>
           ) : recents.length === 0 ? (
-            <EmptyState icon="vault" title="还没有打开过仓库">
-              打开一个包含 <code>vault.yml</code> 或 <code>sources.yml</code> 的目录开始。
-            </EmptyState>
+            <EmptyState icon="vault" title="还没有最近仓库" />
           ) : (
             <div className="recent-list">
               {recents.map((entry) => {
@@ -123,21 +103,12 @@ export function Welcome({
               })}
             </div>
           )}
-
-          <footer className="welcome-recents-foot">
-            <span>最近记录只保存在本机，最多 12 条。</span>
-            <button className="text-link" onClick={onBrowse}>
-              选择其他目录
-              <Icon name="arrow-right" size={12} />
-            </button>
-          </footer>
         </section>
       </div>
 
       <footer className="welcome-footer">
         <span>VaultDesk {info?.version ?? window.vaultdesk.versions.app}</span>
         <span>macOS · Apache-2.0</span>
-        <span>v1 只读 · v2 可写</span>
       </footer>
     </div>
   );

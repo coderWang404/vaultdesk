@@ -2,7 +2,7 @@ import { useMemo, useState } from "react";
 import type { VaultSnapshot } from "@vaultdesk/core";
 import { toolKindLabel } from "../format";
 import { Icon } from "./icons";
-import { EmptyState, IconButton, SectionHeader, StatusPill } from "./ui";
+import { Button, EmptyState, IconButton, SectionHeader, StatusPill } from "./ui";
 
 export function ToolsView({
   vault,
@@ -48,15 +48,7 @@ export function ToolsView({
 
   return (
     <div className="view tools-view">
-      <SectionHeader
-        eyebrow={isMcp ? "MCP" : "工具"}
-        title={isMcp ? "MCP 服务卡" : "外部工具卡"}
-        description={
-          isMcp
-            ? "这里只记录 MCP 服务的官方地址、安装方式和启动或连接入口。VaultDesk 不下载、不安装、不注册、不启动 MCP，也不写任何 agent 配置；agent 读取卡片后按自己的规则接入。打包了 MCP 的工具留在「工具」页。"
-            : "这里只记录外部工具的官方地址、安装方式和运行入口。VaultDesk 不下载、不安装、不运行，也不写任何 agent 配置；agent 读取工具卡后自行安装。仓库里已保存的插件源码请看「插件」页。"
-        }
-      />
+      <SectionHeader title={isMcp ? "MCP" : "工具"} />
 
       <div className="toolbar">
         <div className="search-box">
@@ -64,7 +56,7 @@ export function ToolsView({
           <input
             value={query}
             onChange={(event) => setQuery(event.target.value)}
-            placeholder={isMcp ? "筛选 MCP、标签、安装或连接命令…" : "筛选工具、标签、安装命令或相关技能…"}
+            placeholder={isMcp ? "筛选 MCP" : "筛选工具"}
             aria-label={isMcp ? "筛选 MCP 卡" : "筛选工具卡"}
           />
           {query ? (
@@ -83,29 +75,23 @@ export function ToolsView({
           icon={isMcp ? "server" : "terminal"}
           title={
             vault.format === "v1"
-              ? isMcp
-                ? "旧版仓库不支持 MCP 卡"
-                : "旧版仓库不支持工具卡"
+              ? "需要 v2 仓库"
               : cards.length === 0
                 ? isMcp
-                  ? "这个仓库还没有 MCP 卡"
-                  : "这个仓库还没有工具卡"
+                  ? "还没有 MCP 卡"
+                  : "还没有工具卡"
                 : isMcp
                   ? "没有匹配的 MCP 卡"
                   : "没有匹配的工具卡"
           }
-        >
-          {vault.format === "v1" ? (
-            isMcp ? "先把仓库迁移到 v2，再记录 MCP 卡。" : "先把仓库迁移到 v2，再记录工具卡。"
-          ) : cards.length === 0 ? (
-            <>
-              用 <code>vaultdesk tool add &lt;name&gt; --kind {isMcp ? "mcp" : "plugin"} --title … --summary … --homepage … --install-command label=command</code>{" "}
-              记录安装入口，或直接写 <code>tools/&lt;name&gt;.yml</code>。
-            </>
-          ) : (
-            "换一个关键词，或清除筛选。"
-          )}
-        </EmptyState>
+          action={
+            cards.length > 0 ? (
+              <Button size="sm" variant="quiet" onClick={() => setQuery("")}>
+                清除筛选
+              </Button>
+            ) : undefined
+          }
+        />
       ) : (
         <div className="tool-grid">
           {tools.map((tool) => (
@@ -116,11 +102,11 @@ export function ToolsView({
                   <h2>{tool.title}</h2>
                   <p className="tool-card-name">
                     <span className="mono">{tool.name}</span>
-                    {tool.recorded_version ? <StatusPill tone="muted">v{tool.recorded_version}</StatusPill> : null}
+                    {tool.recorded_version ? <span className="type-chip">v{tool.recorded_version}</span> : null}
                     {tool.tags.map((tag) => (
-                      <StatusPill key={tag} tone="neutral">
+                      <span className="type-chip" key={tag}>
                         #{tag}
-                      </StatusPill>
+                      </span>
                     ))}
                   </p>
                 </div>
@@ -129,7 +115,9 @@ export function ToolsView({
                 </span>
               </header>
 
-              <p className="tool-summary">{tool.summary}</p>
+              <p className="tool-summary clamp-2" title={tool.summary}>
+                {tool.summary}
+              </p>
 
               <section className="tool-section">
                 <span className="tool-section-label">安装</span>
@@ -183,7 +171,11 @@ export function ToolsView({
                 </section>
               ) : null}
 
-              {tool.notes ? <p className="tool-notes">{tool.notes}</p> : null}
+              {tool.notes ? (
+                <p className="tool-notes clamp-2" title={tool.notes}>
+                  {tool.notes}
+                </p>
+              ) : null}
 
               <footer className="tool-links">
                 <button className="tool-link" onClick={() => onOpen(tool.homepage)}>
@@ -194,7 +186,6 @@ export function ToolsView({
                     <Icon name="file" size={13} /> 文档
                   </button>
                 ) : null}
-                <span className="tool-card-path mono">{tool.relativePath}</span>
               </footer>
             </article>
           ))}
@@ -203,9 +194,7 @@ export function ToolsView({
 
       <p className="tool-boundary">
         <Icon name="shield" size={13} />
-        {isMcp
-          ? "MCP 卡是人工记录的快照，不检查新版本，也不代表已注册到任何 agent。"
-          : "工具卡是人工记录的快照，不检查新版本，也不代表已在本机安装。"}
+        仅记录，不安装
       </p>
     </div>
   );

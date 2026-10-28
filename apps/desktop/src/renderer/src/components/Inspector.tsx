@@ -12,7 +12,6 @@ import {
   externalStatusLabel,
   externalStatusTone,
   hashLabel,
-  installedFor,
   issuesForPlugin,
   originLabel,
   pluginAgentLabel,
@@ -24,7 +23,7 @@ import {
 } from "../format";
 import type { Selection } from "../types";
 import { Icon } from "./icons";
-import { Button, Callout, EmptyState, MetaRow, StatusPill } from "./ui";
+import { Button, Callout, EmptyState, MetaRow, StatusMark, StatusPill } from "./ui";
 
 export function Inspector({
   vault,
@@ -56,9 +55,7 @@ export function Inspector({
   if (!selection.kind || !selection.name) {
     return (
       <aside className="inspector">
-        <EmptyState icon="info" title="选择一个条目">
-          在左侧选择来源或技能，这里会显示路径、锁定的 commit、内容哈希与安装位置。
-        </EmptyState>
+        <EmptyState icon="info" title="选择一项" />
       </aside>
     );
   }
@@ -140,7 +137,6 @@ function SourceInspector({
   onSkill: (skill: SkillRecord) => void;
   onBackups: (targetId?: string) => void;
 }) {
-  const installedCount = source.skills.filter((skill) => skill.installed.length > 0).length;
   return (
     <aside className="inspector">
       <header className="inspector-head">
@@ -228,7 +224,6 @@ function SourceInspector({
             </button>
           ))}
         </div>
-        <p className="muted-small">{installedCount} 个技能已安装到目标目录。</p>
       </div>
 
       <div className="inspector-actions">
@@ -341,11 +336,15 @@ function SkillInspector({
           安装 <em>{skill.installed.length}</em>
         </span>
         {skill.installed.length === 0 ? (
-          <p className="muted-small">还没有安装到任何目标目录。</p>
+          <p className="muted-small">—</p>
         ) : (
           skill.installed.map((entry) => (
             <div className="installed-entry" key={entry.path}>
-              <span className={`slot-dot ${entry.isSymlink ? "is-link" : entry.managed ? "is-managed" : "is-unmanaged"}`} />
+              <StatusMark
+                tone={entry.managed ? "ok" : "warn"}
+                label={entry.isSymlink ? "符号链接" : entry.managed ? "受管" : "未受管"}
+                size={13}
+              />
               <div>
                 <strong>{entry.targetId}</strong>
                 <span className="mono">{entry.hash ? hashLabel(entry.hash) : entry.isSymlink ? "符号链接" : "无标记"}</span>
@@ -354,7 +353,6 @@ function SkillInspector({
             </div>
           ))
         )}
-        <p className="muted-small">安装状态：{installedFor(skill)}</p>
       </div>
 
       <div className="inspector-actions">
@@ -381,12 +379,6 @@ function SkillInspector({
           备份
         </Button>
       </div>
-
-      {readOnly && skill.origin === "github" ? (
-        <Callout tone="info">
-          <p>GitHub 来源技能只读。编辑会先创建本地副本，并记录 forked_from。</p>
-        </Callout>
-      ) : null}
     </aside>
   );
 }
@@ -515,12 +507,7 @@ function ExternalInspector({
         </Button>
       </div>
 
-      <Callout tone="info">
-        <p>
-          这个技能由 {skill.owner} 自己安装和维护。VaultDesk 只记录路径、读取 frontmatter
-          并观察哈希，不安装、不更新、不运行它。
-        </p>
-      </Callout>
+      <p className="muted-small">{skill.owner} 管理 · VaultDesk 只读</p>
     </aside>
   );
 }
@@ -590,15 +577,12 @@ function PluginInspector({
 
       {plugin.hasHooks ? (
         <Callout tone="warn" title="这个插件包含 hooks">
-          <p>
-            hooks 已随插件保存，但 VaultDesk 永不执行它们。交给 agent 安装前，先把资产清单和
-            hooks 风险确认清楚。
-          </p>
+          <p>hooks 已随插件保存，但不会执行。交给 agent 安装前先确认清单与风险。</p>
         </Callout>
       ) : null}
 
       <p className="inspector-copy">
-        {plugin.description ?? (plugin.manifests.length > 0 ? "manifest 里没有填写描述。" : "没有 manifest，也没有描述。")}
+        {plugin.description ?? "—"}
       </p>
 
       <div className="inspector-section">
@@ -659,7 +643,7 @@ function PluginInspector({
         </span>
         <div className="plugin-manifest-list">
           {plugin.manifests.length === 0 ? (
-            <span className="muted-small">没有 manifest；按 skills 与 MCP/commands/hooks 等工具资产组合识别。</span>
+            <span className="muted-small">无 manifest，按目录结构识别。</span>
           ) : null}
           {plugin.manifests.map((manifest) => (
             <div className={`plugin-manifest ${manifest.parseError ? "is-error" : ""}`} key={manifest.relativePath}>
@@ -711,14 +695,14 @@ function PluginInspector({
           插件内技能 <em>{plugin.skills.length}</em>
         </span>
         {plugin.skills.length === 0 ? (
-          <p className="muted-small">这个插件没有包含技能。它仍然会作为完整插件保存。</p>
+          <p className="muted-small">没有技能。插件仍会完整保存。</p>
         ) : (
           <div className="plugin-skill-list">
             {plugin.skills.map((skill) => (
               <div className="plugin-skill" key={skill.name}>
                 <div>
                   <strong>{skill.name}</strong>
-                  <span className="muted-small">{skill.description ?? "没有填写描述。"}</span>
+                  <span className="muted-small">{skill.description ?? "—"}</span>
                 </div>
                 <button
                   className="inline-icon"
@@ -731,7 +715,7 @@ function PluginInspector({
             ))}
           </div>
         )}
-        <p className="muted-small">插件内技能不进入安装计划，也不参与 build。安装由 agent 完成。</p>
+        <p className="muted-small">不进入 build 或安装计划。</p>
       </div>
 
       {issues.length > 0 ? (

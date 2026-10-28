@@ -109,21 +109,24 @@ async function v1ReadOnly(suite: Suite): Promise<void> {
   initGitRepo(vaultPath);
   const launched = await suite.launch({ workspace, initialVault: null });
 
-  await waitForText(launched.page, "把技能仓库放回它该在的位置");
-    await waitForText(launched.page, "还没有打开过仓库");
+  await waitForText(launched.page, "还没有最近仓库");
     setDialogChoice(workspace, vaultPath);
     await launched.page.locator(".welcome-actions").getByRole("button", { name: "打开仓库" }).click();
-    await waitForText(launched.page, "旧版仓库 · 只读");
-    equal(await launched.page.locator(".vault-tab").count(), 1, "v1 tab count");
     await waitForText(launched.page, "v1 · 只读");
+    equal(await launched.page.locator(".vault-tab").count(), 1, "v1 tab count");
+    equal(
+      (await launched.page.locator(".vault-tab").getAttribute("title"))?.includes("v1 只读"),
+      true,
+      "v1 tab title",
+    );
 
     await openSection(launched.page, "来源");
-    await waitForText(launched.page, "v1 仓库以只读方式打开");
+    await waitForText(launched.page, "迁移到 v2 后才能添加、更新或移除来源。");
     equal(await launched.page.locator(".source-row").count(), 4, "v1 source count");
     equal(await launched.page.getByText("4 个来源").count(), 1, "v1 source toolbar");
 
     await openSection(launched.page, "技能");
-    await waitForText(launched.page, "仓库里的全部技能");
+    await launched.page.getByLabel("搜索技能").waitFor();
     equal(await launched.page.locator(".skill-table-row").count(), 6, "v1 skill count");
 
     await openSection(launched.page, "安装目标");
@@ -137,11 +140,11 @@ async function v1ReadOnly(suite: Suite): Promise<void> {
     equal(await launched.page.locator(".change-row input:checked").count(), 0, "v1 git selections");
 
     await openSection(launched.page, "工具");
-    await waitForText(launched.page, "旧版仓库不支持工具卡");
+    await waitForText(launched.page, "需要 v2 仓库");
     equal(await launched.page.locator(".tool-card").count(), 0, "v1 tool cards");
 
     await openSection(launched.page, "MCP");
-    await waitForText(launched.page, "旧版仓库不支持 MCP 卡");
+    await waitForText(launched.page, "需要 v2 仓库");
     equal(await launched.page.locator(".tool-card").count(), 0, "v1 MCP cards");
 
     await launched.page.locator(".nav-item", { hasText: "总览" }).click();
@@ -152,7 +155,7 @@ async function v1ReadOnly(suite: Suite): Promise<void> {
     await validation.locator(".modal-footer").getByRole("button", { name: "关闭" }).click();
 
     await launched.page.getByRole("button", { name: "关闭 v1-basic" }).click();
-    await waitForText(launched.page, "把技能仓库放回它该在的位置");
+    await waitForText(launched.page, "最近打开");
     await waitForText(launched.page, "v1-basic");
     const recents = await readJson<{ vaults: { path: string; name: string }[] }>(
       path.join(workspace.userData, "recent-vaults.json"),
@@ -160,7 +163,7 @@ async function v1ReadOnly(suite: Suite): Promise<void> {
     equal(recents.vaults.length, 1, "recent count");
     equal(recents.vaults[0]?.path, fs.realpathSync(vaultPath), "recent path");
     await launched.page.getByRole("button", { name: "移除最近记录 v1-basic" }).click();
-    await waitForText(launched.page, "还没有打开过仓库");
+    await waitForText(launched.page, "还没有最近仓库");
     await waitFor(async () => {
       try {
         const next = await readJson<{ vaults: unknown[] }>(path.join(workspace.userData, "recent-vaults.json"));
@@ -200,12 +203,12 @@ async function migration(suite: Suite): Promise<void> {
     await modal.locator(".confirm-check input").check();
     await modal.getByRole("button", { name: "写入迁移" }).click();
     await waitForText(page, "迁移已写入", 30_000);
-    await waitForText(page, "迁移后的仓库通过校验");
+    await waitForText(page, "迁移后校验通过。");
     await modal.locator(".modal-footer").getByRole("button", { name: "完成" }).click();
     await modal.waitFor({ state: "hidden" });
     const versionBadge = page.locator(".vault-tags").getByText("v2", { exact: true });
     await versionBadge.waitFor({ state: "visible", timeout: 15_000 });
-    await waitForText(page, "仓库总览");
+    await waitForText(page, "仓库内容");
     equal(await versionBadge.count() > 0, true, "v2 badge after migration");
 
     const branch = (
@@ -254,7 +257,7 @@ async function githubFlow(suite: Suite): Promise<void> {
   const launched = await suite.launch({ workspace, initialVault: vaultPath });
   const page = launched.page;
 
-  await page.getByRole("button", { name: "导入技能" }).click();
+  await page.locator(".empty").getByRole("button", { name: "导入技能" }).click();
     const importModal = await dialog(page);
     await importModal.getByRole("button", { name: "GitHub 仓库" }).click();
     await importModal.getByPlaceholder("JimLiu/baoyu-skills").fill("e2e/alpha-repo");
@@ -295,7 +298,7 @@ async function githubFlow(suite: Suite): Promise<void> {
     await page.getByRole("button", { name: "检查", exact: true }).click();
     await waitForText(page, "所有已检查来源都是最新", 60_000);
     const sourceRow = page.locator(".source-row").filter({ hasText: "alpha-repo" });
-    await sourceRow.getByText("已是最新").waitFor();
+    await sourceRow.getByLabel("已是最新").waitFor();
 
     const updatedCommit = advanceUpstreamRepo(workspace, "alpha-repo", (source) => {
       writeSkill(path.join(source, "skills", "alpha"), "alpha", "Upstream alpha v2.", "UPSTREAM-V2 body.");
@@ -305,7 +308,7 @@ async function githubFlow(suite: Suite): Promise<void> {
     await waitForText(page, "发现 1 个来源有可用更新", 60_000);
     await sourceRow.getByText("有更新").waitFor();
 
-    await sourceRow.getByRole("button", { name: "差异" }).click();
+    await sourceRow.getByRole("button", { name: "查看上游差异" }).click();
     const diffModal = await dialog(page);
     await waitForText(page, "上游差异 · alpha-repo");
     await waitForText(page, "alpha/SKILL.md", 30_000);
@@ -319,7 +322,7 @@ async function githubFlow(suite: Suite): Promise<void> {
     await page.getByRole("button", { name: "刷新" }).click();
     await waitForText(page, "dirty.tmp");
     await openSection(page, "来源");
-    await sourceRow.getByRole("button", { name: "更新" }).click();
+    await sourceRow.getByRole("button", { name: "应用更新" }).click();
     let updateModal = await dialog(page);
     await waitForText(page, "当前不能写入", 60_000);
     equal(await updateModal.locator(".confirm-check input").isDisabled(), true, "dirty update checkbox disabled");
@@ -332,7 +335,7 @@ async function githubFlow(suite: Suite): Promise<void> {
     await page.getByRole("button", { name: "刷新" }).click();
     await waitForText(page, "工作区干净");
     await openSection(page, "来源");
-    await sourceRow.getByRole("button", { name: "更新" }).click();
+    await sourceRow.getByRole("button", { name: "应用更新" }).click();
     updateModal = await dialog(page);
     await updateModal.locator(".update-diff-layout").waitFor({ state: "visible", timeout: 60_000 });
     await updateModal.locator(".update-summary-row").getByText("1 个来源").waitFor();
@@ -355,7 +358,7 @@ async function githubFlow(suite: Suite): Promise<void> {
     equal(git(vaultPath, ["status", "--porcelain"]).trim(), "", "update commit left worktree clean");
     equal(git(vaultPath, ["log", "-1", "--pretty=%s"]).trim(), "chore: apply upstream alpha v2", "update commit message");
 
-    await sourceRow.getByRole("button", { name: "差异" }).click();
+    await sourceRow.getByRole("button", { name: "查看上游差异" }).click();
     const cleanDiff = await dialog(page);
     await waitForText(page, "没有文件差异", 60_000);
     await cleanDiff.locator(".modal-header").getByRole("button", { name: "关闭" }).click();
@@ -435,7 +438,7 @@ async function searchAndSettings(suite: Suite): Promise<void> {
   await page.keyboard.press("Meta+k");
   const emptySearch = await dialog(page);
   await emptySearch.getByLabel("搜索技能、插件、MCP 与工具卡").fill("no-such-skill");
-  await waitForText(page, "没有匹配的技能", 30_000);
+  await waitForText(page, "没有匹配结果", 30_000);
   await page.keyboard.press("Escape");
   await emptySearch.waitFor({ state: "hidden" });
 
@@ -514,8 +517,12 @@ async function pluginsFlow(suite: Suite): Promise<void> {
   const launched = await suite.launch({ workspace, initialVault: vaultPath });
   const page = launched.page;
 
-  const pluginStat = page.locator(".stat-card").filter({ hasText: "插件" });
-  await pluginStat.getByText("3 个插件内技能").waitFor();
+  const pluginStat = page.locator(".stat-cell").filter({ hasText: "插件" });
+  await pluginStat.waitFor();
+  assert(
+    (await pluginStat.getAttribute("title"))?.includes("3 个插件内技能"),
+    "overview plugin hint",
+  );
   equal(await pluginStat.locator("strong").innerText(), "5", "overview plugin count");
 
   await openSection(page, "插件");
@@ -588,7 +595,10 @@ async function pluginsFlow(suite: Suite): Promise<void> {
   equal(await localModal.locator(".import-form.grid-three select").isDisabled(), true, "plugin import disables classification");
   await localModal.getByRole("button", { name: "确认导入" }).click();
   await waitForText(page, "导入完成", 30_000);
-  assert((await localModal.innerText()).includes("插件只写入 vault"), "plugin apply note");
+  assert(
+    (await localModal.innerText()).includes("插件已写入仓库，未安装到 agent。"),
+    "plugin apply note",
+  );
   await localModal.locator(".modal-footer").getByRole("button", { name: "完成" }).click();
   await localModal.waitFor({ state: "hidden" });
   assert(fs.existsSync(path.join(vaultPath, "plugins/demo-plugin/skills/demo-skill/SKILL.md")), "local plugin stored");
@@ -655,7 +665,7 @@ async function pluginsFlow(suite: Suite): Promise<void> {
   await page.locator(".plugin-row").filter({ hasText: "composed-kit" }).click();
   await page
     .locator(".inspector")
-    .getByText("没有 manifest；按 skills 与 MCP/commands/hooks 等工具资产组合识别。")
+    .getByText("无 manifest，按目录结构识别。")
     .waitFor();
 
   commitAll(vaultPath, "chore: commit plugin imports");
@@ -672,11 +682,12 @@ async function pluginsFlow(suite: Suite): Promise<void> {
 
   await openSection(page, "来源");
   const pluginSourceRow = page.locator(".source-row").filter({ hasText: "plugin-kit" });
-  await pluginSourceRow.getByText("1 个技能").waitFor();
+  const pluginSkillCount = (await pluginSourceRow.getByTitle("技能数量").innerText()).trim();
+  assert(pluginSkillCount.includes("1"), `source plugin skill count: ${pluginSkillCount}`);
   await page.getByRole("button", { name: "检查", exact: true }).click();
   await pluginSourceRow.getByText("有更新").waitFor({ timeout: 60_000 });
 
-  await pluginSourceRow.getByRole("button", { name: "差异" }).click();
+  await pluginSourceRow.getByRole("button", { name: "查看上游差异" }).click();
   const diffModal = await dialog(page);
   await diffModal.locator(".diff-layout").waitFor({ state: "visible", timeout: 60_000 });
   const diffText = await diffModal.locator(".diff-files").innerText();
@@ -686,7 +697,7 @@ async function pluginsFlow(suite: Suite): Promise<void> {
   await diffModal.getByRole("button", { name: "关闭" }).click();
   await diffModal.waitFor({ state: "hidden" });
 
-  await pluginSourceRow.getByRole("button", { name: "更新" }).click();
+  await pluginSourceRow.getByRole("button", { name: "应用更新" }).click();
   const updateModal = await dialog(page);
   await updateModal.locator(".update-diff-layout").waitFor({ state: "visible", timeout: 60_000 });
   const updateText = await updateModal.locator(".update-diff-layout").innerText();
@@ -749,10 +760,10 @@ async function toolsFlow(suite: Suite): Promise<void> {
   const launched = await suite.launch({ workspace, initialVault: vaultPath });
   const page = launched.page;
 
-  const toolStat = page.locator(".stat-card").filter({ hasText: "外部工具卡" });
+  const toolStat = page.locator(".stat-cell").filter({ hasText: "工具" });
   await toolStat.waitFor();
   equal(await toolStat.locator("strong").innerText(), "2", "overview tool count");
-  const mcpStat = page.locator(".stat-card").filter({ hasText: "独立 MCP 服务" });
+  const mcpStat = page.locator(".stat-cell").filter({ hasText: "MCP" });
   equal(await mcpStat.locator("strong").innerText(), "1", "overview MCP count");
 
   await openSection(page, "工具");
@@ -765,7 +776,7 @@ async function toolsFlow(suite: Suite): Promise<void> {
   assert(text.includes("Node.js 22+"), "tool card requirement");
   assert(text.includes("plain-skill"), "tool card related skill");
   assert(text.toLowerCase().includes("recorded for display only"), "tool card notes");
-  assert(text.includes("tools/kit-cli.yml"), "tool card path");
+  assert(text.includes("官方地址"), "tool card official link");
   equal(await card.locator("button[title='复制安装命令']").count(), 1, "install copy button");
 
   await page.getByLabel("筛选工具卡").fill("kit-cli");
@@ -773,7 +784,7 @@ async function toolsFlow(suite: Suite): Promise<void> {
   await page.getByLabel("筛选工具卡").fill("no-such-tool");
   await waitForText(page, "没有匹配的工具卡");
   equal(await page.locator(".tool-card").count(), 0, "tool filter empties the grid");
-  await page.getByRole("button", { name: "清除筛选" }).click();
+  await page.locator(".empty").getByRole("button", { name: "清除筛选" }).click();
   await waitFor(async () => (await page.locator(".tool-card").count()) === 2, "tool filter cleared");
 
   await card.getByRole("button", { name: "复制安装命令" }).click();
@@ -790,7 +801,7 @@ async function toolsFlow(suite: Suite): Promise<void> {
   await hit.waitFor({ state: "visible", timeout: 30_000 });
   const hitText = await hit.innerText();
   assert(hitText.includes("工具"), "tool search hit shape label");
-  assert(hitText.includes("外部工具"), "tool search hit meta");
+  assert(hitText.includes("plugins"), "tool search hit meta");
   await hit.click();
   await palette.waitFor({ state: "hidden" });
   await page.locator(".nav-item.is-active").filter({ hasText: "工具" }).waitFor();
@@ -808,16 +819,14 @@ async function toolsFlow(suite: Suite): Promise<void> {
   assert(mcpText.includes("连接 / 启动"), "MCP connection section");
   assert(mcpText.includes("Node.js 22+"), "MCP requirement");
   assert(mcpText.includes("plain-skill"), "MCP related skill");
-  assert(mcpText.includes("tools/filesystem-mcp.yml"), "MCP card path");
   const mcpBoundary = await page.locator(".tool-boundary").innerText();
-  assert(mcpBoundary.includes("不检查新版本"), "MCP boundary copy");
-  assert(mcpBoundary.includes("不代表已注册到任何 agent"), "MCP boundary register copy");
+  assert(mcpBoundary.includes("仅记录，不安装"), "MCP boundary copy");
   equal(await mcpCard.locator("button[title='复制连接命令']").count(), 1, "MCP connect copy button");
 
   await page.getByLabel("筛选 MCP 卡").fill("no-such-mcp");
   await waitForText(page, "没有匹配的 MCP 卡");
   equal(await page.locator(".tool-card").count(), 0, "MCP filter empties the grid");
-  await page.getByRole("button", { name: "清除筛选" }).click();
+  await page.locator(".empty").getByRole("button", { name: "清除筛选" }).click();
   await waitFor(async () => (await page.locator(".tool-card").count()) === 1, "MCP filter cleared");
 
   await mcpCard.getByRole("button", { name: "复制连接命令" }).click();
@@ -830,7 +839,7 @@ async function toolsFlow(suite: Suite): Promise<void> {
   await mcpHit.waitFor({ state: "visible", timeout: 30_000 });
   const mcpHitText = await mcpHit.innerText();
   assert(mcpHitText.includes("MCP"), "MCP search hit shape label");
-  assert(mcpHitText.includes("MCP 服务"), "MCP search hit meta");
+  assert(mcpHitText.includes("plugins"), "MCP search hit meta");
   await mcpHit.click();
   await mcpPalette.waitFor({ state: "hidden" });
   await page.locator(".nav-item.is-active").filter({ hasText: "MCP" }).waitFor();
@@ -885,10 +894,10 @@ async function externalFlow(suite: Suite): Promise<void> {
   await page.evaluate(fs.readFileSync(axeSourcePath, "utf8"));
   const scans = [await auditPage(page, "external overview")];
 
-  const stat = page.locator(".stat-card").filter({ hasText: "外部技能" });
+  const stat = page.locator(".stat-cell").filter({ hasText: "外部技能" });
   await stat.waitFor();
   equal(await stat.locator("strong").innerText(), "1", "overview external count");
-  assert((await stat.innerText()).includes("工具托管"), "overview external hint");
+  assert((await stat.getAttribute("title")) === "由对应工具自己管理", "overview external hint");
 
   await openSection(page, "技能");
   await waitForText(page, "外部托管");
@@ -898,7 +907,7 @@ async function externalFlow(suite: Suite): Promise<void> {
   await row.waitFor();
   const rowText = await row.innerText();
   assert(rowText.includes("外部"), "external row role");
-  assert(rowText.includes("已同步"), "external row synced state");
+  await row.getByLabel("已同步").waitFor();
 
   const typeFilter = page.getByRole("group", { name: "技能类型筛选" });
   await typeFilter.getByRole("button", { name: "外部托管" }).click();
@@ -912,7 +921,7 @@ async function externalFlow(suite: Suite): Promise<void> {
   const inspectorText = await inspector.innerText();
   assert(inspectorText.includes("外部路径"), "external inspector path section");
   assert(inspectorText.includes("rea-agents"), "external inspector owner");
-  assert(inspectorText.includes("不安装、不更新、不运行"), "external inspector boundary copy");
+  assert(inspectorText.includes("rea-agents 管理 · VaultDesk 只读"), "external inspector boundary copy");
   assert(inspectorText.includes("external-skills/rea-demo.yml"), "external inspector card path");
   scans.push(await auditPage(page, "external inspector"));
 
@@ -923,7 +932,7 @@ async function externalFlow(suite: Suite): Promise<void> {
   await hit.waitFor({ state: "visible", timeout: 30_000 });
   const hitText = await hit.innerText();
   assert(hitText.includes("外部"), "external search shape label");
-  assert(hitText.includes("外部托管"), "external search meta");
+  assert(hitText.includes("rea-agents"), "external search meta");
   await hit.click();
   await palette.waitFor({ state: "hidden" });
   await page.locator(".inspector").getByRole("heading", { name: "rea-demo" }).waitFor();
@@ -988,7 +997,7 @@ async function autoCheckThrottle(suite: Suite): Promise<void> {
   );
   equal(await launched.page.getByText("发现 1 个来源有可用更新").count(), 0, "no update toast while throttled");
   await openSection(launched.page, "来源");
-  await launched.page.locator(".source-row").filter({ hasText: "auto-repo" }).getByText("已是最新").waitFor();
+  await launched.page.locator(".source-row").filter({ hasText: "auto-repo" }).getByLabel("已是最新").waitFor();
   await suite.close(launched);
 
   const stale = new Date(Date.now() - 25 * 3_600_000).toISOString();
@@ -1134,8 +1143,8 @@ async function installFlow(suite: Suite): Promise<void> {
   await waitForText(page, "未受管");
   await waitForText(page, "符号链接");
   await install.getByRole("button", { name: "确认安装" }).click();
-  await waitForText(page, "files in place", 60_000);
-  await waitForText(page, "已备份 1 个未受管目录");
+  await waitForText(page, "校验通过 ·", 60_000);
+  await waitForText(page, "已备份 1 个目录。");
   await install.locator(".modal-footer").getByRole("button", { name: "完成" }).click();
   await install.waitFor({ state: "hidden" });
 
@@ -1152,23 +1161,23 @@ async function installFlow(suite: Suite): Promise<void> {
   assert(savedAlpha.includes("old unmanaged alpha"), "unmanaged alpha moved into backup");
   assert(read(path.join(vaultPath, "vault.yml")).includes("agent-skills"), "install target registered in vault.yml");
 
-  await card.getByRole("button", { name: "验证" }).click();
-  await waitForText(page, "文件层面校验通过", 30_000);
+  await card.getByRole("button", { name: "验证文件" }).click();
+  await card.getByLabel("校验通过").waitFor({ timeout: 30_000 });
   fs.appendFileSync(path.join(dest, "alpha", "SKILL.md"), "\nLOCAL-DRIFT\n", "utf8");
-  await card.getByRole("button", { name: "验证" }).click();
-  await waitForText(page, "发现 0 个缺失文件、1 个被修改文件", 30_000);
+  await card.getByRole("button", { name: "验证文件" }).click();
+  await waitForText(page, "0 缺失 · 1 修改", 30_000);
 
-  await card.getByRole("button", { name: "安装", exact: true }).click();
+  await card.getByRole("button", { name: "安装到此目标" }).click();
   const reinstall = await dialog(page);
   await reinstall.getByRole("button", { name: "预览计划" }).click();
   await waitForText(page, "受管");
   await reinstall.getByRole("button", { name: "确认安装" }).click();
-  await waitForText(page, "files in place", 60_000);
+  await waitForText(page, "校验通过 ·", 60_000);
   await reinstall.locator(".modal-footer").getByRole("button", { name: "完成" }).click();
   await reinstall.waitFor({ state: "hidden" });
   await waitFor(() => !read(path.join(dest, "alpha", "SKILL.md")).includes("LOCAL-DRIFT"), "managed reinstall replaced drift");
 
-  await card.getByRole("button", { name: "备份" }).click();
+  await card.getByRole("button", { name: "查看此目标的备份" }).click();
   const backups = await dialog(page);
   await waitForText(page, "安装备份");
   await backups.locator(".backup-entry").first().waitFor({ state: "visible", timeout: 30_000 });
@@ -1211,12 +1220,12 @@ async function installFlow(suite: Suite): Promise<void> {
   await reregister.getByRole("button", { name: "预览计划" }).click();
   await waitForText(page, "安装计划", 30_000);
   await reregister.getByRole("button", { name: "确认安装" }).click();
-  await waitForText(page, "files in place", 60_000);
+  await waitForText(page, "校验通过 ·", 60_000);
   await reregister.locator(".modal-footer").getByRole("button", { name: "完成" }).click();
   await reregister.waitFor({ state: "hidden" });
   await card.waitFor({ state: "visible", timeout: 30_000 });
 
-  await card.getByRole("button", { name: "备份" }).click();
+  await card.getByRole("button", { name: "查看此目标的备份" }).click();
   const restoredBackups = await dialog(page);
   await restoredBackups.locator(".backup-entry").first().waitFor({ state: "visible", timeout: 30_000 });
   const enabledRestore = restoredBackups
@@ -1279,7 +1288,7 @@ async function writableFlow(suite: Suite): Promise<void> {
     await waitFor(async () => (await pathInput.inputValue()) === vaultPath, "new vault path selected");
     await createModal.getByRole("button", { name: "创建仓库" }).click();
     await createModal.waitFor({ state: "hidden", timeout: 30_000 });
-    await waitForText(page, "这个仓库还没有技能");
+    await waitForText(page, "还没有技能");
     equal(await page.locator(".sidebar h2").innerText(), "e2e-vault", "new vault name");
     await page.locator(".vault-tags").getByText("v2", { exact: true }).waitFor();
     for (const file of ["vault.yml", "vault.lock", ".gitignore", ".vault/.gitignore", "README.md", "sources/.gitkeep"]) {
@@ -1494,7 +1503,7 @@ async function slowOfflineAndRecovery(suite: Suite): Promise<void> {
 
     await openSection(page, "来源");
     const sourceRow = page.locator(".source-row").filter({ hasText: "slow-repo" });
-    await sourceRow.getByText("已是最新").waitFor();
+    await sourceRow.getByLabel("已是最新").waitFor();
 
     await server.close();
     serverOpen = false;
@@ -1630,7 +1639,7 @@ async function presetInstall(suite: Suite): Promise<void> {
   await install.getByRole("button", { name: "预览计划" }).click();
   await waitForText(page, "安装计划", 30_000);
   await install.getByRole("button", { name: "确认安装" }).click();
-  await waitForText(page, "files in place", 60_000);
+  await waitForText(page, "校验通过 ·", 60_000);
   await install.locator(".modal-footer").getByRole("button", { name: "完成" }).click();
   await install.waitFor({ state: "hidden" });
 

@@ -6,7 +6,6 @@ import type {
   PluginRecord,
   SkillRecord,
   SourceRecord,
-  TargetRecord,
   ToolRecord,
   ValidationIssue,
   VaultSnapshot,
@@ -135,17 +134,9 @@ export function toolKindLabel(kind: ToolRecord["kind"]): string {
   }
 }
 
-export function skillCountLabel(target: TargetRecord): string {
-  return `${target.installed.length}/${target.skills.length}`;
-}
-
 export function hashLabel(hash: string | undefined): string {
   if (!hash) return "—";
   return hash.replace(/^sha256:/, "").slice(0, 10);
-}
-
-export function plural(count: number, unit: string): string {
-  return `${count} ${unit}`;
 }
 
 export function installedFor(skill: SkillRecord): string {

@@ -136,6 +136,7 @@ export interface TargetRecord {
   exists: boolean;
   skills: string[];
   installed: InstalledSkill[];
+  otherManaged: InstalledSkill[];
   lastInstalledAt?: string;
   installedHash?: string;
 }
@@ -289,7 +290,6 @@ export interface InstallVerification {
   checked: number;
   missing: string[];
   modified: string[];
-  unmanagedByTarget: string[];
 }
 
 export interface InstallResult {

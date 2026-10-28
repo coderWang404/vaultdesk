@@ -552,7 +552,6 @@ export function App() {
             onUpdate={openUpdate}
             onInstall={() => openInstall()}
             onImport={openImport}
-            onSettings={() => setSection("settings")}
           />
         );
       case "sources":
@@ -706,8 +705,7 @@ export function App() {
                 <div>
                   <strong>上次操作未正常结束</strong>
                   <span>
-                    {activeVault.operation.kind} 停在进行中的步骤。VaultDesk 不会自动回滚；请用 Git
-                    状态与安装备份核对后继续。
+                    {activeVault.operation.kind} 未完成。不会自动回滚；请核对 Git 与安装备份。
                   </span>
                 </div>
                 <Button size="sm" variant="quiet" icon="refresh" onClick={() => void reloadVault(activeVault.path)}>

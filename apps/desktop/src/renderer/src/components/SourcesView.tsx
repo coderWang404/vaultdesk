@@ -8,7 +8,7 @@ import {
   statusTone,
 } from "../format";
 import { Icon } from "./icons";
-import { Button, Callout, EmptyState, SectionHeader, StatusPill } from "./ui";
+import { Button, Callout, EmptyState, IconButton, SectionHeader, StatusMark, StatusPill } from "./ui";
 
 type Filter = "all" | "github" | "local";
 
@@ -54,9 +54,7 @@ export function SourcesView({
   return (
     <div className="view sources-view">
       <SectionHeader
-        eyebrow="来源"
-        title="所有上游与本地目录"
-        description="每一个来源都有独立的元数据文件。GitHub 来源可以检查更新，并在写入前查看逐文件差异。"
+        title="来源"
         actions={
           <>
             <Button icon="refresh" onClick={onCheck} loading={checking}>
@@ -70,8 +68,8 @@ export function SourcesView({
       />
 
       {vault.format === "v1" ? (
-        <Callout tone="warn" title="v1 仓库以只读方式打开">
-          <p>来源信息读取自 sources.yml 与 package.yml。迁移到 v2 后才能添加、更新或移除来源。</p>
+        <Callout tone="warn" title="v1 仓库只读">
+          <p>迁移到 v2 后才能添加、更新或移除来源。</p>
         </Callout>
       ) : null}
 
@@ -81,7 +79,7 @@ export function SourcesView({
           <input
             value={query}
             onChange={(event) => setQuery(event.target.value)}
-            placeholder="筛选来源、仓库或技能…"
+            placeholder="筛选来源"
             aria-label="筛选来源"
           />
           {query ? (
@@ -109,9 +107,34 @@ export function SourcesView({
       </div>
 
       {sources.length === 0 ? (
-        <EmptyState icon="source" title="没有匹配的来源">
-          换一个关键词，或添加本地目录与 GitHub 仓库。
-        </EmptyState>
+        vault.sources.length === 0 ? (
+          <EmptyState
+            icon="source"
+            title="还没有来源"
+            action={
+              <Button size="sm" variant="primary" icon="plus" onClick={onImport}>
+                添加来源
+              </Button>
+            }
+          />
+        ) : (
+          <EmptyState
+            icon="search"
+            title="没有匹配的来源"
+            action={
+              <Button
+                size="sm"
+                variant="quiet"
+                onClick={() => {
+                  setQuery("");
+                  setFilter("all");
+                }}
+              >
+                清除筛选
+              </Button>
+            }
+          />
+        )
       ) : (
         <div className="source-list">
           {sources.map((source) => (
@@ -127,9 +150,15 @@ export function SourcesView({
                 <div className="source-row-title">
                   <h3>{source.name}</h3>
                   <StatusPill tone="muted">{sourceShapeLabel(source)}</StatusPill>
-                  <StatusPill tone={statusTone(source.status)} title={source.lastError}>
-                    {statusLabel(source.status)}
-                  </StatusPill>
+                  {source.origin === "github" ? (
+                    source.status === "current" ? (
+                      <StatusMark tone="ok" label={statusLabel(source.status)} />
+                    ) : (
+                      <StatusPill tone={statusTone(source.status)} title={source.lastError}>
+                        {statusLabel(source.status)}
+                      </StatusPill>
+                    )
+                  ) : null}
                 </div>
                 <p className="source-row-repo">
                   {source.origin === "github" ? (
@@ -138,7 +167,7 @@ export function SourcesView({
                       <span className="repo-ref">{source.ref}</span>
                     </>
                   ) : (
-                    <span>本地目录 · 不参与上游更新</span>
+                    <span>本地目录</span>
                   )}
                 </p>
                 {source.lastError ? (
@@ -147,53 +176,47 @@ export function SourcesView({
                   </p>
                 ) : null}
                 <div className="source-row-stats">
-                  <span>
+                  <span title="技能数量">
                     <Icon name="skill" size={12} />{" "}
                     {source.shape === "plugin"
                       ? (vault.plugins.find((plugin) => plugin.name === source.name)?.skills.length ?? 0)
-                      : source.skills.length}{" "}
-                    个技能
+                      : source.skills.length}
                   </span>
-                  <span>
-                    <Icon name="clock" size={12} /> 检查 {relativeTime(source.lastCheckedAt)}
+                  <span title={`上次检查 ${relativeTime(source.lastCheckedAt)}`}>
+                    <Icon name="clock" size={12} /> {relativeTime(source.lastCheckedAt)}
                   </span>
                   {source.origin === "github" ? (
-                    <span className="mono">
+                    <span className="mono" title="锁定 commit">
                       <Icon name="branch" size={12} /> {shortSha(source.locked?.commit)}
                     </span>
                   ) : null}
                 </div>
               </div>
-              <div className="source-row-actions" onClick={(event) => event.stopPropagation()}>
+              <div className="row-actions" onClick={(event) => event.stopPropagation()}>
                 {source.origin === "github" ? (
                   <>
-                    <Button
-                      size="sm"
-                      variant="quiet"
+                    <IconButton
+                      icon="file"
+                      label="查看上游差异"
                       onClick={() => onDiff(source.name)}
                       disabled={!source.locked?.commit && source.status !== "update-available"}
-                    >
-                      差异
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant="ghost"
+                    />
+                    <IconButton
+                      icon="download"
+                      label="应用更新"
                       onClick={() => onUpdate(source.name)}
                       disabled={vault.format === "v1" || source.status !== "update-available"}
-                    >
-                      更新
-                    </Button>
+                    />
                   </>
                 ) : null}
-                <button
-                  className="row-more"
-                  title="移除来源"
-                  aria-label={`移除来源 ${source.name}`}
+                <IconButton
+                  icon="trash"
+                  label={`移除来源 ${source.name}`}
+                  className="is-danger"
                   onClick={() => onRemove(source.name)}
                   disabled={vault.format === "v1"}
-                >
-                  <Icon name="trash" size={14} />
-                </button>
+                />
+                <Icon name="chevron-right" size={14} className="row-chevron" />
               </div>
             </article>
           ))}

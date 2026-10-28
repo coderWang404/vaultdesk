@@ -2,7 +2,6 @@ import { useMemo, useState } from "react";
 import type { PluginRecord, VaultSnapshot } from "@vaultdesk/core";
 import {
   issuesForPlugin,
-  originLabel,
   pluginAgentLabel,
   relativeTime,
   shortSha,
@@ -10,7 +9,7 @@ import {
   statusTone,
 } from "../format";
 import { Icon } from "./icons";
-import { Button, EmptyState, SectionHeader, StatusPill } from "./ui";
+import { Button, EmptyState, SectionHeader, StatusMark, StatusPill } from "./ui";
 
 type Filter = "all" | "github" | "local";
 
@@ -48,9 +47,7 @@ export function PluginsView({
   return (
     <div className="view plugins-view">
       <SectionHeader
-        eyebrow="插件"
-        title="登记在仓库里的插件"
-        description="VaultDesk 只保存、校验和展示插件。安装、启用与适配由你的 agent 读取插件根后自行完成，这里不会写入任何 agent 目录。"
+        title="插件"
         actions={
           <Button variant="primary" icon="plus" onClick={onImport}>
             导入插件
@@ -64,7 +61,7 @@ export function PluginsView({
           <input
             value={query}
             onChange={(event) => setQuery(event.target.value)}
-            placeholder="筛选插件、manifest、描述或插件内技能…"
+            placeholder="筛选插件"
             aria-label="筛选插件"
           />
           {query ? (
@@ -92,18 +89,34 @@ export function PluginsView({
       </div>
 
       {plugins.length === 0 ? (
-        <EmptyState icon="sparkle" title={vault.plugins.length === 0 ? "这个仓库还没有插件" : "没有匹配的插件"}>
-          {vault.plugins.length === 0
-            ? "导入插件目录：manifest 可选，没有 manifest 时按 skills + MCP/commands/hooks 等组合识别。VaultDesk 只写入仓库，不会安装到 agent。"
-            : "换一个关键词，或切换来源筛选。"}
-          {vault.plugins.length === 0 ? (
-            <div className="empty-action">
-              <Button size="sm" onClick={onImport}>
+        vault.plugins.length === 0 ? (
+          <EmptyState
+            icon="sparkle"
+            title="还没有插件"
+            action={
+              <Button size="sm" variant="primary" icon="plus" onClick={onImport}>
                 导入插件
               </Button>
-            </div>
-          ) : null}
-        </EmptyState>
+            }
+          />
+        ) : (
+          <EmptyState
+            icon="search"
+            title="没有匹配的插件"
+            action={
+              <Button
+                size="sm"
+                variant="quiet"
+                onClick={() => {
+                  setQuery("");
+                  setFilter("all");
+                }}
+              >
+                清除筛选
+              </Button>
+            }
+          />
+        )
       ) : (
         <div className="source-list">
           {plugins.map((plugin) => {
@@ -120,24 +133,31 @@ export function PluginsView({
                 <div className="source-row-main">
                   <div className="source-row-title">
                     <h3>{plugin.name}</h3>
-                    {plugin.version ? <StatusPill tone="muted">v{plugin.version}</StatusPill> : null}
+                    {plugin.version ? <span className="type-chip">v{plugin.version}</span> : null}
                     {plugin.manifests.length === 0 ? (
-                      <StatusPill tone="muted" title="没有 manifest，按 skills 与工具资产组合识别">
+                      <span className="type-chip" title="按 skills 与工具资产组合识别">
                         无 manifest
-                      </StatusPill>
+                      </span>
                     ) : null}
                     {plugin.manifests.map((manifest) => (
-                      <StatusPill
+                      <span
+                        className="type-chip"
                         key={manifest.relativePath}
-                        tone={manifest.parseError ? "danger" : "neutral"}
                         title={manifest.parseError ?? manifest.relativePath}
                       >
                         {pluginAgentLabel(manifest.agent)}
-                      </StatusPill>
+                      </span>
                     ))}
-                    <StatusPill tone={statusTone(plugin.status)} title={plugin.lastError}>
-                      {statusLabel(plugin.status)}
-                    </StatusPill>
+                    {plugin.status === "current" || plugin.status === "local" ? (
+                      <StatusMark
+                        tone={plugin.status === "current" ? "ok" : "muted"}
+                        label={statusLabel(plugin.status)}
+                      />
+                    ) : (
+                      <StatusPill tone={statusTone(plugin.status)} title={plugin.lastError}>
+                        {statusLabel(plugin.status)}
+                      </StatusPill>
+                    )}
                     {plugin.hasHooks ? <StatusPill tone="warn">含 hooks</StatusPill> : null}
                   </div>
                   <p className="source-row-repo">
@@ -147,39 +167,42 @@ export function PluginsView({
                         <span className="repo-ref">{plugin.ref}</span>
                       </>
                     ) : (
-                      <span>本地目录 · 不参与上游更新</span>
+                      <span>本地目录</span>
                     )}
                   </p>
-                  {plugin.description ? <p className="plugin-row-copy">{plugin.description}</p> : null}
+                  {plugin.description ? (
+                    <p className="plugin-row-copy clamp-1" title={plugin.description}>
+                      {plugin.description}
+                    </p>
+                  ) : null}
                   {plugin.lastError ? (
                     <p className="source-row-error" title={plugin.lastError}>
                       {plugin.lastError}
                     </p>
                   ) : null}
                   <div className="source-row-stats">
-                    <span>
-                      <Icon name="skill" size={12} /> {plugin.skills.length} 个插件内技能
+                    <span title="插件内技能">
+                      <Icon name="skill" size={12} /> {plugin.skills.length}
                     </span>
-                    <span>
-                      <Icon name="file" size={12} /> {plugin.assets.length} 项资产
+                    <span title="资产条目">
+                      <Icon name="file" size={12} /> {plugin.assets.length}
                     </span>
-                    <span>
-                      <Icon name="clock" size={12} /> 检查 {relativeTime(plugin.lastCheckedAt)}
+                    <span title={`上次检查 ${relativeTime(plugin.lastCheckedAt)}`}>
+                      <Icon name="clock" size={12} /> {relativeTime(plugin.lastCheckedAt)}
                     </span>
                     {plugin.origin === "github" ? (
-                      <span className="mono">
+                      <span className="mono" title="锁定 commit">
                         <Icon name="branch" size={12} /> {shortSha(plugin.locked?.commit)}
                       </span>
                     ) : null}
                     {issues.length > 0 ? (
-                      <span className="plugin-issue-count">
-                        <Icon name="alert" size={12} /> {issues.length} 条校验问题
+                      <span className="plugin-issue-count" title="校验问题">
+                        <Icon name="alert" size={12} /> {issues.length}
                       </span>
                     ) : null}
                   </div>
                 </div>
-                <div className="source-row-actions">
-                  <span className="muted-small">{originLabel(plugin.origin)}</span>
+                <div className="row-actions">
                   <Icon name="chevron-right" size={14} className="row-chevron" />
                 </div>
               </article>

@@ -81,7 +81,7 @@ export function EditorModal({
   return (
     <Modal
       title={`编辑 ${skill}`}
-      subtitle="只编辑 SKILL.md。frontmatter 的 name 必须与目录名一致。"
+      subtitle="只编辑 SKILL.md；name 须与目录名一致。"
       onClose={requestClose}
       width="wide"
       dismissable={!saving}

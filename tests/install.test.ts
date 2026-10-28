@@ -29,6 +29,46 @@ function scaffold() {
 }
 
 describe("install slots and backups", () => {
+  it("keeps shared directory slots owned by the target that registered them", async () => {
+    const { vaultPath, dest, backupRoot } = scaffold();
+    const file = path.join(vaultPath, "vault.yml");
+    fs.writeFileSync(
+      file,
+      [
+        "schema: 1",
+        "name: v2-basic",
+        "defaults:",
+        "  ref: main",
+        "  update_mode: review-before-apply",
+        "targets:",
+        "  - id: shared:notes",
+        `    dest: ${dest}`,
+        "    names:",
+        "      - local-notes",
+        "    install_after_update: false",
+        "  - id: shared:standalone",
+        `    dest: ${dest}`,
+        "    names:",
+        "      - gh-standalone",
+        "    install_after_update: false",
+        "",
+      ].join("\n"),
+      "utf8",
+    );
+
+    await installSkills(vaultPath, { names: ["local-notes"], dest, id: "shared:notes", backupRoot });
+    await installSkills(vaultPath, { names: ["gh-standalone"], dest, id: "shared:standalone", backupRoot });
+
+    const snapshot = await openVault(vaultPath);
+    const notes = snapshot.targets.find((target) => target.id === "shared:notes");
+    const standalone = snapshot.targets.find((target) => target.id === "shared:standalone");
+    expect(notes?.installed.map((entry) => path.basename(entry.path))).toEqual(["local-notes"]);
+    expect(notes?.otherManaged.map((entry) => path.basename(entry.path))).toEqual(["gh-standalone"]);
+    expect(standalone?.installed.map((entry) => path.basename(entry.path))).toEqual(["gh-standalone"]);
+    expect(standalone?.otherManaged.map((entry) => path.basename(entry.path))).toEqual(["local-notes"]);
+    expect(snapshot.counts.managedInstalls).toBe(2);
+  });
+
   it("classifies create, managed, symlink, and unmanaged slots", async () => {
     const { vaultPath, dest, backupRoot } = scaffold();
     const snapshot = await openVault(vaultPath);

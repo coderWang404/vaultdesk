@@ -40,7 +40,7 @@ export function ValidationModal({
   return (
     <Modal
       title="仓库校验"
-      subtitle="检查元数据、锁文件、技能目录、安装目标与 Git 状态。校验只读，不会修改任何文件。"
+      subtitle="检查元数据、锁文件、目录、目标与 Git；只读。"
       onClose={onClose}
       width="wide"
       footer={
@@ -79,9 +79,7 @@ export function ValidationModal({
           </div>
 
           {report.errors.length === 0 && report.warnings.length === 0 ? (
-            <EmptyState icon="shield" title="没有发现问题">
-              元数据、锁文件与目录结构一致。
-            </EmptyState>
+            <EmptyState icon="shield" title="没有发现问题" />
           ) : (
             <div className="issue-sections">
               {report.errors.length > 0 ? (

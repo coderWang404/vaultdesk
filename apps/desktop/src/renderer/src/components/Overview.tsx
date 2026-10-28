@@ -1,7 +1,13 @@
 import type { SkillRecord, SourceRecord, VaultSnapshot } from "@vaultdesk/core";
-import { originLabel, relativeTime, shortSha, sourceShapeLabel, statusLabel, statusTone } from "../format";
-import { Icon } from "./icons";
-import { Button, Callout, EmptyState, SectionHeader, StatusPill } from "./ui";
+import {
+  installedFor,
+  relativeTime,
+  shortSha,
+  statusLabel,
+  statusTone,
+} from "../format";
+import { Icon, type IconName } from "./icons";
+import { Button, Callout, EmptyState, IconButton, SectionHeader, StatusMark, StatusPill } from "./ui";
 
 export function Overview({
   vault,
@@ -15,7 +21,6 @@ export function Overview({
   onUpdate,
   onInstall,
   onImport,
-  onSettings,
 }: {
   vault: VaultSnapshot;
   checking: boolean;
@@ -28,7 +33,6 @@ export function Overview({
   onUpdate: (sourceName?: string) => void;
   onInstall: () => void;
   onImport: () => void;
-  onSettings: () => void;
 }) {
   const updates = vault.sources.filter((source) => source.status === "update-available");
   const problems = vault.sources.filter(
@@ -51,12 +55,11 @@ export function Overview({
   return (
     <div className="view overview">
       <SectionHeader
-        eyebrow={vault.format === "v1" ? "旧版仓库 · 只读" : "仓库总览"}
-        title={vault.name}
+        title="总览"
         description={
           vault.git.isRepo
-            ? `${vault.git.branch ?? "detached"} · ${shortSha(vault.git.head)} · ${vault.git.dirty ? "有未提交变更" : "工作区干净"}`
-            : "这个仓库还没有纳入 Git。迁移与更新会保持禁用。"
+            ? `${vault.git.branch ?? "detached"} · ${shortSha(vault.git.head)} · ${vault.git.dirty ? "未提交" : "干净"}`
+            : "未纳入 Git"
         }
         actions={
           <>
@@ -76,27 +79,68 @@ export function Overview({
         }
       />
 
-      <section className="stat-grid">
-        <StatCard label="来源" value={vault.counts.sources} hint={`${github} GitHub · ${local} 本地`} icon="source" />
-        <StatCard
-          label="可安装技能"
-          value={vault.counts.skills}
-          hint={`${vault.counts.packages} 个包${vault.counts.externalSkills > 0 ? ` · ${vault.counts.externalSkills} 个外部` : ""}`}
-          icon="skill"
+      <div className="stat-groups">
+        <StatGroup
+          label="仓库内容"
+          cells={[
+            {
+              icon: "source",
+              value: vault.counts.sources,
+              label: "来源",
+              title: `${github} 个 GitHub · ${local} 个本地`,
+            },
+            {
+              icon: "skill",
+              value: vault.counts.skills,
+              label: "技能",
+              title: `${vault.counts.packages} 个包`,
+            },
+            {
+              icon: "sparkle",
+              value: vault.counts.plugins,
+              label: "插件",
+              title: `${vault.counts.pluginSkills} 个插件内技能`,
+            },
+          ]}
         />
-        <StatCard label="插件" value={vault.counts.plugins} hint={`${vault.counts.pluginSkills} 个插件内技能`} icon="sparkle" />
-        <StatCard label="MCP" value={mcpCount} hint="独立 MCP 服务" icon="server" />
-        <StatCard label="工具" value={vault.counts.tools} hint="外部工具卡" icon="terminal" />
-        <StatCard label="外部技能" value={vault.counts.externalSkills} hint="工具托管 · 只观察" icon="shield" />
-        <StatCard label="安装目标" value={vault.counts.targets} hint={`${vault.counts.managedInstalls} 个受管安装`} icon="target" />
-        <StatCard
-          label="待更新"
-          value={updates.length}
-          hint={updates.length > 0 ? "review-before-apply" : "没有发现新提交"}
-          icon="download"
-          tone={updates.length > 0 ? "accent" : undefined}
+        <StatGroup
+          label="外部记录"
+          cells={[
+            {
+              icon: "terminal",
+              value: vault.counts.tools,
+              label: "工具",
+              title: "插件分发 · MCP · CLI · 桌面应用",
+            },
+            { icon: "server", value: mcpCount, label: "MCP", title: "独立 MCP 服务记录" },
+            {
+              icon: "shield",
+              value: vault.counts.externalSkills,
+              label: "外部技能",
+              title: "由对应工具自己管理",
+            },
+          ]}
         />
-      </section>
+        <StatGroup
+          label="安装"
+          cells={[
+            { icon: "target", value: vault.counts.targets, label: "目标", title: "安装规则" },
+            {
+              icon: "download",
+              value: vault.counts.managedInstalls,
+              label: "受管",
+              title: "目标目录里的受管安装",
+            },
+            {
+              icon: "refresh",
+              value: updates.length,
+              label: "待更新",
+              title: "检查上游后可知",
+              accent: updates.length > 0,
+            },
+          ]}
+        />
+      </div>
 
       {errors.length > 0 ? (
         <Callout tone="danger" title={`${errors.length} 个校验错误`}>
@@ -111,7 +155,7 @@ export function Overview({
         <Callout tone="warn" title="上次操作未正常结束">
           <p>
             {vault.operation.kind} 停在「{vault.operation.steps.find((step) => step.status === "running")?.label ?? "未知步骤"}」。
-            VaultDesk 不会自动回滚，请用 Git 状态与安装备份核对后继续。
+            不会自动回滚，请用 Git 状态与安装备份核对后继续。
           </p>
         </Callout>
       ) : null}
@@ -119,10 +163,7 @@ export function Overview({
       <div className="overview-columns">
         <section className="panel update-panel">
           <div className="panel-head">
-            <div>
-              <span className="eyebrow">更新队列</span>
-              <h2>先看差异，再落盘</h2>
-            </div>
+            <h2>更新</h2>
             {updates.length > 0 ? (
               <Button size="sm" variant="quiet" onClick={() => onUpdate()}>
                 全部预览
@@ -132,20 +173,14 @@ export function Overview({
 
           {updates.length === 0 && problems.length === 0 ? (
             <div className="quiet-state">
-              <span className="quiet-mark">
-                <Icon name="check" size={18} />
-              </span>
+              <StatusMark tone="ok" label="没有待更新" size={22} />
               <div>
-                <strong>没有待应用的更新</strong>
-                <p>
-                  {vault.state?.last_checked_at
-                    ? `上次检查于 ${relativeTime(vault.state.last_checked_at)}`
-                    : "还没检查过上游提交。"}
-                </p>
+                <strong>没有待更新</strong>
+                {vault.state?.last_checked_at ? (
+                  <p>检查于 {relativeTime(vault.state.last_checked_at)}</p>
+                ) : null}
               </div>
-              <Button size="sm" variant="ghost" icon="refresh" onClick={onCheck} loading={checking}>
-                检查
-              </Button>
+              <IconButton icon="refresh" label="检查上游" onClick={onCheck} loading={checking} />
             </div>
           ) : (
             <div className="update-list">
@@ -161,20 +196,20 @@ export function Overview({
                     <StatusPill tone={statusTone(source.status)}>{statusLabel(source.status)}</StatusPill>
                     <span className="mono">{shortSha(source.locked?.commit)}</span>
                   </div>
-                  <div className="update-row-actions">
+                  <div className="row-actions">
                     {source.origin === "github" ? (
                       <>
-                        <Button size="sm" variant="quiet" onClick={() => onDiff(source.name)}>
-                          差异
-                        </Button>
-                        <Button
-                          size="sm"
-                          variant="ghost"
+                        <IconButton
+                          icon="file"
+                          label="查看上游差异"
+                          onClick={() => onDiff(source.name)}
+                        />
+                        <IconButton
+                          icon="download"
+                          label="应用更新"
                           onClick={() => onUpdate(source.name)}
                           disabled={source.status === "auth-failed" || source.status === "error"}
-                        >
-                          更新
-                        </Button>
+                        />
                       </>
                     ) : (
                       <span className="muted-small">本地</span>
@@ -188,56 +223,31 @@ export function Overview({
 
         <section className="panel">
           <div className="panel-head">
-            <div>
-              <span className="eyebrow">仓库结构</span>
-              <h2>来源构成</h2>
-            </div>
-            <Button size="sm" variant="quiet" icon="plus" onClick={onImport}>
-              导入
-            </Button>
+            <h2>来源</h2>
+            <IconButton icon="plus" label="导入技能" onClick={onImport} />
           </div>
           <div className="origin-bars">
-            <OriginBar label="GitHub 来源" value={github} total={vault.sources.length} tone="ink" />
-            <OriginBar label="本地来源" value={local} total={vault.sources.length} tone="accent" />
-            <OriginBar
-              label="受管安装"
-              value={vault.counts.managedInstalls}
-              total={Math.max(vault.counts.skills, 1)}
-              tone="moss"
-            />
-          </div>
-          <div className="mini-facts">
-            <button className="mini-fact" onClick={() => onSettings()}>
-              <Icon name="shield" size={15} />
-              <span>备份保留 {vault.state?.targets ? Object.keys(vault.state.targets).length : 0} 个目标</span>
-            </button>
-            <div className="mini-fact">
-              <Icon name="clock" size={15} />
-              <span>上次应用 {relativeTime(vault.state?.last_applied_at)}</span>
-            </div>
+            <OriginBar label="GitHub" value={github} total={vault.sources.length} tone="ink" />
+            <OriginBar label="本地" value={local} total={vault.sources.length} tone="accent" />
           </div>
         </section>
       </div>
 
       <section className="panel">
         <div className="panel-head">
-          <div>
-            <span className="eyebrow">技能</span>
-            <h2>快速进入</h2>
-          </div>
-          <Button size="sm" variant="quiet" onClick={onValidate}>
-            校验仓库
-          </Button>
+          <h2>技能</h2>
+          <IconButton icon="shield" label="校验仓库" onClick={onValidate} />
         </div>
         {featured.length === 0 ? (
-          <EmptyState title="这个仓库还没有技能" icon="skill">
-            导入本地目录，或添加一个 GitHub 来源。
-            <div className="empty-action">
+          <EmptyState
+            title="还没有技能"
+            icon="skill"
+            action={
               <Button size="sm" onClick={onImport}>
                 导入技能
               </Button>
-            </div>
-          </EmptyState>
+            }
+          />
         ) : (
           <div className="skill-grid">
             {featured.map((skill) => (
@@ -249,14 +259,14 @@ export function Overview({
                   <span className="skill-card-name">{skill.name}</span>
                   <Icon name="chevron-right" size={14} className="skill-card-arrow" />
                 </div>
-                <p>{skill.description ?? "没有填写描述。"}</p>
+                <p className="clamp-1" title={skill.description ?? undefined}>
+                  {skill.description ?? "—"}
+                </p>
                 <div className="skill-card-meta">
                   <span>{skill.sourceName}</span>
-                  <span>{originLabel(skill.origin)}</span>
                   {skill.installed.length > 0 ? (
-                    <span className="installed-label">
-                      <span className="installed-dot" />
-                      已安装
+                    <span title={`已安装：${installedFor(skill)}`}>
+                      <StatusMark tone="ok" label="已安装" size={11} />
                     </span>
                   ) : null}
                 </div>
@@ -266,41 +276,34 @@ export function Overview({
         )}
       </section>
 
-      {(warnings.length > 0 || vault.warnings.length > 0) && errors.length === 0 ? (
-        <Callout tone="warn" title={`${warnings.length + vault.warnings.length} 条提示`}>
-          <p>{warnings[0]?.message ?? vault.warnings[0]}</p>
+      {warnings.length > 0 && errors.length === 0 ? (
+        <Callout tone="warn" title={`${warnings.length} 条提示`}>
+          <p>{warnings[0]?.message}</p>
         </Callout>
       ) : null}
-
-      <footer className="overview-footer">
-        <span>仓库格式 {vault.format} · schema {vault.schemaVersion}</span>
-        <span>{vault.path}</span>
-      </footer>
     </div>
   );
 }
 
-function StatCard({
-  label,
-  value,
-  hint,
-  icon,
-  tone,
-}: {
-  label: string;
+interface StatCell {
+  icon: IconName;
   value: number;
-  hint: string;
-  icon: "source" | "skill" | "sparkle" | "server" | "terminal" | "shield" | "target" | "download";
-  tone?: "accent";
-}) {
+  label: string;
+  title: string;
+  accent?: boolean;
+}
+
+function StatGroup({ label, cells }: { label: string; cells: StatCell[] }) {
   return (
-    <div className={`stat-card ${tone ? "is-accent" : ""}`}>
-      <div className="stat-top">
-        <span>{label}</span>
-        <Icon name={icon} size={16} />
-      </div>
-      <strong>{value}</strong>
-      <em>{hint}</em>
+    <div className="stat-group">
+      <span className="stat-group-label">{label}</span>
+      {cells.map((cell) => (
+        <div className={`stat-cell ${cell.accent ? "is-accent" : ""}`} key={cell.label} title={cell.title}>
+          <Icon name={cell.icon} size={15} />
+          <strong>{cell.value}</strong>
+          <span>{cell.label}</span>
+        </div>
+      ))}
     </div>
   );
 }

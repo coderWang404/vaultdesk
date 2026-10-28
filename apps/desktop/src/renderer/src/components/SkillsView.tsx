@@ -1,8 +1,8 @@
 import { useMemo, useState } from "react";
 import type { ExternalSkillRecord, SkillRecord, VaultSnapshot } from "@vaultdesk/core";
-import { externalStatusLabel, externalStatusTone, installedFor, originLabel } from "../format";
+import { externalStatusLabel, externalStatusTone, originLabel } from "../format";
 import { Icon } from "./icons";
-import { Button, EmptyState, SectionHeader, StatusPill } from "./ui";
+import { Button, EmptyState, IconButton, SectionHeader, StatusMark, StatusPill } from "./ui";
 
 type TypeFilter = "all" | "standalone" | "suite" | "collection" | "external";
 
@@ -114,9 +114,7 @@ export function SkillsView({
   return (
     <div className="view skills-view">
       <SectionHeader
-        eyebrow="技能"
-        title="仓库里的全部技能"
-        description="按来源分组展示单技能、套件与合集。外部托管的技能由工具自己管理，VaultDesk 只记录路径并观察状态。"
+        title="技能"
         actions={
           <Button variant="primary" icon="plus" onClick={onImport}>
             导入技能
@@ -130,7 +128,7 @@ export function SkillsView({
           <input
             value={query}
             onChange={(event) => setQuery(event.target.value)}
-            placeholder="搜索技能名称、描述、来源或归属工具…"
+            placeholder="搜索技能"
             aria-label="搜索技能"
           />
           {query ? (
@@ -170,9 +168,35 @@ export function SkillsView({
       </div>
 
       {groups.length === 0 && externalGroups.length === 0 ? (
-        <EmptyState icon="skill" title="没有匹配的技能">
-          换一个关键词，或导入新的技能目录。
-        </EmptyState>
+        vault.skills.length + vault.externalSkills.length === 0 ? (
+          <EmptyState
+            icon="skill"
+            title="还没有技能"
+            action={
+              <Button size="sm" variant="primary" icon="plus" onClick={onImport}>
+                导入技能
+              </Button>
+            }
+          />
+        ) : (
+          <EmptyState
+            icon="search"
+            title="没有匹配的技能"
+            action={
+              <Button
+                size="sm"
+                variant="quiet"
+                onClick={() => {
+                  setQuery("");
+                  setTypeFilter("all");
+                  setOnlyInstalled(false);
+                }}
+              >
+                清除筛选
+              </Button>
+            }
+          />
+        )
       ) : (
         <div className="skill-groups">
           {groups.map((group) => (
@@ -219,13 +243,12 @@ function ExternalGroup({
   return (
     <section className="skill-group">
       <header className="skill-group-header">
-        <span className="origin-glyph small origin-external">
+        <span className="origin-glyph small origin-external" title="外部托管">
           <Icon name="shield" size={13} />
         </span>
         <strong className="skill-group-name">{group.owner}</strong>
-        <StatusPill tone="neutral">外部托管</StatusPill>
-        <span className="skill-group-meta">{group.skills.length} 个技能</span>
-        <span className="skill-group-origin">只记录 · 不安装</span>
+        <span className="type-chip">外部</span>
+        <span className="skill-group-meta">{group.skills.length} 个</span>
         {attention > 0 ? (
           <span className="skill-group-warning" title={`${attention} 个外部技能需要确认`}>
             <Icon name="alert" size={13} />
@@ -249,14 +272,23 @@ function ExternalGroup({
             <div className="skill-cell-main">
               <div>
                 <strong>{skill.name}</strong>
-                <p>{skill.description ?? skill.skillPath}</p>
+                <p className="clamp-1" title={skill.description ?? undefined}>
+                  {skill.description ?? skill.skillPath}
+                </p>
               </div>
             </div>
             <div className="skill-cell-role">
               <span className="type-chip">外部</span>
             </div>
             <div className="skill-cell-installed">
-              <StatusPill tone={externalStatusTone(skill.status)}>{externalStatusLabel(skill.status)}</StatusPill>
+              {skill.status === "ok" || skill.status === "observed" ? (
+                <StatusMark
+                  tone={skill.status === "ok" ? "ok" : "muted"}
+                  label={externalStatusLabel(skill.status)}
+                />
+              ) : (
+                <StatusPill tone={externalStatusTone(skill.status)}>{externalStatusLabel(skill.status)}</StatusPill>
+              )}
             </div>
             <div className="skill-row-actions">
               <Icon name="chevron-right" size={14} className="row-chevron" />
@@ -292,18 +324,12 @@ function SourceGroup({
   return (
     <section className="skill-group">
       <header className="skill-group-header">
-        <span className={`origin-glyph small origin-${origin}`}>
+        <span className={`origin-glyph small origin-${origin}`} title={originLabel(origin)}>
           <Icon name={origin === "github" ? "git" : "folder"} size={13} />
         </span>
         <strong className="skill-group-name">{group.sourceName}</strong>
-        <StatusPill tone="neutral">{TYPE_LABELS[type]}</StatusPill>
-        {group.source?.kind === "suite" && group.source.entrypoint ? (
-          <span className="skill-group-entry">入口 {group.source.entrypoint}</span>
-        ) : null}
-        <span className="skill-group-meta">
-          {group.skills.length} 个{type === "standalone" ? "技能" : "成员"}
-        </span>
-        <span className="skill-group-origin">{originLabel(origin)}</span>
+        <span className="type-chip">{TYPE_LABELS[type]}</span>
+        <span className="skill-group-meta">{group.skills.length} 个</span>
         {issues > 0 ? (
           <span className="skill-group-warning" title={`${issues} 条校验问题`}>
             <Icon name="alert" size={13} />
@@ -327,41 +353,33 @@ function SourceGroup({
             <div className="skill-cell-main">
               <div>
                 <strong>{skill.name}</strong>
-                <p>{skill.description ?? "没有填写描述。"}</p>
+                <p className="clamp-1" title={skill.description ?? undefined}>
+                  {skill.description ?? "—"}
+                </p>
               </div>
             </div>
             <div className="skill-cell-role">
               <span className={`type-chip ${skill.isEntrypoint ? "is-entry" : ""}`}>{roleLabel(skill)}</span>
             </div>
-            <div className="skill-cell-installed">
+            <div
+              className="skill-cell-installed"
+              title={skill.installed.length > 0 ? skill.installed.map((entry) => entry.targetId).join("、") : "未安装"}
+            >
               {skill.installed.length > 0 ? (
                 <span className="installed-label">
-                  <span className="installed-dot" />
-                  {installedFor(skill)}
+                  <StatusMark tone="ok" label="已安装" size={12} />
+                  {skill.installed[0]?.targetId}
+                  {skill.installed.length > 1 ? ` +${skill.installed.length - 1}` : ""}
                 </span>
               ) : (
-                <span className="muted-small">未安装</span>
+                <span className="install-none">—</span>
               )}
             </div>
             <div className="skill-row-actions" onClick={(event) => event.stopPropagation()}>
               {skill.origin === "github" ? (
-                <button
-                  className="row-more"
-                  title="Fork 到本地"
-                  aria-label={`Fork ${skill.name}`}
-                  onClick={() => selection.onFork(skill)}
-                >
-                  <Icon name="branch" size={14} />
-                </button>
+                <IconButton icon="branch" label={`Fork ${skill.name}`} onClick={() => selection.onFork(skill)} />
               ) : (
-                <button
-                  className="row-more"
-                  title="编辑 SKILL.md"
-                  aria-label={`编辑 ${skill.name}`}
-                  onClick={() => selection.onEditor(skill)}
-                >
-                  <Icon name="edit" size={14} />
-                </button>
+                <IconButton icon="edit" label={`编辑 ${skill.name}`} onClick={() => selection.onEditor(skill)} />
               )}
               <Icon name="chevron-right" size={14} className="row-chevron" />
             </div>

@@ -293,7 +293,7 @@ notes: Owned by rea-agents; re-pin after a tool update.
 | `invalid` | The path exists but has no `SKILL.md` |
 | `conflict` | A `.vault-managed` marker is present, so another owner claims the path |
 
-VaultDesk hashes the directory while ignoring VaultDesk metadata, `.vault-managed`, `.DS_Store`, `.git`, `node_modules`, and `.vault`. It reads the description and `metadata.version` for display, and `vault validate` reports a path inside the vault or an install target that references an external skill as an error. Everything else, including drift and a stale marker, is a warning.
+VaultDesk hashes the directory while ignoring VaultDesk metadata, `.vault-managed`, `.DS_Store`, `.git`, `node_modules`, and `.vault`. It reads the description and `metadata.version` for display. `vault validate` reports a path inside the vault, an install target that references an external skill, an invalid card, a name/file mismatch, or a duplicate name as an error. Drift, a missing path, and a stale marker are warnings.
 
 ```bash
 vaultdesk external list --vault "$VAULT"

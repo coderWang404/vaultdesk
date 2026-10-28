@@ -308,6 +308,7 @@ notes: 由 rea-agents 管理；工具升级后重新 pin。
 
 - `external.path-inside-vault` 是 error。
 - 目标安装引用外部技能（`target.external-not-installable`）是 error。
+- `external.invalid-yaml`、`schema.invalid`、`external.filename-mismatch`、`external.duplicate-name` 是 error。
 - `external.path-name-mismatch`、`external.path-missing`、`external.skill-file-missing`、`external.vault-marker`、`external.hash-drift`、`external.related-tool-unknown` 是 warning。
 
 接口：

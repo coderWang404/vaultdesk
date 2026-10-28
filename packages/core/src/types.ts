@@ -324,6 +324,7 @@ export interface ImportResult {
 export interface PluginImportPreview {
   inputPath: string;
   shape: "plugin";
+  detectedBy: "manifest" | "composition" | "override";
   suggestedName: string;
   rootPath: string;
   relativePath: string;

@@ -45,6 +45,8 @@ export const ipcCommands = {
     name: slugSchema.optional(),
     kind: packageKindSchema.optional(),
     entrypoint: slugSchema.optional(),
+    plugin: z.boolean().default(false),
+    noPlugin: z.boolean().default(false),
     confirm: z.boolean().default(false),
   }),
   "source.addGithub": z.object({
@@ -55,6 +57,8 @@ export const ipcCommands = {
     name: slugSchema.optional(),
     kind: packageKindSchema.optional(),
     entrypoint: slugSchema.optional(),
+    plugin: z.boolean().default(false),
+    noPlugin: z.boolean().default(false),
     confirm: z.boolean().default(false),
   }),
   "source.remove": z.object({

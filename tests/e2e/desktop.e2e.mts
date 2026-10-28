@@ -577,7 +577,7 @@ async function pluginsFlow(suite: Suite): Promise<void> {
   assert(localPreview.includes("plugins/demo-plugin"), "local preview target is plugins/demo-plugin");
   assert(localPreview.includes("1 个 manifest"), "local plugin manifest count");
   assert(localPreview.includes("1 个插件内技能"), "local plugin contained skill count");
-  equal(await localModal.locator("select").isDisabled(), true, "plugin import disables classification");
+  equal(await localModal.locator(".import-form.grid-three select").isDisabled(), true, "plugin import disables classification");
   await localModal.getByRole("button", { name: "确认导入" }).click();
   await waitForText(page, "导入完成", 30_000);
   assert((await localModal.innerText()).includes("插件只写入 vault"), "plugin apply note");
@@ -619,6 +619,36 @@ async function pluginsFlow(suite: Suite): Promise<void> {
   await page.getByLabel("筛选插件").fill("plugin-kit");
   await waitFor(async () => (await page.locator(".plugin-row").count()) === 1, "GitHub plugin filter");
   assert(!fs.existsSync(targetDest), "GitHub plugin import wrote nothing to the agent target");
+
+  await page.getByRole("button", { name: "清除筛选" }).click();
+  await waitFor(async () => (await page.locator(".plugin-row").count()) === 7, "plugin filter cleared after GitHub import");
+
+  const composedDir = path.join(workspace.root, "imports", "composed-kit");
+  writeSkill(path.join(composedDir, "skills", "composed-skill"), "composed-skill", "Composed plugin skill.", "Composed body.");
+  fs.writeFileSync(path.join(composedDir, ".mcp.json"), '{"mcpServers":{"demo":{"command":"node"}}}\n', "utf8");
+  fs.writeFileSync(path.join(composedDir, "LICENSE"), "MIT\n", "utf8");
+
+  await page.getByRole("button", { name: "导入插件" }).click();
+  const composedModal = await dialog(page);
+  await composedModal.getByPlaceholder("/path/to/skill-or-repo").fill(composedDir);
+  await composedModal.getByRole("button", { name: "预览分类" }).click();
+  await composedModal.locator(".import-preview").waitFor({ state: "visible", timeout: 30_000 });
+  const composedPreview = await composedModal.locator(".import-preview").innerText();
+  assert(composedPreview.includes("按组合识别"), "composition detection badge");
+  assert(composedPreview.includes("无 manifest"), "manifest-less plugin preview");
+  assert(composedPreview.includes("1 个插件内技能"), "composition contained skill count");
+  await composedModal.getByRole("button", { name: "确认导入" }).click();
+  await waitForText(page, "导入完成", 30_000);
+  await composedModal.locator(".modal-footer").getByRole("button", { name: "完成" }).click();
+  await composedModal.waitFor({ state: "hidden" });
+  assert(fs.existsSync(path.join(vaultPath, "plugins/composed-kit/.mcp.json")), "composition plugin stored");
+  assert(fs.existsSync(path.join(vaultPath, "sources/composed-kit.yml")), "composition metadata written");
+  await waitFor(async () => (await page.locator(".plugin-row").count()) === 8, "composition plugin row appears", 30_000);
+  await page.locator(".plugin-row").filter({ hasText: "composed-kit" }).click();
+  await page
+    .locator(".inspector")
+    .getByText("没有 manifest；按 skills 与 MCP/commands/hooks 等工具资产组合识别。")
+    .waitFor();
 
   commitAll(vaultPath, "chore: commit plugin imports");
   const pluginV2Commit = advanceUpstreamRepo(workspace, "plugin-kit", (source) => {
@@ -698,9 +728,9 @@ async function pluginsFlow(suite: Suite): Promise<void> {
   assert(!fs.existsSync(path.join(vaultPath, "plugins/plugin-kit")), "plugin working copy removed via UI");
   assert(!fs.existsSync(path.join(vaultPath, "third_party/plugin-kit")), "plugin vendor removed via UI");
   await openSection(page, "插件");
-  await waitFor(async () => (await page.locator(".plugin-row").count()) === 6, "plugin row removed", 30_000);
+  await waitFor(async () => (await page.locator(".plugin-row").count()) === 7, "plugin row removed", 30_000);
 
-  console.log("      plugin page, filters, search routing, hooks warning, imports, diff, update, remove OK");
+  console.log("      plugin page, filters, search routing, hooks warning, imports, composition, diff, update, remove OK");
 }
 
 async function autoCheckThrottle(suite: Suite): Promise<void> {
@@ -1082,7 +1112,7 @@ async function writableFlow(suite: Suite): Promise<void> {
 
     const suiteModal = await openImportModal(page);
     await suiteModal.getByPlaceholder("/path/to/skill-or-repo").fill(path.join(workspace.root, "imports", "suite-bundle"));
-    await suiteModal.locator("select").selectOption("suite");
+    await suiteModal.locator(".import-form.grid-three select").selectOption("suite");
     await suiteModal.getByRole("button", { name: "预览分类" }).click();
     await waitForText(page, "A suite import requires --entrypoint.", 30_000);
     await suiteModal.getByPlaceholder("入口技能名").fill("epsilon");

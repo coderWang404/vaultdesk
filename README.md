@@ -22,8 +22,10 @@ facts and apply the same rules.
   timestamped backups, verification, and restore
 - editing local skills and forking GitHub skills into local copies
 - importing standalone skills and multi-skill packages from disk or GitHub
-- registering whole plugin roots from disk or GitHub, with manifest and asset
-  validation, contained-skill discovery, and a hooks warning
+- registering whole plugin roots from disk or GitHub, with manifest-optional
+  detection (skills plus MCP/commands/agents/hooks), asset validation,
+  contained-skill discovery, and a hooks warning
+- explicit shape overrides (`--plugin` / `--no-plugin`) when detection is wrong
 - whole-root diffs and review-before-apply updates for GitHub plugin sources
 - a plugin registry page and metadata search that includes plugins and
   plugin-contained skills

@@ -79,6 +79,8 @@ const BOOLEAN_FLAGS = new Set([
   "full",
   "git",
   "no-state",
+  "plugin",
+  "no-plugin",
   "help",
   "version",
 ]);
@@ -218,7 +220,8 @@ Commands:
   source check [names...]          Check upstream commits (read-only)
   source diff <name>               Show the upstream diff for one source
   source update [names...]         Preview or apply upstream updates
-  source add <path>                Import a local folder or plugin root (preview by default)
+  source add <path> [--plugin|--no-plugin]
+                                   Import a local folder, plugin root, or skill suite
   source add --repo owner/name     Add a GitHub source or plugin (preview by default)
   source remove <name>             Remove a source registration
   source fork <skill> [--as name]  Fork a GitHub skill into a local skill
@@ -600,19 +603,32 @@ function printPluginImport(preview: PluginImportPreview): string[] {
   }
   lines.push(`Root     ${preview.relativePath}`);
   lines.push(`Target   plugins/${preview.suggestedName}`);
+  lines.push(
+    `Detected ${
+      preview.detectedBy === "manifest"
+        ? "manifest"
+        : preview.detectedBy === "composition"
+          ? "composition (skills + MCP/commands/agents/hooks)"
+          : "forced override"
+    }`,
+  );
   lines.push("");
   lines.push(bold("Manifests"));
-  lines.push(
-    ...table(
-      ["AGENT", "NAME", "VERSION", "PATH"],
-      preview.manifests.map((manifest) => [
-        manifest.agent,
-        manifest.name ?? "-",
-        manifest.version ?? "-",
-        manifest.relativePath + (manifest.parseError ? ` ${red("invalid")}` : ""),
-      ]),
-    ),
-  );
+  if (preview.manifests.length === 0) {
+    lines.push(dim(preview.detectedBy === "override" ? "None (shape forced)" : "None (detected by composition)"));
+  } else {
+    lines.push(
+      ...table(
+        ["AGENT", "NAME", "VERSION", "PATH"],
+        preview.manifests.map((manifest) => [
+          manifest.agent,
+          manifest.name ?? "-",
+          manifest.version ?? "-",
+          manifest.relativePath + (manifest.parseError ? ` ${red("invalid")}` : ""),
+        ]),
+      ),
+    );
+  }
   const assetKinds = new Map<string, number>();
   for (const asset of preview.assets) assetKinds.set(asset.kind, (assetKinds.get(asset.kind) ?? 0) + 1);
   lines.push("");
@@ -917,6 +933,11 @@ async function dispatch(parsed: Parsed): Promise<CommandResult> {
         const kind = kindRaw as "suite" | "collection" | undefined;
         const name = valueOf(options, "name");
         const entrypoint = valueOf(options, "entrypoint");
+        const forcePlugin = hasFlag(options, "plugin");
+        const noPlugin = hasFlag(options, "no-plugin");
+        if (forcePlugin && noPlugin) {
+          throw new VaultDeskError("invalid-input", "Use either --plugin or --no-plugin, not both.");
+        }
         const apply = parsed.yes && !hasFlag(options, "dry-run");
         const refusePluginSkillFlags = (): void => {
           if (kindRaw || entrypoint) {
@@ -941,12 +962,14 @@ async function dispatch(parsed: Parsed): Promise<CommandResult> {
             kind,
             entrypoint,
           };
-          const pluginInput = { repo, ref: input.ref, path: input.path, name };
+          const pluginInput = { repo, ref: input.ref, path: input.path, name, force: forcePlugin };
           let pluginPreview: PluginImportPreview | undefined;
-          try {
-            pluginPreview = await previewGithubPlugin(vaultPath, pluginInput);
-          } catch (error) {
-            if (!(error instanceof VaultDeskError) || error.code !== "not-a-plugin") throw error;
+          if (!noPlugin) {
+            try {
+              pluginPreview = await previewGithubPlugin(vaultPath, pluginInput);
+            } catch (error) {
+              if (!(error instanceof VaultDeskError) || error.code !== "not-a-plugin") throw error;
+            }
           }
           if (pluginPreview) {
             refusePluginSkillFlags();
@@ -972,17 +995,17 @@ async function dispatch(parsed: Parsed): Promise<CommandResult> {
           };
         }
         const inputPath = path.resolve(expandHome(localPath as string));
-        if (detectLocalPlugin(inputPath)) {
+        if (!noPlugin && detectLocalPlugin(inputPath, { force: forcePlugin })) {
           refusePluginSkillFlags();
           if (!apply) {
-            const preview = await previewPluginImport(inputPath, vaultPath, { name });
+            const preview = await previewPluginImport(inputPath, vaultPath, { name, force: forcePlugin });
             return {
               data: preview,
               warnings: preview.warnings,
               human: [...printPluginImport(preview), "", notice(parsed)],
             };
           }
-          const result = await applyPluginImport(inputPath, vaultPath, { name });
+          const result = await applyPluginImport(inputPath, vaultPath, { name, force: forcePlugin });
           return pluginAdded(result.sourceName, result.wrote);
         }
         if (!apply) {

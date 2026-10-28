@@ -30,6 +30,31 @@ function copyClaudeFixture(destination: string): string {
   return destination;
 }
 
+function writeComposedPlugin(
+  root: string,
+  options: { skills?: string[]; mcp?: boolean; commands?: boolean } = {},
+): void {
+  for (const name of options.skills ?? ["helper"]) {
+    const dir = path.join(root, "skills", name);
+    fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(
+      path.join(dir, "SKILL.md"),
+      `---\nname: ${name}\ndescription: ${name} skill\n---\n\n# ${name}\n`,
+    );
+  }
+  if (options.mcp !== false) {
+    fs.writeFileSync(
+      path.join(root, ".mcp.json"),
+      JSON.stringify({ mcpServers: { demo: { command: "node", args: ["server.js"] } } }),
+    );
+  }
+  if (options.commands) {
+    fs.mkdirSync(path.join(root, "commands"), { recursive: true });
+    fs.writeFileSync(path.join(root, "commands", "hello.md"), "# hello\n");
+  }
+  fs.writeFileSync(path.join(root, "LICENSE"), "MIT\n");
+}
+
 describe("plugin import", () => {
   it("imports a local plugin root and keeps it out of skill installs", async () => {
     const vaultPath = path.join(tempDir("plugin-local"), "vault");
@@ -152,5 +177,91 @@ describe("plugin import", () => {
     });
     expect(preview.relativePath).toBe("packages/nested-kit");
     expect(preview.warnings.some((warning) => warning.includes("Detected plugin root"))).toBe(true);
+  });
+
+  it("imports a plugin detected by composition without a manifest", async () => {
+    const vaultPath = path.join(tempDir("plugin-composed"), "vault");
+    await initVault(vaultPath, { name: "plugins" });
+    const input = path.join(tempDir("plugin-composed-input"), "composed-kit");
+    writeComposedPlugin(input);
+
+    expect(detectLocalPlugin(input)).toBe(input);
+    const preview = await previewPluginImport(input, vaultPath);
+    expect(preview).toMatchObject({
+      shape: "plugin",
+      detectedBy: "composition",
+      suggestedName: "composed-kit",
+      relativePath: ".",
+    });
+    expect(preview.manifests).toEqual([]);
+    expect(preview.skills.map((skill) => skill.name)).toEqual(["helper"]);
+    expect(preview.assets.some((asset) => asset.kind === "mcp")).toBe(true);
+    expect(preview.warnings.some((warning) => warning.includes("composition"))).toBe(true);
+
+    const result = await applyPluginImport(input, vaultPath);
+    expect(result).toMatchObject({ sourceName: "composed-kit", skillNames: ["helper"] });
+
+    const snapshot = await openVault(vaultPath);
+    expect(snapshot.counts).toMatchObject({ sources: 1, skills: 0, plugins: 1, pluginSkills: 1 });
+    expect(snapshot.plugins[0]).toMatchObject({ name: "composed-kit", manifests: [] });
+    expect(fs.existsSync(path.join(vaultPath, "plugins", "composed-kit", ".mcp.json"))).toBe(true);
+
+    const validation = await validateVault(vaultPath);
+    expect(validation.ok).toBe(true);
+    expect(validation.warnings.some((issue) => issue.code === "plugin.manifest-missing")).toBe(true);
+  });
+
+  it("requires an explicit override for folders without plugin signals", async () => {
+    const vaultPath = path.join(tempDir("plugin-forced"), "vault");
+    await initVault(vaultPath, { name: "plugins" });
+    const input = path.join(tempDir("plugin-forced-input"), "command-kit");
+    fs.mkdirSync(path.join(input, "commands"), { recursive: true });
+    fs.writeFileSync(path.join(input, "commands", "hello.md"), "# hello\n");
+    fs.writeFileSync(path.join(input, "LICENSE"), "MIT\n");
+
+    expect(detectLocalPlugin(input)).toBeUndefined();
+    await expect(previewPluginImport(input, vaultPath)).rejects.toMatchObject({ code: "not-a-plugin" });
+
+    expect(detectLocalPlugin(input, { force: true })).toBe(input);
+    const preview = await previewPluginImport(input, vaultPath, { force: true });
+    expect(preview).toMatchObject({ detectedBy: "override", manifests: [], skills: [] });
+    expect(preview.warnings.some((warning) => warning.includes("forced"))).toBe(true);
+
+    const result = await applyPluginImport(input, vaultPath, { force: true });
+    expect(result.skillNames).toEqual([]);
+    expect((await validateVault(vaultPath)).ok).toBe(true);
+  });
+
+  it("previews and imports a manifest-less GitHub plugin mirror", async () => {
+    const vaultPath = path.join(tempDir("plugin-composed-github"), "vault");
+    await initVault(vaultPath, { name: "plugins" });
+    const repoDir = path.join(tempDir("plugin-composed-github-repo"), "upstream");
+    writeComposedPlugin(path.join(repoDir, "packages", "composed-kit"));
+    initGitRepo(repoDir);
+
+    const preview = await previewGithubPlugin(vaultPath, {
+      repo: "fixture/composed",
+      remoteUrl: `file://${repoDir}`,
+      ref: "main",
+    });
+    expect(preview).toMatchObject({
+      detectedBy: "composition",
+      relativePath: "packages/composed-kit",
+      suggestedName: "composed-kit",
+    });
+    expect(preview.manifests).toEqual([]);
+
+    const result = await addGithubPlugin(vaultPath, {
+      repo: "fixture/composed",
+      remoteUrl: `file://${repoDir}`,
+      ref: "main",
+    });
+    expect(result).toMatchObject({ sourceName: "composed-kit", skillNames: ["helper"] });
+
+    const snapshot = await openVault(vaultPath);
+    expect(snapshot.plugins[0]?.manifests).toEqual([]);
+    expect(snapshot.plugins[0]?.locked?.hash).toMatch(/^sha256:/);
+    expect(Object.keys(snapshot.plugins[0]?.locked?.skills ?? {})).toEqual(["helper"]);
+    expect((await validateVault(vaultPath)).ok).toBe(true);
   });
 });

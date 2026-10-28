@@ -377,7 +377,13 @@ function checkPlugin(plugin: PluginRecord, snapshot: VaultSnapshot, issues: Vali
     return;
   }
   if (plugin.manifests.length === 0) {
-    push(issues, "error", "plugin.manifest-missing", `Plugin ${plugin.name} has no recognizable manifest`, plugin.workingPath);
+    push(
+      issues,
+      "warning",
+      "plugin.manifest-missing",
+      `Plugin ${plugin.name} has no manifest; recognized from composition or an explicit override`,
+      plugin.workingPath,
+    );
   }
   const names = new Set<string>();
   const versions = new Set<string>();

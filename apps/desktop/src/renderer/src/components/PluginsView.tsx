@@ -94,7 +94,7 @@ export function PluginsView({
       {plugins.length === 0 ? (
         <EmptyState icon="sparkle" title={vault.plugins.length === 0 ? "这个仓库还没有插件" : "没有匹配的插件"}>
           {vault.plugins.length === 0
-            ? "导入带 manifest 的插件目录；VaultDesk 只写入仓库，不会安装到 agent。"
+            ? "导入插件目录：manifest 可选，没有 manifest 时按 skills + MCP/commands/hooks 等组合识别。VaultDesk 只写入仓库，不会安装到 agent。"
             : "换一个关键词，或切换来源筛选。"}
           {vault.plugins.length === 0 ? (
             <div className="empty-action">
@@ -121,6 +121,11 @@ export function PluginsView({
                   <div className="source-row-title">
                     <h3>{plugin.name}</h3>
                     {plugin.version ? <StatusPill tone="muted">v{plugin.version}</StatusPill> : null}
+                    {plugin.manifests.length === 0 ? (
+                      <StatusPill tone="muted" title="没有 manifest，按 skills 与工具资产组合识别">
+                        无 manifest
+                      </StatusPill>
+                    ) : null}
                     {plugin.manifests.map((manifest) => (
                       <StatusPill
                         key={manifest.relativePath}

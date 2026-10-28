@@ -93,24 +93,26 @@ const handlers: { [K in IpcCommand]: Handler<K> } = {
   },
   "source.forkPreview": ({ vaultPath, skill, as }) => previewFork(vaultPath, skill, as),
   "source.fork": ({ vaultPath, skill, as }) => forkSkill(vaultPath, skill, as),
-  "source.addLocal": async ({ vaultPath, path: inputPath, name, kind, entrypoint, confirm }) => {
-    if (detectLocalPlugin(inputPath)) {
-      if (!confirm) return previewPluginImport(inputPath, vaultPath, { name });
-      return applyPluginImport(inputPath, vaultPath, { name });
+  "source.addLocal": async ({ vaultPath, path: inputPath, name, kind, entrypoint, plugin, noPlugin, confirm }) => {
+    if (!noPlugin && detectLocalPlugin(inputPath, { force: plugin })) {
+      if (!confirm) return previewPluginImport(inputPath, vaultPath, { name, force: plugin });
+      return applyPluginImport(inputPath, vaultPath, { name, force: plugin });
     }
     if (!confirm) return previewImport(inputPath, vaultPath, name, { kind, entrypoint });
     return applyImport(inputPath, vaultPath, { name, kind, entrypoint });
   },
-  "source.addGithub": async ({ vaultPath, repo, ref, path: contentPath, name, kind, entrypoint, confirm }) => {
-    const pluginInput = { repo, ref, path: contentPath, name };
-    let plugin: Awaited<ReturnType<typeof previewGithubPlugin>> | null = null;
-    try {
-      plugin = await previewGithubPlugin(vaultPath, pluginInput);
-    } catch (error) {
-      if (!(error instanceof VaultDeskError) || error.code !== "not-a-plugin") throw error;
+  "source.addGithub": async ({ vaultPath, repo, ref, path: contentPath, name, kind, entrypoint, plugin, noPlugin, confirm }) => {
+    const pluginInput = { repo, ref, path: contentPath, name, force: plugin };
+    let pluginPreview: Awaited<ReturnType<typeof previewGithubPlugin>> | null = null;
+    if (!noPlugin) {
+      try {
+        pluginPreview = await previewGithubPlugin(vaultPath, pluginInput);
+      } catch (error) {
+        if (!(error instanceof VaultDeskError) || error.code !== "not-a-plugin") throw error;
+      }
     }
-    if (plugin) {
-      if (!confirm) return plugin;
+    if (pluginPreview) {
+      if (!confirm) return pluginPreview;
       return addGithubPlugin(vaultPath, pluginInput);
     }
     if (!confirm) return previewAddGithub(vaultPath, { repo, ref, path: contentPath, name, kind, entrypoint });

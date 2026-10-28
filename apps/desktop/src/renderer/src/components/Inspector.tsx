@@ -448,7 +448,9 @@ function PluginInspector({
         </Callout>
       ) : null}
 
-      <p className="inspector-copy">{plugin.description ?? "manifest 里没有填写描述。"}</p>
+      <p className="inspector-copy">
+        {plugin.description ?? (plugin.manifests.length > 0 ? "manifest 里没有填写描述。" : "没有 manifest，也没有描述。")}
+      </p>
 
       <div className="inspector-section">
         <span className="inspector-section-title">上游</span>
@@ -507,6 +509,9 @@ function PluginInspector({
           manifest <em>{plugin.manifests.length}</em>
         </span>
         <div className="plugin-manifest-list">
+          {plugin.manifests.length === 0 ? (
+            <span className="muted-small">没有 manifest；按 skills 与 MCP/commands/hooks 等工具资产组合识别。</span>
+          ) : null}
           {plugin.manifests.map((manifest) => (
             <div className={`plugin-manifest ${manifest.parseError ? "is-error" : ""}`} key={manifest.relativePath}>
               <StatusPill tone={manifest.parseError ? "danger" : "neutral"}>{pluginAgentLabel(manifest.agent)}</StatusPill>

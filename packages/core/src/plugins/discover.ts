@@ -296,6 +296,42 @@ export function inspectPlugin(input: {
   };
 }
 
+const COMPANION_ASSETS: { name: string; kind: PluginAssetKind }[] = [
+  { name: "commands", kind: "commands" },
+  { name: "agents", kind: "agents" },
+  { name: "hooks", kind: "hooks" },
+  { name: "rules", kind: "rules" },
+  { name: "workflows", kind: "workflows" },
+];
+
+export interface PluginComposition {
+  skills: string[];
+  assets: PluginAssetKind[];
+}
+
+export function pluginComposition(dir: string): PluginComposition {
+  const skills: string[] = [];
+  const skillsRoot = path.join(dir, "skills");
+  for (const entry of listDirectory(skillsRoot)) {
+    if (!entry.isDirectory() && !entry.isSymbolicLink()) continue;
+    if (isFile(path.join(skillsRoot, entry.name, "SKILL.md"))) skills.push(entry.name);
+  }
+  const assets: PluginAssetKind[] = [];
+  for (const entry of COMPANION_ASSETS) {
+    const target = path.join(dir, entry.name);
+    if (isDirectory(target) && listDirectory(target).length > 0) assets.push(entry.kind);
+  }
+  for (const entry of ASSET_FILES) {
+    if (isFile(path.join(dir, entry.name))) assets.push(entry.kind);
+  }
+  return { skills: skills.sort(), assets: [...new Set(assets)] };
+}
+
+export function isComposedPlugin(composition: PluginComposition): boolean {
+  return composition.skills.length > 0 && composition.assets.length > 0;
+}
+
 export function isPluginRoot(dir: string): boolean {
-  return detectPluginManifests(dir).length > 0;
+  if (detectPluginManifests(dir).length > 0) return true;
+  return isComposedPlugin(pluginComposition(dir));
 }

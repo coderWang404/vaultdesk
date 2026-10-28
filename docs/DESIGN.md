@@ -211,7 +211,7 @@ sources:
 
 插件是 `shape: plugin` 的 source，占用 `plugins/<name>/` 作为工作根；GitHub 插件另存一份 pristine 副本到 `third_party/<name>/`。成员技能在读取时从插件根发现，不写进 `skills` 字段。`vault.lock` 记录整根 hash，用于发现 commands、agents、hooks、MCP 等资产变化。GitHub 插件支持整根 diff 与 review-before-apply 更新：同步两份副本，更新 lock 与 source 元数据，纯插件更新不触发 build/install。
 
-插件只进 vault，不进 `build/skills/`，不进入安装目标解析。完整规则、manifest 检测、资产清单和校验项见 `docs/PLUGINS.md`。
+插件只进 vault，不进 `build/skills/`，不进入安装目标解析。manifest 是可选元数据：没有 manifest 时按 `skills/` 加 MCP/commands/agents/hooks 等组合识别，也可由用户显式强制或关闭。完整规则、插件识别、资产清单和校验项见 `docs/PLUGINS.md`。
 
 ## 5. 更新与安装语义
 
@@ -251,7 +251,7 @@ sources:
 ### 5.5 导入
 
 - 检测输入目录中的 `SKILL.md`：一个为 standalone，多个为 collection，suite 需用户显式指定入口。
-- 检测到插件 manifest 时按插件登记导入，规则见 `docs/PLUGINS.md`，不构建、不安装。
+- 检测到插件 manifest 或插件组合特征（skills + MCP/commands/hooks 等）时按插件登记导入，规则见 `docs/PLUGINS.md`，不构建、不安装。`--plugin` / `--no-plugin` 可覆盖自动识别。
 - 预览分类、名称、目标路径、冲突项，用户确认后复制并写元数据。
 - 不做 AI 推断，不静默改分类。
 
@@ -344,7 +344,7 @@ vaultdesk agent skill
 ## 9. 测试与发布门槛
 
 - core 单元测试：schema、路径、哈希、校验规则、迁移、安装槽位、fork、导入检测、搜索、Git 路径过滤、插件发现与校验。
-- fixture 集成测试：v1 与 v2 各一套，覆盖 local/GitHub、standalone/package/suite/collection；插件 fixture 覆盖 Claude/Codex/Qoder/manifest 冲突/hooks/路径逃逸。
+- fixture 集成测试：v1 与 v2 各一套，覆盖 local/GitHub、standalone/package/suite/collection；插件 fixture 覆盖 Claude/Codex/Qoder/manifest 冲突/hooks/路径逃逸，以及无 manifest 的组合识别与显式强制导入。
 - 迁移 golden：固定 fixture 的 dry-run 输出与 golden 文件一致，重复调用结果稳定。
 - CLI 测试：JSON 信封、退出码、`--yes` 门禁、只读命令不写盘。
 - Electron smoke：本地脚本启动生产构建，打开临时 fixture，校验渲染文本并截图；CI 的 macOS 任务运行同一脚本。

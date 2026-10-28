@@ -24,12 +24,13 @@ import type {
 import { withWriteLock } from "../vault/lockfile.js";
 import { readLock, writeLock } from "../vault/state.js";
 import { openVault, validateVault } from "../vault/validate.js";
-import { detectPluginManifests, inspectPlugin, isPluginRoot } from "./discover.js";
+import { detectPluginManifests, inspectPlugin, isComposedPlugin, isPluginRoot, pluginComposition } from "./discover.js";
 
 interface PluginImportOptions {
   name?: string;
   contentPath?: string;
   remoteUrl?: string;
+  force?: boolean;
 }
 
 function manifestName(manifests: PluginManifest[]): string | undefined {
@@ -78,10 +79,11 @@ function sharedSkillWarnings(snapshot: Awaited<ReturnType<typeof openVault>>, na
   return warnings;
 }
 
-export function detectLocalPlugin(inputPath: string): string | undefined {
+export function detectLocalPlugin(inputPath: string, options: { force?: boolean } = {}): string | undefined {
   const root = path.resolve(inputPath);
-  if (!isDirectory(root) || !isPluginRoot(root)) return undefined;
-  return root;
+  if (!isDirectory(root)) return undefined;
+  if (options.force || isPluginRoot(root)) return root;
+  return undefined;
 }
 
 export async function previewPluginImport(
@@ -94,12 +96,21 @@ export async function previewPluginImport(
     throw new VaultDeskError("vault-not-found", `Import path does not exist: ${inputPath}`);
   }
   const manifests = detectPluginManifests(root);
-  if (manifests.length === 0) {
-    throw new VaultDeskError("invalid-input", "No plugin manifest found in this folder.");
+  const composition = pluginComposition(root);
+  const composed = isComposedPlugin(composition);
+  if (manifests.length === 0 && !composed && !options.force) {
+    throw new VaultDeskError("not-a-plugin", "No plugin manifest or plugin composition found in this folder.");
   }
   const snapshot = await openVault(vaultPath);
   const suggestedName = options.name ?? slugifyName(manifestName(manifests) ?? path.basename(root));
   const warnings: string[] = [];
+  if (manifests.length === 0) {
+    warnings.push(
+      composed
+        ? `No plugin manifest found; detected a plugin by composition (${composition.skills.length} skill(s), ${composition.assets.join(", ")}).`
+        : "No plugin manifest found; imported as a plugin because the shape was forced.",
+    );
+  }
   const inspected = inspectPlugin({
     root,
     vaultPath,
@@ -112,6 +123,7 @@ export async function previewPluginImport(
   return {
     inputPath: root,
     shape: "plugin",
+    detectedBy: manifests.length > 0 ? "manifest" : composed ? "composition" : "override",
     suggestedName,
     rootPath: root,
     relativePath: ".",
@@ -143,6 +155,7 @@ function findPluginRoots(root: string, depth = 3): string[] {
 function resolveFetchedPluginRoot(
   repoRoot: string,
   contentPath?: string,
+  force = false,
 ): { root: string; relativePath: string; warnings: string[] } {
   if (contentPath) {
     const root = path.resolve(repoRoot, contentPath);
@@ -152,12 +165,12 @@ function resolveFetchedPluginRoot(
     if (!isDirectory(root)) {
       throw new VaultDeskError("upstream-not-found", `Path not found in repository: ${contentPath}`);
     }
-    if (!isPluginRoot(root)) {
-      throw new VaultDeskError("not-a-plugin", `No plugin manifest found at ${contentPath}.`);
+    if (!force && !isPluginRoot(root)) {
+      throw new VaultDeskError("not-a-plugin", `No plugin manifest or plugin composition found at ${contentPath}.`);
     }
     return { root, relativePath: contentPath, warnings: [] };
   }
-  if (isPluginRoot(repoRoot)) return { root: repoRoot, relativePath: ".", warnings: [] };
+  if (force || isPluginRoot(repoRoot)) return { root: repoRoot, relativePath: ".", warnings: [] };
   const candidates = findPluginRoots(repoRoot);
   if (candidates.length === 1) {
     return {
@@ -172,7 +185,7 @@ function resolveFetchedPluginRoot(
       `Repository contains multiple plugin roots; pass --path with one of: ${candidates.join(", ")}`,
     );
   }
-  throw new VaultDeskError("not-a-plugin", "No plugin manifest found in this repository.");
+  throw new VaultDeskError("not-a-plugin", "No plugin manifest or plugin composition found in this repository.");
 }
 
 function parseRepo(input: string): { repo?: string; remoteUrl?: string } {
@@ -187,7 +200,7 @@ function parseRepo(input: string): { repo?: string; remoteUrl?: string } {
 
 export async function previewGithubPlugin(
   vaultPath: string,
-  input: { repo: string; ref?: string; path?: string; name?: string; remoteUrl?: string },
+  input: { repo: string; ref?: string; path?: string; name?: string; remoteUrl?: string; force?: boolean },
 ): Promise<PluginImportPreview & { commit: string }> {
   const parsed = parseRepo(input.repo);
   const repo = parsed.repo ?? input.repo.replace(/^https?:\/\/github\.com\//, "").replace(/\.git$/, "");
@@ -206,11 +219,22 @@ export async function previewGithubPlugin(
     status: "unknown" as const,
   } satisfies SourceRecord;
   const fetched = await fetchUpstream(pseudo);
-  const resolved = resolveFetchedPluginRoot(fetched.root, input.path);
+  const resolved = resolveFetchedPluginRoot(fetched.root, input.path, input.force);
   const manifests = detectPluginManifests(resolved.root);
+  const composition = pluginComposition(resolved.root);
+  const composed = isComposedPlugin(composition);
   const snapshot = await openVault(vaultPath);
-  const suggestedName = input.name ?? slugifyName(manifestName(manifests) ?? repo.split("/")[1] ?? path.basename(fetched.root));
+  const fallbackName =
+    resolved.relativePath === "." ? (repo.split("/")[1] ?? path.basename(fetched.root)) : path.basename(resolved.root);
+  const suggestedName = input.name ?? slugifyName(manifestName(manifests) ?? fallbackName);
   const warnings = [...resolved.warnings, `Pinned to ${fetched.commit.slice(0, 12)} on ${ref}.`];
+  if (manifests.length === 0) {
+    warnings.push(
+      composed
+        ? `No plugin manifest found; detected a plugin by composition (${composition.skills.length} skill(s), ${composition.assets.join(", ")}).`
+        : "No plugin manifest found; imported as a plugin because the shape was forced.",
+    );
+  }
   const inspected = inspectPlugin({
     root: resolved.root,
     vaultPath,
@@ -225,6 +249,7 @@ export async function previewGithubPlugin(
   return {
     inputPath: fetched.root,
     shape: "plugin",
+    detectedBy: manifests.length > 0 ? "manifest" : composed ? "composition" : "override",
     suggestedName,
     rootPath: resolved.root,
     relativePath: resolved.relativePath,
@@ -380,7 +405,7 @@ export async function applyPluginImport(
 
 export async function addGithubPlugin(
   vaultPath: string,
-  input: { repo: string; ref?: string; path?: string; name?: string; remoteUrl?: string },
+  input: { repo: string; ref?: string; path?: string; name?: string; remoteUrl?: string; force?: boolean },
 ): Promise<PluginImportResult & { commit: string }> {
   await assertImportable(vaultPath);
   const preview = await previewGithubPlugin(vaultPath, input);

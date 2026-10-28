@@ -18,6 +18,7 @@ Omit `--vault` when the current directory is the vault.
 ## Boundaries
 
 - VaultDesk stores and validates plugins; it does not install, enable, or adapt them. If the user wants a plugin active, follow that agent's current plugin rules yourself. Never run plugin hooks.
+- A plugin does not need a manifest. VaultDesk also recognizes `skills/<name>/SKILL.md` plus MCP, commands, agents, hooks, rules, or workflows. When `manifests` is empty, plan the install from `assets` and `containedSkills` in the agent's own configuration.
 - Never edit `third_party/<name>/`; it is the pristine upstream copy. Edit `plugins/<name>/` only when the user explicitly asks, and expect update conflicts until the change is forked or discarded.
 - GitHub-origin skills are read-only until forked with `source fork`. Do not hand-edit their working copies.
 - Do not pass `--yes` without the user's explicit approval of the preview or diff. Show them what will change.
@@ -45,6 +46,7 @@ Omit `--vault` when the current directory is the vault.
 
 - `source add <path>` previews a local folder; `source add --repo owner/name` previews a GitHub repository.
 - Review the detected shape (standalone, package, plugin) and target paths before applying with `--yes`.
+- `--plugin` forces plugin registration; `--no-plugin` stores the folder as a skill or package. They are mutually exclusive.
 - Plugin roots are stored under `plugins/<name>/` and are never written to an agent directory.
 
 ### Validate and recover

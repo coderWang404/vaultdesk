@@ -153,9 +153,11 @@ interface PluginRecord {
 
 ## 3. 插件发现
 
-### 3.1 manifest 检测
+### 3.1 插件识别
 
-在插件根检测以下文件，命中任意一个即视为插件：
+满足任一条件即视为插件根：
+
+1. 存在以下任一 manifest：
 
 ```text
 plugin.json
@@ -164,10 +166,18 @@ plugin.json
 .qoder-plugin/plugin.json
 ```
 
+2. 没有 manifest，但同时满足：
+   - `skills/<name>/SKILL.md` 至少一个；
+   - 根目录至少有 `commands/`、`agents/`、`hooks/`、`rules/`、`workflows/`（非空目录）或 `.mcp.json` / `mcp.json` 之一。
+
+规则：
+
 - 同时存在多个 manifest 时全部解析，按 agent 标记。
 - Qoder 能读取 `.claude-plugin`，但 VaultDesk 只展示实际存在的文件，不生成别名。
 - 多个 manifest 的 name 或 version 不一致时产生 warning。
-- 没有任何 manifest 时不能按 plugin 导入，退回现有 skill/package 检测。
+- 没有 manifest 时按组合识别，manifest 只作为可选元数据；`plugin.manifest-missing` 是 warning，不阻塞导入和校验。
+- 识别不准时用 `--plugin` 强制按插件导入，或用 `--no-plugin` 退回技能/包导入。桌面导入提供同样的「来源形态」选择。
+- 强制导入不要求任何插件特征；预览会显示“forced”并给出 warning。
 
 ### 3.2 资产清单
 
@@ -212,22 +222,22 @@ mcp.json
 
 输入一个目录：
 
-1. 检测插件 manifest。
-2. 命中时按 plugin 预览，展示 manifest、资产、插件内技能和冲突。
+1. 按 §3.1 识别插件根；manifest 可选。
+2. 命中时按 plugin 预览，展示识别方式、manifest、资产、插件内技能和冲突。
 3. 用户确认后，把整个目录复制到 `plugins/<name>/`。
 4. 写 `sources/<name>.yml`，`skills: []`。
 5. 不写 lock。
 6. 不构建、不安装。
 
-未命中 manifest 时走现有 skill/package 导入。
+未命中插件特征且没有显式 `--plugin` 时，走现有 skill/package 导入。
 
 ### 4.2 GitHub 导入
 
 输入 `owner/repo`：
 
 1. 拉取到上游缓存。
-2. 在仓库根检测 manifest；没有时在 `content_path` 指向的目录检测。
-3. 命中时按 plugin 预览，展示 commit、manifest、资产和插件内技能。
+2. 在仓库根识别插件根；没有时在 `content_path` 指向的目录识别，最后退化为对仓库的嵌套扫描（最多三层）。
+3. 命中时按 plugin 预览，展示 commit、识别方式、manifest、资产和插件内技能。
 4. 确认后复制上游插件根到 `third_party/<name>/` 和 `plugins/<name>/`。
 5. 写 source 文件和 lock，lock 记录 commit、整根 hash、插件内技能哈希。
 6. 不构建、不安装。
@@ -236,7 +246,7 @@ mcp.json
 
 ### 4.3 命名与冲突
 
-- 默认 source 名取 manifest name，slug 化。
+- 默认 source 名取 manifest name；没有 manifest 时取嵌套插件根目录名，根目录导入取仓库名，slug 化。
 - 与现有 source 名、skill 名冲突时拒绝导入，并给出冲突项。
 - 插件内技能名与外部技能重名不阻塞导入，但产生 warning；安装解析不会选中插件内技能。
 
@@ -291,7 +301,6 @@ mcp.json
 ### 6.1 error
 
 - 插件根不存在或不是目录。
-- 没有任何可识别的 manifest。
 - manifest 不是合法 JSON。
 - manifest 路径逃出插件根。
 - 插件 source 声明了 `kind`、`entrypoint` 或非空 `skills`。
@@ -301,6 +310,7 @@ mcp.json
 
 ### 6.2 warning
 
+- 没有 manifest（`plugin.manifest-missing`），按组合识别或强制导入。
 - 多个 manifest 的 name 或 version 不一致。
 - 存在 hooks。
 - 存在 commands、agents 或 MCP 资产。
@@ -368,6 +378,7 @@ vaultdesk plugin show <name> [--json]
 
 其他命令：
 
+- `source add <path>|--repo` 增加 `--plugin` / `--no-plugin`，用于覆盖自动识别；两者互斥。
 - `source list` 和 `source show` 包含 `shape: plugin` 条目。
 - `source diff <plugin>` 返回整根 diff，`files[].path` 相对插件根。
 - `source update [<plugin>]` 支持插件；纯插件更新返回 `build.skills: []`，且不产生 install 结果。
@@ -447,7 +458,8 @@ vault-manager skill 增加插件章节，内容必须包含：
 
 ### 11.2 单元与集成
 
-- manifest 检测、资产收集、hasHooks、license。
+- manifest 检测、组合识别（无 manifest）、资产收集、hasHooks、license。
+- 显式 `--plugin` / `--no-plugin` 覆盖与 `not-a-plugin` 拒绝。
 - 插件内技能发现、重名 warning、0 技能插件。
 - 本地导入、GitHub 导入、pristine 副本、lock 整根 hash。
 - 更新、整根 diff、删除。

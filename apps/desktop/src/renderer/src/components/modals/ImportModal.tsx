@@ -7,6 +7,7 @@ import { Button, Callout, Field, Modal, Spinner, StatusPill } from "../ui";
 
 type Mode = "local" | "github";
 type KindChoice = "auto" | "collection" | "suite";
+type ShapeChoice = "auto" | "plugin" | "skills";
 type Preview = ImportPreview | PluginImportPreview;
 type Result = ImportResult | PluginImportResult;
 
@@ -26,6 +27,7 @@ export function ImportModal({
   const [contentPath, setContentPath] = useState("");
   const [name, setName] = useState("");
   const [kind, setKind] = useState<KindChoice>("auto");
+  const [shape, setShape] = useState<ShapeChoice>("auto");
   const [entrypoint, setEntrypoint] = useState("");
   const [preview, setPreview] = useState<Preview | null>(null);
   const [busy, setBusy] = useState(false);
@@ -38,11 +40,19 @@ export function ImportModal({
     setApplied(null);
   }
 
-  function options(): { name?: string; kind?: "suite" | "collection"; entrypoint?: string } {
+  function options(): {
+    name?: string;
+    kind?: "suite" | "collection";
+    entrypoint?: string;
+    plugin?: boolean;
+    noPlugin?: boolean;
+  } {
     return {
       ...(name.trim() ? { name: name.trim() } : {}),
       ...(kind !== "auto" ? { kind } : {}),
       ...(entrypoint.trim() ? { entrypoint: entrypoint.trim() } : {}),
+      ...(shape === "plugin" ? { plugin: true } : {}),
+      ...(shape === "skills" ? { noPlugin: true } : {}),
     };
   }
 
@@ -138,7 +148,7 @@ export function ImportModal({
   return (
     <Modal
       title="添加来源"
-      subtitle="检测目录中的插件 manifest 与 SKILL.md：插件只写入 vault，技能按单个或合集导入。VaultDesk 不做 AI 推断，suite 需要你指定入口。"
+      subtitle="检测插件 manifest、组合资产（skills + MCP/commands/hooks 等）与 SKILL.md。插件只写入 vault，识别不准时可在下方手动指定形态。"
       onClose={onClose}
       width="wide"
       dismissable={!busy}
@@ -231,6 +241,26 @@ export function ImportModal({
         </div>
       )}
 
+      <div className="import-form">
+        <Field
+          label="来源形态"
+          hint="自动识别优先看 manifest，其次看 skills 与 MCP/commands/agents/hooks 的组合。"
+        >
+          <select
+            className="input"
+            value={shape}
+            onChange={(event) => {
+              setShape(event.target.value as ShapeChoice);
+              clearPreview();
+            }}
+          >
+            <option value="auto">自动识别</option>
+            <option value="plugin">作为插件入库</option>
+            <option value="skills">作为技能 / 合集 / 套件</option>
+          </select>
+        </Field>
+      </div>
+
       <div className="import-form grid-three">
         <Field label="来源名称" optional hint="留空时按目录或技能名推断。">
           <input
@@ -243,7 +273,7 @@ export function ImportModal({
             placeholder="自动"
           />
         </Field>
-        <Field label="分类" hint={pluginPreview ? "插件不使用分类。" : undefined}>
+        <Field label="分类" hint={pluginPreview || shape === "plugin" ? "插件不使用分类。" : undefined}>
           <select
             className="input"
             value={kind}
@@ -251,14 +281,18 @@ export function ImportModal({
               setKind(event.target.value as KindChoice);
               clearPreview();
             }}
-            disabled={Boolean(pluginPreview)}
+            disabled={Boolean(pluginPreview) || shape === "plugin"}
           >
             <option value="auto">自动检测</option>
             <option value="collection">collection · 合集</option>
             <option value="suite">suite · 套件</option>
           </select>
         </Field>
-        <Field label="套件入口" optional hint={pluginPreview ? "插件不使用入口。" : "suite 必填；名字必须属于导入的技能。"}>
+        <Field
+          label="套件入口"
+          optional
+          hint={pluginPreview || shape === "plugin" ? "插件不使用入口。" : "suite 必填；名字必须属于导入的技能。"}
+        >
           <input
             className="input"
             value={entrypoint}
@@ -267,7 +301,7 @@ export function ImportModal({
               clearPreview();
             }}
             placeholder="入口技能名"
-            disabled={Boolean(pluginPreview) || kind !== "suite"}
+            disabled={Boolean(pluginPreview) || shape === "plugin" || kind !== "suite"}
           />
         </Field>
       </div>
@@ -327,6 +361,11 @@ export function ImportModal({
                     </StatusPill>
                   ))
                 : null}
+              {pluginPreview && pluginPreview.detectedBy !== "manifest" ? (
+                <StatusPill tone="warn">
+                  {pluginPreview.detectedBy === "composition" ? "按组合识别" : "强制插件"}
+                </StatusPill>
+              ) : null}
               {pluginPreview?.hasHooks ? <StatusPill tone="warn">含 hooks</StatusPill> : null}
               {"commit" in preview && preview.commit ? (
                 <StatusPill tone="muted">{preview.commit.slice(0, 8)}</StatusPill>
@@ -342,7 +381,13 @@ export function ImportModal({
           {pluginPreview ? (
             <div className="import-plugin-summary">
               <div className="import-plugin-facts">
-                <span>{pluginPreview.manifests.length} 个 manifest</span>
+                <span>
+                  {pluginPreview.manifests.length > 0
+                    ? `${pluginPreview.manifests.length} 个 manifest`
+                    : pluginPreview.detectedBy === "override"
+                      ? "无 manifest（强制插件）"
+                      : "无 manifest（按组合识别）"}
+                </span>
                 <span>{pluginPreview.assets.length} 项资产</span>
                 <span>{pluginPreview.skills.length} 个插件内技能</span>
               </div>

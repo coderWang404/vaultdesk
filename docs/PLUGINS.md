@@ -10,7 +10,7 @@
 VaultDesk 是 Git 仓库承载的技能与插件登记库。
 
 - 技能：由 VaultDesk 构建、安装、校验、备份和恢复。
-- 插件：由 VaultDesk 存储、校验、展示，agent 通过 vault-manager skill 自行安装和适配。
+- 插件：由 VaultDesk 存储、校验、展示，agent 通过随 CLI 提供的 `vaultdesk` skill 自行安装和适配。
 
 VaultDesk 不负责让插件在 agent 中生效。插件页没有安装按钮，也不显示 agent 侧的 installed/enabled 状态。
 
@@ -284,7 +284,7 @@ mcp.json
 
 默认拒绝覆盖本地改动；`--force` 才能用上游内容覆盖整根。纯插件更新会跳过 build 与 install，返回空的 build 结果。
 
-插件更新不会触碰 agent 侧已安装的副本。vault-manager skill 必须提示 agent 在更新后重新安装。
+插件更新不会触碰 agent 侧已安装的副本。`vaultdesk` skill 必须提示 agent 在更新后重新安装。
 
 ### 5.4 删除
 
@@ -423,7 +423,7 @@ vaultdesk plugin show <name> [--json]
 
 ## 9. agent 契约
 
-vault-manager skill 增加插件章节，内容必须包含：
+随 CLI 提供的 `vaultdesk` skill 必须包含插件章节，内容必须包含：
 
 1. 发现：`vaultdesk plugin list --json` 和 `vaultdesk plugin show <name> --json`。
 2. 安装源：使用 `rootPath`，不要使用 `third_party`。
@@ -491,7 +491,7 @@ vault-manager skill 增加插件章节，内容必须包含：
 4. 0 技能插件可导入、展示、更新。
 5. 插件更新能显示整根 diff，并在更新后保留 pristine 副本一致。
 6. grill-me suite 的成员引用检查通过；缺失引用产生 warning。
-7. 只靠 `plugin show --json` 和 vault-manager skill，agent 能定位插件根和资产。
+7. 只靠 `plugin show --json` 和随 CLI 提供的 `vaultdesk` skill，agent 能定位插件根和资产。
 8. 只读浏览后 `git status` 无变化。
 
 ## 12. 路线
@@ -513,6 +513,6 @@ vault-manager skill 增加插件章节，内容必须包含：
 | 23 | 插件内技能可搜索、可展示，不可安装 |
 | 24 | VaultDesk 不生成 marketplace、adapter manifest，不写 agent registry |
 | 25 | 插件页不显示 agent 侧 installed/enabled |
-| 26 | 插件安装交给 agent，vault-manager skill 是接口 |
+| 26 | 插件安装交给 agent，随 CLI 提供的 `vaultdesk` skill 是接口 |
 | 27 | OpenCode 不在插件适配范围 |
 | 28 | suite 成员关系用校验 warning 维护，不生成额外技能 |

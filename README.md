@@ -47,7 +47,7 @@ the app requires an explicit confirmation, and the CLI requires `--yes`.
 - Plugins are stored whole and never executed: hooks, scripts, and MCP servers
   are not run, and no adapter or marketplace manifest is generated. VaultDesk
   does not install, enable, or adapt plugins for an agent; the agent does that
-  itself through the vault-manager skill. `target install` refuses plugin
+  itself through the bundled `vaultdesk` skill. `target install` refuses plugin
   sources and plugin-contained skills.
 - Unmanaged directories are never discarded: they are moved to a timestamped
   backup before a managed copy takes the slot. VaultDesk keeps the ten most

@@ -23,7 +23,7 @@
 - 0.8 已实现：插件整根 diff、review-before-apply 更新、source 元数据刷新、conflict/--force guard、纯插件更新跳过 build 与 install、删除清理；搜索与总览、安装 guard 同前。
 - 验证证据：55 个 vitest 测试通过（13 个文件）；插件集成测试覆盖整根 diff、更新、force guard、content_path 与删除清理；preset 测试覆盖 verify_command 解析、显式确认、退出码/输出捕获、超时杀进程与 64KB 截断；CLI 与桌面 E2E 覆盖插件导入、检查、diff、更新、删除与 hooks 不执行，以及 agent skill、验证命令预览/执行；Electron 生产构建 smoke 通过并产出截图；`VaultDesk-1.0.0-arm64.dmg`（125,189,367 字节，SHA-256 `d1b76e4f4c7ce31617240b103aea843093f09718ffca956626d643271bfa47c6`）通过 `hdiutil verify`，ad-hoc 签名为有效 bundle 签名（`codesign --verify --deep --strict` 通过，Identifier 为 `com.coderwang404.vaultdesk`），包内 agent skill 存在，安装后的应用可启动、校验并编辑 v2 fixture，应用退出后编辑仍在。
 - 真实 v1 仓库只读验收：6 个来源、27 个技能、8 个安装目标，`vault validate` 无错误；迁移预览生成 9 个写入与 5 个删除；验收前后 `git status` 完全一致，未创建 `.vault/`。该仓库因已有未跟踪文件而 `cleanWorktree: false`，迁移按设计被阻止。
-- 插件边界：VaultDesk 只存储、校验、展示；不安装、不启用、不适配、不生成 marketplace/adapter manifest、不写 agent 注册表。agent 通过 vault-manager skill 自行安装。
+- 插件边界：VaultDesk 只存储、校验、展示；不安装、不启用、不适配、不生成 marketplace/adapter manifest、不写 agent 注册表。agent 通过随 CLI 提供的 `vaultdesk` skill 自行安装。
 
 
 ## 1. 产品定义
@@ -33,7 +33,7 @@ VaultDesk 是一个本地优先的 skill / plugin 资产管理器。它把一个
 技能与插件采用不同边界：
 
 - 技能：VaultDesk 负责构建、安装、校验、备份和恢复。SKILL.md 是跨 agent 的稳定格式。
-- 插件：VaultDesk 负责登记、存储、校验和展示；实际安装与适配由 agent 在使用时自行完成，接口是 vault-manager skill。
+- 插件：VaultDesk 负责登记、存储、校验和展示；实际安装与适配由 agent 在使用时自行完成，接口是随 CLI 提供的 `vaultdesk` skill。
 - VaultDesk 不生成 marketplace 或 adapter manifest，不写入 agent 的插件注册表，不显示 agent 侧的 installed/enabled 状态。
 
 目标用户：同时使用多个 agent 工具、自己维护技能库、需要知道「装了什么、来自哪里、哪个版本、装到哪、有没有更新」的个人开发者。
@@ -119,7 +119,7 @@ defaults:
 targets:
   - id: agents-shared
     dest: ~/.agents/skills
-    names: [vault-manager, ultra-research, find-skills]
+    names: [vaultdesk, ultra-research, find-skills]
     install_after_update: true
 ```
 
@@ -317,7 +317,7 @@ vaultdesk agent skill
 | 0.5 | 导入向导（本地目录与 GitHub 来源） | 已实现 |
 | 0.6 | Git 提交/推送、跨 vault 搜索强化、SkillDeck 互操作 spike、preset verify_command、agent skill | 已实现：Git 与搜索在 0.6；两项延期能力与互操作结论在 1.0 前补齐 |
 | 0.6.x | 技能页类型筛选与来源分组；suite 成员引用 warning | 已实现 |
-| 0.7 | 插件登记：`shape: plugin` source、导入、存储、校验、`plugin list/show`、插件页、CLI JSON、vault-manager 契约、fixture | 已实现 |
+| 0.7 | 插件登记：`shape: plugin` source、导入、存储、校验、`plugin list/show`、插件页、CLI JSON、`vaultdesk` skill 契约、fixture | 已实现 |
 | 0.8 | 插件更新、整根 diff、搜索与总览、安装 guard、边界测试 | 已实现 |
 | 0.9 | 插件 E2E、DMG、文档、硬化 | 已实现：插件 CLI/桌面 E2E、文档与硬化；DMG 已在 1.0 验收中重新打包并验证 |
 | 1.0 | 收口、完成延期 0.6 项、稳定化、Homebrew、按需公证 | 已实现：版本 1.0.0，延期项补齐，DMG 通过本地验收；Homebrew 与公证结论见 `docs/RELEASE.md`，发布动作待批准 |
@@ -387,6 +387,6 @@ vaultdesk agent skill
 | 23 | 插件内技能可搜索、可展示，不可安装 |
 | 24 | VaultDesk 不生成 marketplace、adapter manifest，不写 agent registry |
 | 25 | 插件页不显示 agent 侧 installed/enabled |
-| 26 | 插件安装交给 agent，vault-manager skill 是接口 |
+| 26 | 插件安装交给 agent，随 CLI 提供的 `vaultdesk` skill 是接口 |
 | 27 | OpenCode 不在插件适配范围 |
 | 28 | suite 成员关系用校验 warning 维护，不生成额外技能 |

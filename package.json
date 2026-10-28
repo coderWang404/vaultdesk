@@ -17,7 +17,7 @@
     "dev": "pnpm --filter @vaultdesk/desktop dev",
     "build": "pnpm build:packages && pnpm --filter @vaultdesk/desktop build",
     "build:packages": "pnpm --filter @vaultdesk/schema build && pnpm --filter @vaultdesk/core build && pnpm --filter @coderWang404/vaultdesk build",
-    "typecheck": "pnpm -r typecheck",
+    "typecheck": "pnpm build:packages && pnpm -r typecheck",
     "test": "pnpm build:packages && vitest run",
     "test:watch": "vitest",
     "test:e2e": "pnpm build && tsx tests/e2e/cli.e2e.mts && tsx tests/e2e/desktop.e2e.mts",

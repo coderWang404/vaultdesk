@@ -1,6 +1,12 @@
 import path from "node:path";
 import YAML from "yaml";
-import { sourceFileSchema, toolCardSchema, vaultFileSchema, type SourceFile } from "@vaultdesk/schema";
+import {
+  externalSkillCardSchema,
+  sourceFileSchema,
+  toolCardSchema,
+  vaultFileSchema,
+  type SourceFile,
+} from "@vaultdesk/schema";
 import {
   canonicalPath,
   exists,
@@ -54,6 +60,18 @@ const V2_TOOL_KEYS = new Set([
   "notes",
 ]);
 const V2_SKILL_KEYS = new Set(["name", "source_path", "vendor_path", "target_path", "user_invocable", "description"]);
+const V2_EXTERNAL_SKILL_KEYS = new Set([
+  "schema",
+  "name",
+  "owner",
+  "path",
+  "title",
+  "version",
+  "expected_hash",
+  "related_tool",
+  "description",
+  "notes",
+]);
 const V1_SOURCE_SKILL_KEYS = new Set([
   "name",
   "origin",
@@ -206,6 +224,7 @@ function checkTargets(snapshot: VaultSnapshot, issues: ValidationIssue[]): void 
   ]);
   const pluginNames = new Set(snapshot.plugins.map((plugin) => plugin.name));
   const pluginSkillNames = new Set(snapshot.plugins.flatMap((plugin) => plugin.skills.map((skill) => skill.name)));
+  const externalNames = new Set(snapshot.externalSkills.map((skill) => skill.name));
   for (const target of snapshot.targets) {
     if (ids.has(target.id)) {
       push(issues, "error", "target.duplicate-id", `Duplicate install target id: ${target.id}`);
@@ -223,6 +242,13 @@ function checkTargets(snapshot: VaultSnapshot, issues: ValidationIssue[]): void 
           "error",
           "target.plugin-not-installable",
           `Install target ${target.id} references plugin content ${name}; plugins are installed by the agent, not VaultDesk`,
+        );
+      } else if (externalNames.has(name)) {
+        push(
+          issues,
+          "error",
+          "target.external-not-installable",
+          `Install target ${target.id} references external skill ${name}; its owning tool manages that path, not VaultDesk`,
         );
       } else if (!knownNames.has(name)) {
         push(issues, "error", "target.unknown-name", `Install target ${target.id} references unknown source or skill: ${name}`);
@@ -470,7 +496,7 @@ function checkPlugin(plugin: PluginRecord, snapshot: VaultSnapshot, issues: Vali
 }
 
 function checkNameNamespace(snapshot: VaultSnapshot, issues: ValidationIssue[]): void {
-  const owners = new Map<string, { kind: "package" | "skill" | "plugin"; sourceName: string }>();
+  const owners = new Map<string, { kind: "package" | "skill" | "plugin" | "external"; sourceName: string }>();
   for (const source of snapshot.sources) {
     if (source.shape === "package" || source.shape === "plugin") {
       const existing = owners.get(source.name);
@@ -501,6 +527,20 @@ function checkNameNamespace(snapshot: VaultSnapshot, issues: ValidationIssue[]):
       continue;
     }
     owners.set(skill.name, { kind: "skill", sourceName: skill.sourceName });
+  }
+  for (const skill of snapshot.externalSkills) {
+    const existing = owners.get(skill.name);
+    if (existing) {
+      push(
+        issues,
+        "error",
+        "name.duplicate",
+        `External skill ${skill.name} collides with ${existing.kind} ${existing.sourceName}`,
+        skill.relativePath,
+      );
+      continue;
+    }
+    owners.set(skill.name, { kind: "external", sourceName: skill.owner });
   }
 }
 
@@ -626,11 +666,53 @@ async function checkV2Files(snapshot: VaultSnapshot, issues: ValidationIssue[]):
     }
     toolNames.add(actualName);
   }
+
+  const externalDir = path.join(snapshot.path, "external-skills");
+  const externalNames = new Set<string>();
+  for (const entry of listDirectory(externalDir)) {
+    if (!entry.isFile() || !entry.name.endsWith(".yml")) continue;
+    const filePath = path.join(externalDir, entry.name);
+    const raw = parseYamlContent(readText(filePath));
+    if (raw.error) {
+      push(issues, "error", "external.invalid-yaml", `external-skills/${entry.name}: ${raw.error}`);
+      continue;
+    }
+    const record = asRecord(raw.value);
+    for (const key of unknownKeys(record, V2_EXTERNAL_SKILL_KEYS)) {
+      push(issues, "warning", "external.unknown-key", `external-skills/${entry.name} has an unknown key: ${key}`);
+    }
+    const parsed = externalSkillCardSchema.safeParse(raw.value);
+    if (!parsed.success) {
+      for (const issue of parsed.error.issues) {
+        push(
+          issues,
+          "error",
+          "schema.invalid",
+          `external-skills/${entry.name} ${issue.path.join(".")}: ${issue.message}`,
+        );
+      }
+    }
+    const expectedName = entry.name.replace(/\.yml$/, "");
+    const actualName = typeof record.name === "string" ? record.name : expectedName;
+    if (actualName !== expectedName) {
+      push(
+        issues,
+        "error",
+        "external.filename-mismatch",
+        `external-skills/${entry.name}: name ${JSON.stringify(actualName)} does not match file name`,
+      );
+    }
+    if (externalNames.has(actualName)) {
+      push(issues, "error", "external.duplicate-name", `Duplicate external skill name: ${actualName}`);
+    }
+    externalNames.add(actualName);
+  }
 }
 
 function checkTools(snapshot: VaultSnapshot, issues: ValidationIssue[]): void {
   const knownSkills = new Set<string>([
     ...snapshot.skills.map((skill) => skill.name),
+    ...snapshot.externalSkills.map((skill) => skill.name),
     ...snapshot.plugins.flatMap((plugin) => plugin.skills.map((skill) => skill.name)),
   ]);
   for (const tool of snapshot.tools) {
@@ -644,6 +726,74 @@ function checkTools(snapshot: VaultSnapshot, issues: ValidationIssue[]): void {
           tool.relativePath,
         );
       }
+    }
+  }
+}
+
+function checkExternalSkills(snapshot: VaultSnapshot, issues: ValidationIssue[]): void {
+  const toolNames = new Set(snapshot.tools.map((tool) => tool.name));
+  for (const skill of snapshot.externalSkills) {
+    if (isInside(skill.skillPath, snapshot.path)) {
+      push(
+        issues,
+        "error",
+        "external.path-inside-vault",
+        `External skill ${skill.name} points inside the vault; tool-managed skills must live outside it`,
+        skill.relativePath,
+      );
+    }
+    if (path.basename(skill.skillPath) !== skill.name) {
+      push(
+        issues,
+        "warning",
+        "external.path-name-mismatch",
+        `External skill ${skill.name} points at a directory named ${JSON.stringify(path.basename(skill.skillPath))}`,
+        skill.relativePath,
+      );
+    }
+    if (skill.status === "missing") {
+      push(
+        issues,
+        "warning",
+        "external.path-missing",
+        `External skill ${skill.name} is recorded, but ${skill.skillPath} does not exist`,
+        skill.relativePath,
+      );
+    } else if (!skill.hasSkillFile) {
+      push(
+        issues,
+        "warning",
+        "external.skill-file-missing",
+        `External skill ${skill.name} has no SKILL.md at ${skill.skillPath}`,
+        skill.relativePath,
+      );
+    }
+    if (skill.markerPresent) {
+      push(
+        issues,
+        "warning",
+        "external.vault-marker",
+        `External skill ${skill.name} still has a .vault-managed marker; remove it so VaultDesk no longer claims the path`,
+        skill.relativePath,
+      );
+    }
+    if (skill.status === "drift") {
+      push(
+        issues,
+        "warning",
+        "external.hash-drift",
+        `External skill ${skill.name} changed since it was recorded; update expected_hash after reviewing the tool upgrade`,
+        skill.relativePath,
+      );
+    }
+    if (skill.relatedTool && !toolNames.has(skill.relatedTool)) {
+      push(
+        issues,
+        "warning",
+        "external.related-tool-unknown",
+        `External skill ${skill.name} references tool ${skill.relatedTool}, which is not in this vault`,
+        skill.relativePath,
+      );
     }
   }
 }
@@ -822,6 +972,7 @@ export async function collectIssues(snapshot: VaultSnapshot): Promise<Validation
     checkPlugin(plugin, snapshot, issues);
   }
   checkTools(snapshot, issues);
+  checkExternalSkills(snapshot, issues);
 
   if (!snapshot.name.trim()) {
     push(issues, "error", "vault.name-missing", "Vault name is empty");

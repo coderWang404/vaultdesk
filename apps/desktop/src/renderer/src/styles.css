@@ -7,6 +7,7 @@
   --ink-soft: #454034;
   --ink-muted: #756d5c;
   --ink-faint: #9b9280;
+  --ink-faint-strong: #6b6354;
   --line: rgba(32, 29, 23, 0.12);
   --line-strong: rgba(32, 29, 23, 0.22);
   --accent: #b04530;
@@ -529,7 +530,7 @@ pre {
   font-style: normal;
   font-family: var(--mono);
   font-size: 10.5px;
-  color: var(--ink-faint);
+  color: var(--ink-faint-strong);
   background: rgba(32, 29, 23, 0.05);
   border-radius: 5px;
   padding: 1px 5px;
@@ -1982,6 +1983,10 @@ kbd {
   overflow: hidden;
   text-overflow: ellipsis;
   margin-top: 1px;
+}
+
+.skill-table-row.is-selected .skill-cell-main p {
+  color: var(--ink-faint-strong);
 }
 
 .skill-cell-source {

@@ -7,6 +7,8 @@ import {
   copyDirectory,
   ensureDir,
   exists,
+  expandHome,
+  hashDirectory,
   isDirectory,
   isFile,
   isInside,
@@ -15,6 +17,10 @@ import {
   writeTextAtomic,
   nowIso,
 } from "./fsx.js";
+import {
+  externalSkillCardPath,
+  writeExternalSkillCard,
+} from "./external-skills.js";
 import { VaultDeskError } from "./errors.js";
 import { openVault, validateVault } from "./vault/validate.js";
 import { buildVault } from "./build.js";
@@ -22,7 +28,7 @@ import { withWriteLock } from "./vault/lockfile.js";
 import { Journal } from "./journal.js";
 import { readVaultFile, writeVaultFile } from "./vault/config.js";
 import { readLock, writeLock, readState, writeState } from "./vault/state.js";
-import type { ForkPreview, SkillRecord, VaultSnapshot } from "./types.js";
+import type { AdoptPreview, ForkPreview, SkillRecord, VaultSnapshot } from "./types.js";
 
 function findSkill(snapshot: VaultSnapshot, name: string): { skill: SkillRecord; source: VaultSnapshot["sources"][number] } {
   for (const source of snapshot.sources) {
@@ -256,6 +262,192 @@ export async function forkSkill(inputPath: string, skillName: string, asName?: s
       const validation = await validateVault(vaultPath);
       if (!validation.ok) {
         throw new VaultDeskError("validation-failed", "Forked vault failed validation.", {
+          details: validation.errors,
+        });
+      }
+      journal.done("validate");
+      journal.finish();
+      return preview;
+    } catch (error) {
+      journal.fail(active, (error as Error).message);
+      throw error;
+    }
+  });
+}
+
+function markerOwner(skillPath: string): string | undefined {
+  const markerPath = path.join(skillPath, ".vault-managed");
+  if (!isFile(markerPath)) return undefined;
+  try {
+    const raw = JSON.parse(readText(markerPath)) as { vault?: unknown };
+    return typeof raw.vault === "string" ? raw.vault : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+export async function previewAdoptExternal(
+  inputPath: string,
+  skillName: string,
+  input: {
+    owner: string;
+    path: string;
+    title?: string;
+    version?: string;
+    expectedHash?: string;
+    relatedTool?: string;
+    description?: string;
+    notes?: string;
+    pin?: boolean;
+  },
+): Promise<AdoptPreview> {
+  const snapshot = await openVault(inputPath);
+  if (snapshot.format !== "v2") throw new VaultDeskError("not-writable-v1", "Migrate this vault before adopting external skills.");
+  const { skill, source } = findSkill(snapshot, skillName);
+  if (source.shape !== "standalone" || source.skills.length !== 1) {
+    throw new VaultDeskError(
+      "unsupported",
+      "Only a standalone skill can be adopted. Detach package members first, or record an external card without removing the package.",
+    );
+  }
+  if (snapshot.externalSkills.some((entry) => entry.name === skillName)) {
+    throw new VaultDeskError("path-conflict", `External skill already recorded: ${skillName}`);
+  }
+  const skillPath = path.resolve(expandHome(input.path));
+  if (isInside(skillPath, snapshot.path)) {
+    throw new VaultDeskError("invalid-input", "The external skill path must be outside the vault.");
+  }
+  if (!isDirectory(skillPath) || !isFile(path.join(skillPath, "SKILL.md"))) {
+    throw new VaultDeskError("invalid-input", `No skill directory with SKILL.md at ${skillPath}`);
+  }
+  const warnings: string[] = [];
+  if (path.basename(skillPath) !== skillName) {
+    warnings.push(`The directory is named ${path.basename(skillPath)}, not ${skillName}.`);
+  }
+  const markerPath = path.join(skillPath, ".vault-managed");
+  const markerVault = markerOwner(skillPath);
+  if (isFile(markerPath) && (!markerVault || canonicalPath(markerVault) !== canonicalPath(snapshot.path))) {
+    throw new VaultDeskError(
+      "path-conflict",
+      `The external path still belongs to another vault (${markerVault ?? "unreadable marker"}). Remove ${markerPath} manually first.`,
+    );
+  }
+  if (!markerVault) warnings.push("No .vault-managed marker found; the path was already tool-managed.");
+  if (input.expectedHash && input.pin) {
+    throw new VaultDeskError("invalid-input", "Use either expectedHash or pin, not both.");
+  }
+  const expectedHash = input.pin ? hashDirectory(skillPath) : input.expectedHash;
+  const matches = snapshot.tools.filter((tool) => tool.related_skills.includes(skillName));
+  const relatedTool = input.relatedTool ?? (matches.length === 1 ? matches[0]?.name : undefined);
+  if (!input.relatedTool && matches.length > 1) {
+    warnings.push(`Several tool cards reference ${skillName}; pass a related tool explicitly.`);
+  }
+  const targetIds = snapshot.targets.filter((target) => target.skills.includes(skillName)).map((target) => target.id);
+  return {
+    skill: skillName,
+    sourceName: source.name,
+    owner: input.owner,
+    skillPath,
+    cardPath: externalSkillCardPath(snapshot.path, skillName),
+    ...(input.title ? { title: input.title } : {}),
+    ...(input.version ? { version: input.version } : {}),
+    ...(expectedHash ? { expectedHash } : {}),
+    ...(relatedTool ? { relatedTool } : {}),
+    contentPath: skill.workingPath,
+    ...(skill.vendorPath ? { vendorPath: skill.vendorPath } : {}),
+    ...(isFile(markerPath) ? { markerPath } : {}),
+    markerOwnedByThisVault: Boolean(markerVault),
+    targetIds,
+    warnings,
+  };
+}
+
+export async function adoptExternalSkill(
+  inputPath: string,
+  skillName: string,
+  input: {
+    owner: string;
+    path: string;
+    title?: string;
+    version?: string;
+    expectedHash?: string;
+    relatedTool?: string;
+    description?: string;
+    notes?: string;
+    pin?: boolean;
+  },
+): Promise<AdoptPreview> {
+  const vaultPath = canonicalPath(inputPath);
+  const preview = await previewAdoptExternal(vaultPath, skillName, input);
+  const snapshot = await openVault(vaultPath);
+  const { skill, source } = findSkill(snapshot, skillName);
+
+  return withWriteLock(vaultPath, async () => {
+    const journal = Journal.begin(vaultPath, "adopt", [
+      { id: "card", label: "Write external skill card" },
+      { id: "metadata", label: "Detach source and target references" },
+      { id: "files", label: "Remove managed copies and marker" },
+      { id: "build", label: "Rebuild artifacts" },
+      { id: "validate", label: "Validate vault" },
+    ]);
+    let active = "card";
+    try {
+      journal.start("card");
+      const card = writeExternalSkillCard(vaultPath, {
+        schema: 1,
+        name: skillName,
+        owner: input.owner,
+        path: input.path,
+        ...(input.title ? { title: input.title } : {}),
+        ...(input.version ? { version: input.version } : {}),
+        ...(preview.expectedHash ? { expected_hash: preview.expectedHash } : {}),
+        ...(preview.relatedTool ? { related_tool: preview.relatedTool } : {}),
+        ...(input.description ?? skill.description ? { description: input.description ?? skill.description } : {}),
+        ...(input.notes ? { notes: input.notes } : {}),
+      });
+      journal.done("card", card.relativePath);
+
+      active = "metadata";
+      journal.start("metadata");
+      const file: VaultFile = readVaultFile(vaultPath);
+      const removedTargets: string[] = [];
+      file.targets = file.targets
+        .map((target) => {
+          const next = target.names.filter((name) => name !== source.name && name !== skillName);
+          if (next.length === 0 && target.names.length > 0) removedTargets.push(target.id);
+          return { ...target, names: next };
+        })
+        .filter((target) => target.names.length > 0);
+      writeVaultFile(vaultPath, file);
+      if (source.metadataPath && isFile(source.metadataPath)) fs.unlinkSync(source.metadataPath);
+      const lock = readLock(vaultPath);
+      if (lock) {
+        delete lock.sources[source.name];
+        writeLock(vaultPath, lock);
+      }
+      const state = readState(vaultPath);
+      delete state.sources[source.name];
+      for (const id of removedTargets) delete state.targets[id];
+      writeState(vaultPath, state);
+      journal.done("metadata");
+
+      active = "files";
+      journal.start("files");
+      if (isDirectory(preview.contentPath)) removePath(preview.contentPath);
+      if (preview.vendorPath && isDirectory(preview.vendorPath)) removePath(preview.vendorPath);
+      if (preview.markerPath && isFile(preview.markerPath)) fs.unlinkSync(preview.markerPath);
+      journal.done("files");
+
+      active = "build";
+      journal.start("build");
+      const built = await buildVault(vaultPath);
+      journal.done("build", `${built.skills.length} skills · ${built.externalSkills.length} external`);
+
+      active = "validate";
+      journal.start("validate");
+      const validation = await validateVault(vaultPath);
+      if (!validation.ok) {
+        throw new VaultDeskError("validation-failed", "Vault failed validation after adopting the external skill.", {
           details: validation.errors,
         });
       }

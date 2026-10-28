@@ -5,11 +5,13 @@ import { VaultDeskError } from "./errors.js";
 import { loadVault } from "./vault/model.js";
 import { detectVaultFormat } from "./vault/model.js";
 import { hashDirectory } from "./fsx.js";
+import { externalSkillsArtifact } from "./external-skills.js";
 import { toolDocument } from "./tools.js";
 import type { VaultSnapshot } from "./types.js";
 
 export interface BuildResult {
   skills: string[];
+  externalSkills: string[];
   tools: string[];
   artifacts: Record<string, string>;
   hashes: Record<string, string>;
@@ -71,9 +73,11 @@ export function buildSnapshot(snapshot: VaultSnapshot): BuildResult {
   }
 
   writeToolsArtifact(snapshot);
+  writeExternalSkillsArtifact(snapshot);
   const tools = snapshot.tools.map((tool) => tool.name);
+  const externalSkills = snapshot.externalSkills.map((skill) => skill.name);
 
-  return { skills, tools, artifacts, hashes };
+  return { skills, externalSkills, tools, artifacts, hashes };
 }
 
 export function writeToolsArtifact(snapshot: VaultSnapshot): string {
@@ -83,6 +87,12 @@ export function writeToolsArtifact(snapshot: VaultSnapshot): string {
     vault: snapshot.name,
     tools: snapshot.tools.map((tool) => toolDocument(tool)),
   });
+  return file;
+}
+
+export function writeExternalSkillsArtifact(snapshot: VaultSnapshot): string {
+  const file = path.join(snapshot.path, "build", "external-skills.json");
+  writeJsonAtomic(file, externalSkillsArtifact(snapshot));
   return file;
 }
 

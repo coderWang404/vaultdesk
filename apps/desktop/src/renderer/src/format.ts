@@ -1,5 +1,6 @@
 import type {
   CheckStatus,
+  ExternalSkillStatus,
   PluginAgent,
   PluginAssetKind,
   PluginRecord,
@@ -77,8 +78,43 @@ export function statusTone(status: CheckStatus): "ok" | "warn" | "danger" | "mut
   }
 }
 
-export function originLabel(origin: SkillRecord["origin"]): string {
-  return origin === "github" ? "GitHub" : "本地";
+export function originLabel(origin: SkillRecord["origin"] | "external"): string {
+  if (origin === "github") return "GitHub";
+  return origin === "external" ? "外部托管" : "本地";
+}
+
+export function externalStatusLabel(status: ExternalSkillStatus): string {
+  switch (status) {
+    case "ok":
+      return "已同步";
+    case "observed":
+      return "观察中";
+    case "drift":
+      return "内容漂移";
+    case "missing":
+      return "路径缺失";
+    case "invalid":
+      return "不是技能";
+    case "conflict":
+      return "归属冲突";
+  }
+}
+
+export function externalStatusTone(
+  status: ExternalSkillStatus,
+): "ok" | "warn" | "danger" | "muted" | "neutral" {
+  switch (status) {
+    case "ok":
+      return "ok";
+    case "drift":
+    case "missing":
+      return "warn";
+    case "invalid":
+    case "conflict":
+      return "danger";
+    default:
+      return "muted";
+  }
 }
 
 export function sourceShapeLabel(source: SourceRecord): string {

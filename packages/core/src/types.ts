@@ -51,6 +51,30 @@ export interface InstalledSkill {
   linkTarget?: string;
 }
 
+export type ExternalSkillStatus = "ok" | "observed" | "drift" | "missing" | "invalid" | "conflict";
+
+export interface ExternalSkillRecord {
+  name: string;
+  owner: string;
+  skillPath: string;
+  title?: string;
+  version?: string;
+  expectedHash?: string;
+  relatedTool?: string;
+  description?: string;
+  notes?: string;
+  metadataPath: string;
+  relativePath: string;
+  exists: boolean;
+  hasSkillFile: boolean;
+  observedHash?: string;
+  observedVersion?: string;
+  modifiedAt?: string;
+  hashMatches?: boolean;
+  markerPresent: boolean;
+  status: ExternalSkillStatus;
+}
+
 export interface SkillRecord {
   name: string;
   description?: string;
@@ -183,6 +207,7 @@ export interface VaultSnapshot {
   readOnly: boolean;
   sources: SourceRecord[];
   skills: SkillRecord[];
+  externalSkills: ExternalSkillRecord[];
   plugins: PluginRecord[];
   tools: ToolRecord[];
   targets: TargetRecord[];
@@ -193,6 +218,7 @@ export interface VaultSnapshot {
     sources: number;
     packages: number;
     skills: number;
+    externalSkills: number;
     plugins: number;
     pluginSkills: number;
     tools: number;
@@ -355,6 +381,24 @@ export interface PluginImportResult {
   commit?: string;
 }
 
+export interface AdoptPreview {
+  skill: string;
+  sourceName: string;
+  owner: string;
+  skillPath: string;
+  cardPath: string;
+  title?: string;
+  version?: string;
+  expectedHash?: string;
+  relatedTool?: string;
+  contentPath: string;
+  vendorPath?: string;
+  markerPath?: string;
+  markerOwnedByThisVault: boolean;
+  targetIds: string[];
+  warnings: string[];
+}
+
 export interface ForkPreview {
   skill: string;
   sourceName: string;
@@ -372,7 +416,7 @@ export interface SearchHit {
   sourceName: string;
   pluginName?: string;
   origin: Origin | "external";
-  shape: "standalone" | "package-skill" | "plugin-skill" | "plugin" | "tool";
+  shape: "standalone" | "package-skill" | "plugin-skill" | "plugin" | "tool" | "external-skill";
   toolKind?: ToolCard["kind"];
   description?: string;
   relativePath: string;

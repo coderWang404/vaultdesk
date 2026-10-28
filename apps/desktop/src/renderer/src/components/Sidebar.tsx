@@ -36,10 +36,13 @@ export function Sidebar({
   const updates = vault.sources.filter((source) => source.status === "update-available").length;
   const errorCount = vault.issues.filter((issue) => issue.severity === "error").length;
   const mcpCount = vault.tools.filter((tool) => tool.kind === "mcp").length;
-  const counts: Record<Section, number | undefined> = {
+  const counts: Record<Section, number | string | undefined> = {
     overview: undefined,
     sources: vault.counts.sources,
-    skills: vault.counts.skills,
+    skills:
+      vault.counts.externalSkills > 0
+        ? `${vault.counts.skills}+${vault.counts.externalSkills}`
+        : vault.counts.skills,
     plugins: vault.counts.plugins,
     mcp: mcpCount,
     tools: vault.counts.tools,

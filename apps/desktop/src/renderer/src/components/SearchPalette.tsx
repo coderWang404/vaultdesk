@@ -19,13 +19,17 @@ function shapeLabel(hit: SearchHit): string {
       return "插件内";
     case "tool":
       return hit.toolKind === "mcp" ? "MCP" : "工具";
+    case "external-skill":
+      return "外部";
     default:
       return "插件";
   }
 }
 
 function shapeTone(shape: SearchHit["shape"]): "muted" | "accent" {
-  return shape === "plugin" || shape === "plugin-skill" || shape === "tool" ? "accent" : "muted";
+  return shape === "plugin" || shape === "plugin-skill" || shape === "tool" || shape === "external-skill"
+    ? "accent"
+    : "muted";
 }
 
 export function SearchPalette({
@@ -166,9 +170,11 @@ export function SearchPalette({
                             : "terminal"
                           : hit.shape === "plugin"
                             ? "sparkle"
-                            : hit.origin === "github"
-                              ? "git"
-                              : "folder"
+                            : hit.shape === "external-skill"
+                              ? "shield"
+                              : hit.origin === "github"
+                                ? "git"
+                                : "folder"
                       }
                       size={14}
                     />
@@ -186,9 +192,11 @@ export function SearchPalette({
                         ? hit.toolKind === "mcp"
                           ? `MCP 服务 · ${hit.vaultName}`
                           : `外部工具 · ${hit.vaultName}`
-                        : hit.shape === "plugin-skill" && hit.pluginName
-                          ? `插件 ${hit.pluginName} · ${hit.vaultName}`
-                          : `${hit.sourceName} · ${hit.vaultName}`}
+                        : hit.shape === "external-skill"
+                          ? `外部托管 · ${hit.sourceName} · ${hit.vaultName}`
+                          : hit.shape === "plugin-skill" && hit.pluginName
+                            ? `插件 ${hit.pluginName} · ${hit.vaultName}`
+                            : `${hit.sourceName} · ${hit.vaultName}`}
                       {hit.installedTargets.length > 0 ? ` · ${hit.installedTargets.join("、")}` : ""}
                     </span>
                   </span>

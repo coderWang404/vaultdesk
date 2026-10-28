@@ -59,6 +59,7 @@ macOS desktop session; the default suites need no network.
 | Slow check, offline warning and journal recovery | Slow authenticated check, offline failure message, persisted source error, recovery banner lifecycle, no rollback of working files. |
 | Custom tool preset under a sandboxed HOME | Custom preset file, verification badge, bundled agent skill panel, verify-command preview and confirmed run with output, preset chip destination, install into a sandboxed `~`. |
 | Tool cards and the MCP view | Read-only tool cards, kind labels, install/connect copy, related-skill jump, `--kind` counts, MCP page filtering, MCP search routing and v1 empty state. |
+| External skill record, ownership filter and inspector | Pinned external card and observation, overview count, owner grouping, external filter, read-only inspector and boundary copy, search routing, source file untouched and no marker written. |
 | 120-skill vault renders and searches | 120 rows render under 20 seconds, local filter narrows and clears, palette search selects a skill. |
 | axe accessibility, focus trap and focus restore | Nine views scanned with axe-core, palette and modal Tab traps, Escape close, focus restoration. |
 

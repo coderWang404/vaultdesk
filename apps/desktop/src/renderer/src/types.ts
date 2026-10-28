@@ -19,7 +19,7 @@ export interface OpenVault {
 }
 
 export interface Selection {
-  kind: "source" | "skill" | "plugin" | null;
+  kind: "source" | "skill" | "plugin" | "external" | null;
   name: string | null;
 }
 

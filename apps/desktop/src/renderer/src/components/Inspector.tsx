@@ -1,7 +1,16 @@
 import { useState } from "react";
-import type { PluginAssetKind, PluginRecord, SkillRecord, SourceRecord, VaultSnapshot } from "@vaultdesk/core";
+import type {
+  ExternalSkillRecord,
+  PluginAssetKind,
+  PluginRecord,
+  SkillRecord,
+  SourceRecord,
+  VaultSnapshot,
+} from "@vaultdesk/core";
 import {
   assetKindLabel,
+  externalStatusLabel,
+  externalStatusTone,
   hashLabel,
   installedFor,
   issuesForPlugin,
@@ -84,6 +93,12 @@ export function Inspector({
         onReveal={onReveal}
       />
     );
+  }
+
+  if (selection.kind === "external") {
+    const external = vault.externalSkills.find((entry) => entry.name === selection.name);
+    if (!external) return <aside className="inspector" />;
+    return <ExternalInspector skill={external} onClose={onClose} onReveal={onReveal} />;
   }
 
   const skill = vault.skills.find((entry) => entry.name === selection.name);
@@ -372,6 +387,140 @@ function SkillInspector({
           <p>GitHub 来源技能只读。编辑会先创建本地副本，并记录 forked_from。</p>
         </Callout>
       ) : null}
+    </aside>
+  );
+}
+
+function ExternalInspector({
+  skill,
+  onClose,
+  onReveal,
+}: {
+  skill: ExternalSkillRecord;
+  onClose: () => void;
+  onReveal: (path: string) => void;
+}) {
+  const [copied, setCopied] = useState(false);
+
+  async function onCopy(): Promise<void> {
+    if (await copyPath(skill.skillPath)) {
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 1600);
+    }
+  }
+
+  return (
+    <aside className="inspector">
+      <header className="inspector-head">
+        <span className="source-glyph origin-external">
+          <Icon name="shield" size={17} />
+        </span>
+        <div>
+          <span className="eyebrow">外部技能</span>
+          <h2>{skill.name}</h2>
+        </div>
+        <button className="inspector-close" onClick={onClose} aria-label="关闭详情">
+          <Icon name="x" size={15} />
+        </button>
+      </header>
+
+      <div className="inspector-tags">
+        <StatusPill tone="neutral">{originLabel("external")}</StatusPill>
+        <StatusPill tone={externalStatusTone(skill.status)}>{externalStatusLabel(skill.status)}</StatusPill>
+        {skill.version ? <StatusPill tone="muted">v{skill.version}</StatusPill> : null}
+        {skill.observedVersion && skill.observedVersion !== skill.version ? (
+          <StatusPill tone="muted">实际 v{skill.observedVersion}</StatusPill>
+        ) : null}
+      </div>
+
+      {skill.status === "conflict" ? (
+        <Callout tone="danger" title="归属冲突">
+          <p>
+            路径上仍有 <span className="mono">.vault-managed</span> 标记，说明另一个 VaultDesk 仓库曾管理它。
+            先解决归属，再让工具写入这个目录。
+          </p>
+        </Callout>
+      ) : null}
+      {skill.status === "missing" ? (
+        <Callout tone="warn" title="路径不存在">
+          <p>工具可能尚未安装，或目录被移动了。VaultDesk 不会替你创建或安装它。</p>
+        </Callout>
+      ) : null}
+      {skill.status === "invalid" ? (
+        <Callout tone="warn" title="不是可识别的技能目录">
+          <p>目录存在，但里面没有 SKILL.md。等工具写入后再刷新状态。</p>
+        </Callout>
+      ) : null}
+      {skill.status === "drift" ? (
+        <Callout tone="warn" title="内容与记录不一致">
+          <p>
+            目录内容与 expected_hash 不同。若这是工具正常升级造成的，确认后可用
+            <span className="mono"> vaultdesk external add {skill.name} --force --pin …</span> 重新记录。
+          </p>
+        </Callout>
+      ) : null}
+
+      <p className="inspector-copy">{skill.description ?? "没有填写描述。"}</p>
+
+      <div className="inspector-section">
+        <span className="inspector-section-title">归属</span>
+        <MetaRow label="所有者">{skill.owner}</MetaRow>
+        {skill.relatedTool ? <MetaRow label="关联工具">{skill.relatedTool}</MetaRow> : null}
+        <MetaRow label="记录">{skill.relativePath}</MetaRow>
+        {skill.modifiedAt ? <MetaRow label="目录改动">{relativeTime(skill.modifiedAt)}</MetaRow> : null}
+      </div>
+
+      <div className="inspector-section">
+        <span className="inspector-section-title">外部路径</span>
+        <div className="path-row">
+          <span className="mono">{skill.skillPath}</span>
+          <button className="inline-icon" onClick={() => onReveal(skill.skillPath)} aria-label="显示外部技能目录">
+            <Icon name="external" size={12} />
+          </button>
+        </div>
+        <div className="path-row">
+          <span className="mono">{skill.relativePath}</span>
+          <button className="inline-icon" onClick={() => onReveal(skill.metadataPath)} aria-label="显示记录文件">
+            <Icon name="external" size={12} />
+          </button>
+        </div>
+      </div>
+
+      <div className="inspector-section">
+        <span className="inspector-section-title">观察</span>
+        <MetaRow label="当前哈希">
+          <span className="mono">{hashLabel(skill.observedHash)}</span>
+        </MetaRow>
+        <MetaRow label="记录哈希">
+          <span className="mono">{skill.expectedHash ? hashLabel(skill.expectedHash) : "未固定"}</span>
+        </MetaRow>
+        <MetaRow label="标记">
+          {skill.markerPresent ? "存在 .vault-managed" : "无 .vault-managed"}
+        </MetaRow>
+      </div>
+
+      {skill.notes ? (
+        <div className="inspector-section">
+          <span className="inspector-section-title">备注</span>
+          <p className="muted-small">{skill.notes}</p>
+        </div>
+      ) : null}
+
+      <div className="inspector-actions">
+        <Button size="sm" variant="quiet" icon="folder" onClick={() => onReveal(skill.skillPath)}>
+          在 Finder 中显示
+        </Button>
+        <Button size="sm" variant="ghost" icon="file" onClick={() => void onCopy()}>
+          {copied ? "已复制" : "复制路径"}
+        </Button>
+      </div>
+
+      <Callout tone="info">
+        <p>
+          这个技能由 {skill.owner} 自己安装和维护。VaultDesk 只记录路径、读取 frontmatter
+          并观察哈希，不安装、不更新、不运行它。
+        </p>
+      </Callout>
     </aside>
   );
 }

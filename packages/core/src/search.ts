@@ -154,6 +154,38 @@ export async function searchVaults(options: SearchOptions): Promise<SearchReport
       });
     }
 
+    for (const external of snapshot.externalSkills) {
+      const score = scoreEntry(tokens, {
+        name: external.name,
+        source: external.owner,
+        description: external.description,
+        origin: "external",
+        shape: "external-skill",
+        installedTargets: [],
+        extra: [
+          external.title,
+          external.skillPath,
+          external.version,
+          external.observedVersion,
+          external.relatedTool,
+          external.status,
+        ],
+      });
+      if (score <= 0) continue;
+      hits.push({
+        vaultPath: snapshot.path,
+        vaultName: ref.label || snapshot.name,
+        skill: external.name,
+        sourceName: external.owner,
+        origin: "external",
+        shape: "external-skill",
+        description: external.description,
+        relativePath: external.relativePath,
+        installedTargets: [],
+        score,
+      });
+    }
+
     for (const plugin of snapshot.plugins) {
       const manifestFields = plugin.manifests.flatMap((manifest) => [
         manifest.agent,

@@ -1,15 +1,16 @@
 import { useMemo, useState } from "react";
-import type { SkillRecord, VaultSnapshot } from "@vaultdesk/core";
-import { installedFor, originLabel } from "../format";
+import type { ExternalSkillRecord, SkillRecord, VaultSnapshot } from "@vaultdesk/core";
+import { externalStatusLabel, externalStatusTone, installedFor, originLabel } from "../format";
 import { Icon } from "./icons";
 import { Button, EmptyState, SectionHeader, StatusPill } from "./ui";
 
-type TypeFilter = "all" | "standalone" | "suite" | "collection";
+type TypeFilter = "all" | "standalone" | "suite" | "collection" | "external";
 
 const TYPE_LABELS: Record<Exclude<TypeFilter, "all">, string> = {
   standalone: "单技能",
   suite: "套件",
   collection: "合集",
+  external: "外部托管",
 };
 
 function skillType(skill: SkillRecord): Exclude<TypeFilter, "all"> {
@@ -26,6 +27,7 @@ export function SkillsView({
   vault,
   selected,
   onSelect,
+  onSelectExternal,
   onImport,
   onEditor,
   onFork,
@@ -33,6 +35,7 @@ export function SkillsView({
   vault: VaultSnapshot;
   selected: string | null;
   onSelect: (skill: SkillRecord) => void;
+  onSelectExternal: (skill: ExternalSkillRecord) => void;
   onImport: () => void;
   onEditor: (skill: SkillRecord) => void;
   onFork: (skill: SkillRecord) => void;
@@ -42,6 +45,7 @@ export function SkillsView({
   const [onlyInstalled, setOnlyInstalled] = useState(false);
 
   const skills = useMemo(() => {
+    if (typeFilter === "external") return [];
     const needle = query.trim().toLowerCase();
     return vault.skills
       .filter((skill) => {
@@ -58,6 +62,20 @@ export function SkillsView({
         );
       });
   }, [vault.skills, typeFilter, onlyInstalled, query]);
+
+  const externalSkills = useMemo(() => {
+    if (typeFilter !== "all" && typeFilter !== "external") return [];
+    if (onlyInstalled) return [];
+    const needle = query.trim().toLowerCase();
+    return vault.externalSkills.filter((skill) => {
+      if (!needle) return true;
+      return (
+        skill.name.toLowerCase().includes(needle) ||
+        skill.description?.toLowerCase().includes(needle) ||
+        skill.owner.toLowerCase().includes(needle)
+      );
+    });
+  }, [vault.externalSkills, typeFilter, onlyInstalled, query]);
 
   const groups = useMemo(() => {
     const bySource = new Map<string, SkillRecord[]>();
@@ -78,12 +96,27 @@ export function SkillsView({
       .sort((a, b) => a.sourceName.localeCompare(b.sourceName));
   }, [skills, vault.sources]);
 
+  const externalGroups = useMemo(() => {
+    const byOwner = new Map<string, ExternalSkillRecord[]>();
+    for (const skill of externalSkills) {
+      const list = byOwner.get(skill.owner) ?? [];
+      list.push(skill);
+      byOwner.set(skill.owner, list);
+    }
+    return [...byOwner.entries()]
+      .map(([owner, members]) => ({
+        owner,
+        skills: [...members].sort((a, b) => a.name.localeCompare(b.name)),
+      }))
+      .sort((a, b) => a.owner.localeCompare(b.owner));
+  }, [externalSkills]);
+
   return (
     <div className="view skills-view">
       <SectionHeader
         eyebrow="技能"
         title="仓库里的全部技能"
-        description="按来源分组展示单技能、套件与合集。GitHub 来源只读；编辑前需要 fork 成本地来源。"
+        description="按来源分组展示单技能、套件与合集。外部托管的技能由工具自己管理，VaultDesk 只记录路径并观察状态。"
         actions={
           <Button variant="primary" icon="plus" onClick={onImport}>
             导入技能
@@ -97,7 +130,7 @@ export function SkillsView({
           <input
             value={query}
             onChange={(event) => setQuery(event.target.value)}
-            placeholder="搜索技能名称、描述或来源…"
+            placeholder="搜索技能名称、描述、来源或归属工具…"
             aria-label="搜索技能"
           />
           {query ? (
@@ -112,6 +145,7 @@ export function SkillsView({
             ["standalone", "单技能"],
             ["suite", "套件"],
             ["collection", "合集"],
+            ["external", "外部托管"],
           ] as const).map(([value, label]) => (
             <button
               key={value}
@@ -130,11 +164,12 @@ export function SkillsView({
           只看已安装
         </button>
         <span className="toolbar-count">
-          {skills.length} 个技能 · {groups.length} 个来源
+          {skills.length + externalSkills.length} 个技能 · {groups.length} 个来源
+          {externalSkills.length > 0 ? ` · ${externalSkills.length} 个外部` : ""}
         </span>
       </div>
 
-      {groups.length === 0 ? (
+      {groups.length === 0 && externalGroups.length === 0 ? (
         <EmptyState icon="skill" title="没有匹配的技能">
           换一个关键词，或导入新的技能目录。
         </EmptyState>
@@ -154,9 +189,82 @@ export function SkillsView({
               selection={{ selected, onSelect, onEditor, onFork }}
             />
           ))}
+          {externalGroups.map((group) => (
+            <ExternalGroup
+              key={`external:${group.owner}`}
+              group={group}
+              selected={selected}
+              onSelect={onSelectExternal}
+            />
+          ))}
         </div>
       )}
     </div>
+  );
+}
+
+function ExternalGroup({
+  group,
+  selected,
+  onSelect,
+}: {
+  group: { owner: string; skills: ExternalSkillRecord[] };
+  selected: string | null;
+  onSelect: (skill: ExternalSkillRecord) => void;
+}) {
+  const attention = group.skills.filter(
+    (skill) => skill.status === "drift" || skill.status === "missing" || skill.status === "invalid" || skill.status === "conflict",
+  ).length;
+
+  return (
+    <section className="skill-group">
+      <header className="skill-group-header">
+        <span className="origin-glyph small origin-external">
+          <Icon name="shield" size={13} />
+        </span>
+        <strong className="skill-group-name">{group.owner}</strong>
+        <StatusPill tone="neutral">外部托管</StatusPill>
+        <span className="skill-group-meta">{group.skills.length} 个技能</span>
+        <span className="skill-group-origin">只记录 · 不安装</span>
+        {attention > 0 ? (
+          <span className="skill-group-warning" title={`${attention} 个外部技能需要确认`}>
+            <Icon name="alert" size={13} />
+            {attention}
+          </span>
+        ) : null}
+      </header>
+      <div className="skill-table skill-table-grouped">
+        <div className="skill-table-head">
+          <span>技能</span>
+          <span>角色</span>
+          <span>观察状态</span>
+          <span />
+        </div>
+        {group.skills.map((skill) => (
+          <div
+            key={`external/${skill.name}`}
+            className={`skill-table-row ${selected === skill.name ? "is-selected" : ""}`}
+            onClick={() => onSelect(skill)}
+          >
+            <div className="skill-cell-main">
+              <div>
+                <strong>{skill.name}</strong>
+                <p>{skill.description ?? skill.skillPath}</p>
+              </div>
+            </div>
+            <div className="skill-cell-role">
+              <span className="type-chip">外部</span>
+            </div>
+            <div className="skill-cell-installed">
+              <StatusPill tone={externalStatusTone(skill.status)}>{externalStatusLabel(skill.status)}</StatusPill>
+            </div>
+            <div className="skill-row-actions">
+              <Icon name="chevron-right" size={14} className="row-chevron" />
+            </div>
+          </div>
+        ))}
+      </div>
+    </section>
   );
 }
 

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } fro
 import type {
   AppSettings,
   CheckReport,
+  ExternalSkillRecord,
   PluginRecord,
   SearchHit,
   SkillRecord,
@@ -295,6 +296,10 @@ export function App() {
     setSelection({ kind: "skill", name: skill.name });
   }, []);
 
+  const selectExternalSkill = useCallback((skill: ExternalSkillRecord): void => {
+    setSelection({ kind: "external", name: skill.name });
+  }, []);
+
   const selectPlugin = useCallback((plugin: PluginRecord): void => {
     setSelection({ kind: "plugin", name: plugin.name });
   }, []);
@@ -340,6 +345,11 @@ export function App() {
       if (hit.shape === "tool") {
         setSection(hit.toolKind === "mcp" ? "mcp" : "tools");
         setSelection(EMPTY_SELECTION);
+        return;
+      }
+      if (hit.shape === "external-skill") {
+        setSection("skills");
+        setSelection({ kind: "external", name: hit.skill });
         return;
       }
       setSection("skills");
@@ -429,7 +439,9 @@ export function App() {
           ? activeVault.sources.some((source) => source.name === current.name)
           : current.kind === "plugin"
             ? activeVault.plugins.some((plugin) => plugin.name === current.name)
-            : activeVault.skills.some((skill) => skill.name === current.name);
+            : current.kind === "external"
+              ? activeVault.externalSkills.some((skill) => skill.name === current.name)
+              : activeVault.skills.some((skill) => skill.name === current.name);
       return exists ? current : EMPTY_SELECTION;
     });
   }, [activeVault]);
@@ -561,8 +573,9 @@ export function App() {
         return (
           <SkillsView
             vault={activeVault}
-            selected={selection.kind === "skill" ? selection.name : null}
+            selected={selection.kind === "skill" || selection.kind === "external" ? selection.name : null}
             onSelect={selectSkill}
+            onSelectExternal={selectExternalSkill}
             onImport={openImport}
             onEditor={openEditor}
             onFork={openFork}

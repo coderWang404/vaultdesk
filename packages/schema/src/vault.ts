@@ -198,7 +198,7 @@ export const operationStepSchema = z.object({
 
 export const operationSchema = z.object({
   schema: z.literal(1).default(1),
-  kind: z.enum(["migrate", "update", "install", "fork", "import", "remove", "restore"]),
+  kind: z.enum(["migrate", "update", "install", "fork", "import", "remove", "restore", "adopt"]),
   started_at: z.string(),
   vault: z.string(),
   steps: z.array(operationStepSchema),
@@ -250,6 +250,24 @@ export const toolCardSchema = z.object({
   notes: z.string().trim().min(1).optional(),
 });
 
+export const externalSkillCardSchema = z.object({
+  schema: z.literal(1).default(1),
+  name: slugSchema,
+  owner: z.string().trim().min(1),
+  path: z
+    .string()
+    .min(1)
+    .refine((value) => value.startsWith("/") || value === "~" || value.startsWith("~/"), {
+      message: "path must be absolute or start with ~/",
+    }),
+  title: z.string().trim().min(1).optional(),
+  version: z.string().trim().min(1).optional(),
+  expected_hash: z.string().regex(/^sha256:[a-f0-9]{64}$/, "must be a sha256 hash").optional(),
+  related_tool: slugSchema.optional(),
+  description: z.string().trim().min(1).optional(),
+  notes: z.string().trim().min(1).optional(),
+});
+
 export type Origin = z.infer<typeof originSchema>;
 export type Shape = z.infer<typeof shapeSchema>;
 export type PackageKind = z.infer<typeof packageKindSchema>;
@@ -266,3 +284,4 @@ export type ToolPreset = z.infer<typeof presetSchema>;
 export type ToolKind = z.infer<typeof toolKindSchema>;
 export type ToolInstall = z.infer<typeof toolInstallSchema>;
 export type ToolCard = z.infer<typeof toolCardSchema>;
+export type ExternalSkillCard = z.infer<typeof externalSkillCardSchema>;

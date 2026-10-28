@@ -841,6 +841,102 @@ async function toolsFlow(suite: Suite): Promise<void> {
   console.log("      tool and MCP pages, filters, copy, related-skill jump and search routing OK");
 }
 
+async function externalFlow(suite: Suite): Promise<void> {
+  const workspace = suite.workspace("external");
+  const vaultPath = path.join(workspace.root, "external-vault");
+  copyFixture("v2-plugins", vaultPath);
+  initGitRepo(vaultPath);
+  const externalPath = path.join(workspace.root, "tool-managed", "rea-demo");
+  writeSkill(externalPath, "rea-demo", "A tool-owned skill recorded by VaultDesk.");
+  const skillFile = path.join(externalPath, "SKILL.md");
+  const before = read(skillFile);
+
+  const add = runCli(
+    [
+      "external",
+      "add",
+      "rea-demo",
+      "--vault",
+      vaultPath,
+      "--owner",
+      "rea-agents",
+      "--path",
+      externalPath,
+      "--pin",
+      "--yes",
+    ],
+    { workspace },
+  );
+  equal(add.status, 0, `external add failed: ${add.stderr}`);
+  assert(fs.existsSync(path.join(vaultPath, "external-skills", "rea-demo.yml")), "external card written");
+  const artifact = JSON.parse(read(path.join(vaultPath, "build", "external-skills.json"))) as {
+    skills: { name: string; owner: string; status: string }[];
+  };
+  equal(artifact.skills.length, 1, "external artifact count");
+  equal(artifact.skills[0]?.status, "ok", "external artifact status");
+  assert(!fs.existsSync(path.join(externalPath, ".vault-managed")), "external path has no marker");
+  commitAll(vaultPath, "record external skill");
+
+  const launched = await suite.launch({ workspace, initialVault: vaultPath });
+  const page = launched.page;
+  await page.addStyleTag({
+    content: "*, *::before, *::after { animation: none !important; transition: none !important; }",
+  });
+  await page.evaluate(fs.readFileSync(axeSourcePath, "utf8"));
+  const scans = [await auditPage(page, "external overview")];
+
+  const stat = page.locator(".stat-card").filter({ hasText: "外部技能" });
+  await stat.waitFor();
+  equal(await stat.locator("strong").innerText(), "1", "overview external count");
+  assert((await stat.innerText()).includes("工具托管"), "overview external hint");
+
+  await openSection(page, "技能");
+  await waitForText(page, "外部托管");
+  const group = page.locator(".skill-group").filter({ hasText: "rea-agents" });
+  await group.waitFor();
+  const row = group.locator(".skill-table-row").filter({ hasText: "rea-demo" });
+  await row.waitFor();
+  const rowText = await row.innerText();
+  assert(rowText.includes("外部"), "external row role");
+  assert(rowText.includes("已同步"), "external row synced state");
+
+  const typeFilter = page.getByRole("group", { name: "技能类型筛选" });
+  await typeFilter.getByRole("button", { name: "外部托管" }).click();
+  await waitFor(async () => (await page.locator(".skill-table-row").count()) === 1, "external filter isolates rows");
+  await typeFilter.getByRole("button", { name: "全部" }).click();
+  await waitFor(async () => (await page.locator(".skill-table-row").count()) > 1, "external filter cleared");
+
+  await row.click();
+  const inspector = page.locator(".inspector");
+  await inspector.getByRole("heading", { name: "rea-demo" }).waitFor();
+  const inspectorText = await inspector.innerText();
+  assert(inspectorText.includes("外部路径"), "external inspector path section");
+  assert(inspectorText.includes("rea-agents"), "external inspector owner");
+  assert(inspectorText.includes("不安装、不更新、不运行"), "external inspector boundary copy");
+  assert(inspectorText.includes("external-skills/rea-demo.yml"), "external inspector card path");
+  scans.push(await auditPage(page, "external inspector"));
+
+  await page.locator(".search-trigger").click();
+  const palette = await dialog(page);
+  await palette.getByLabel("搜索技能、插件、MCP 与工具卡").fill("rea-demo");
+  const hit = palette.locator(".palette-hit").filter({ hasText: "rea-demo" }).first();
+  await hit.waitFor({ state: "visible", timeout: 30_000 });
+  const hitText = await hit.innerText();
+  assert(hitText.includes("外部"), "external search shape label");
+  assert(hitText.includes("外部托管"), "external search meta");
+  await hit.click();
+  await palette.waitFor({ state: "hidden" });
+  await page.locator(".inspector").getByRole("heading", { name: "rea-demo" }).waitFor();
+
+  assert(read(skillFile) === before, "external SKILL.md untouched by the app");
+  assert(!fs.existsSync(path.join(externalPath, ".vault-managed")), "no marker after UI inspection");
+
+  await suite.close(launched);
+  console.log(
+    `      external record, synced state, ownership filter, inspector and search routing OK (${scans.join("/")} axe scans)`,
+  );
+}
+
 async function autoCheckThrottle(suite: Suite): Promise<void> {
   const workspace = suite.workspace("auto-check");
   const vaultPath = path.join(workspace.root, "auto-vault");
@@ -1688,6 +1784,7 @@ async function main(): Promise<void> {
   await run("cross-vault search, settings validation and persistence", searchAndSettings);
   await run("plugin page, filters, search and imports", pluginsFlow);
   await run("tool page, filters, copy and search routing", toolsFlow);
+  await run("external skill record, ownership filter and search routing", externalFlow);
   await run("boot auto-check honors the 24h interval", autoCheckThrottle);
   await run("auto-check runs once per vault per session", autoCheckSessionOnce);
   await run("slow check, offline warning and journal recovery banner", slowOfflineAndRecovery);

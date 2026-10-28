@@ -31,6 +31,7 @@ import { getGitSummary } from "../git.js";
 import { parseFrontmatter, frontmatterDescription, frontmatterName } from "../frontmatter.js";
 import { readJournal } from "../journal.js";
 import { inspectPlugin } from "../plugins/discover.js";
+import { listExternalSkills } from "../external-skills.js";
 import { listToolCards } from "../tools.js";
 import type {
   CheckStatus,
@@ -545,6 +546,8 @@ async function loadV2(vaultPath: string): Promise<{
   const skills = sources.flatMap((source) => source.skills);
   const tools = listToolCards(vaultPath);
   warnings.push(...tools.warnings);
+  const external = listExternalSkills(vaultPath);
+  warnings.push(...external.warnings);
   const targets = metadata.targets.map((target) => ({
     id: target.id,
     dest: target.dest,
@@ -569,11 +572,12 @@ async function loadV2(vaultPath: string): Promise<{
       readOnly: false,
       sources,
       skills,
+      externalSkills: external.skills,
       plugins,
       tools: tools.tools,
       targets,
       warnings,
-      counts: countSnapshot(sources, skills, plugins, tools.tools.length, targets),
+      counts: countSnapshot(sources, skills, external.skills.length, plugins, tools.tools.length, targets),
       metadata,
       locked: lock,
       state,
@@ -665,6 +669,7 @@ async function scanTargets(vaultPath: string, targets: TargetRecord[], skills: S
 function countSnapshot(
   sources: SourceRecord[],
   skills: SkillRecord[],
+  externalSkillCount: number,
   plugins: PluginRecord[],
   toolCount: number,
   targets: TargetRecord[],
@@ -673,6 +678,7 @@ function countSnapshot(
     sources: sources.length,
     packages: sources.filter((source) => source.shape === "package").length,
     skills: skills.length,
+    externalSkills: externalSkillCount,
     plugins: plugins.length,
     pluginSkills: plugins.reduce((total, plugin) => total + plugin.skills.length, 0),
     tools: toolCount,
@@ -856,11 +862,12 @@ async function loadV1(vaultPath: string): Promise<{
       readOnly: true,
       sources,
       skills,
+      externalSkills: [],
       plugins: [],
       tools: [],
       targets,
       warnings,
-      counts: countSnapshot(sources, skills, [], 0, targets),
+      counts: countSnapshot(sources, skills, 0, [], 0, targets),
       metadata: {
         schema: 1,
         name: path.basename(vaultPath),

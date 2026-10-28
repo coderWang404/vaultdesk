@@ -78,10 +78,16 @@ export function Overview({
 
       <section className="stat-grid">
         <StatCard label="来源" value={vault.counts.sources} hint={`${github} GitHub · ${local} 本地`} icon="source" />
-        <StatCard label="可安装技能" value={vault.counts.skills} hint={`${vault.counts.packages} 个包`} icon="skill" />
+        <StatCard
+          label="可安装技能"
+          value={vault.counts.skills}
+          hint={`${vault.counts.packages} 个包${vault.counts.externalSkills > 0 ? ` · ${vault.counts.externalSkills} 个外部` : ""}`}
+          icon="skill"
+        />
         <StatCard label="插件" value={vault.counts.plugins} hint={`${vault.counts.pluginSkills} 个插件内技能`} icon="sparkle" />
         <StatCard label="MCP" value={mcpCount} hint="独立 MCP 服务" icon="server" />
         <StatCard label="工具" value={vault.counts.tools} hint="外部工具卡" icon="terminal" />
+        <StatCard label="外部技能" value={vault.counts.externalSkills} hint="工具托管 · 只观察" icon="shield" />
         <StatCard label="安装目标" value={vault.counts.targets} hint={`${vault.counts.managedInstalls} 个受管安装`} icon="target" />
         <StatCard
           label="待更新"
@@ -284,7 +290,7 @@ function StatCard({
   label: string;
   value: number;
   hint: string;
-  icon: "source" | "skill" | "sparkle" | "server" | "terminal" | "target" | "download";
+  icon: "source" | "skill" | "sparkle" | "server" | "terminal" | "shield" | "target" | "download";
   tone?: "accent";
 }) {
   return (

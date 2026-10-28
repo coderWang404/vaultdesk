@@ -5,6 +5,7 @@ import {
   VaultDeskError,
   addGithubPlugin,
   addGithubSource,
+  adoptExternalSkill,
   applyImport,
   applyMigration,
   applyPluginImport,
@@ -13,16 +14,22 @@ import {
   commitPaths,
   detectLocalPlugin,
   expandHome,
+  externalSkillCardPath,
   forkSkill,
+  hashDirectory,
   initVault,
   installSkills,
+  isDirectory,
   isFile,
+  isInside,
   listPresets,
   openVault,
+  parseExternalSkillCard,
   parseToolCard,
   planInstall,
   planMigration,
   previewAddGithub,
+  previewAdoptExternal,
   previewFork,
   previewGithubPlugin,
   previewImport,
@@ -43,9 +50,13 @@ import {
   validateVault,
   verifyTarget,
   withWriteLock,
+  writeExternalSkillCard,
+  writeExternalSkillsArtifact,
   writeToolCard,
   writeToolsArtifact,
+  type AdoptPreview,
   type CheckReport,
+  type ExternalSkillRecord,
   type ForkPreview,
   type ImportPreview,
   type InstallResult,
@@ -86,6 +97,11 @@ const VALUE_FLAGS = new Set([
   "related-skill",
   "tag",
   "notes",
+  "owner",
+  "owner-version",
+  "related-tool",
+  "expected-hash",
+  "description",
 ]);
 const BOOLEAN_FLAGS = new Set([
   "json",
@@ -100,6 +116,7 @@ const BOOLEAN_FLAGS = new Set([
   "no-state",
   "plugin",
   "no-plugin",
+  "pin",
   "help",
   "version",
 ]);
@@ -261,12 +278,22 @@ Commands:
   tool list [--kind <kind>]        List recorded external tool cards
   tool show <name>                 Show one tool card, install methods, and links
   tool add <name> [options]        Record an external tool card (preview by default)
+  external list                    List tool-managed skills and observed state
+  external show <name>             Show one external skill record
+  external add <name> [options]    Record a tool-managed skill (preview by default)
+  external remove <name>           Remove an external skill record (files stay)
+  external adopt <skill> [options] Convert a standalone managed skill to external
 
 Tool card options (tool add):
   --kind plugin|mcp|cli|app  --title <text>  --summary <text>  --homepage <url>
   --install-command <label=command> (repeat)  --docs <url>  --recorded-version <v>
   --run <command>  --requirement <text> (repeat)  --related-skill <name> (repeat)
   --tag <tag> (repeat)  --notes <text>  --force
+
+External skill options (external add / adopt):
+  --owner <name>  --path <dir>  --title <text>  --owner-version <v>
+  --related-tool <name>  --expected-hash <sha256:...>  --pin
+  --description <text>  --notes <text>  --force (add only)
 
 Global options:
   --vault <path>   Vault directory (default: current directory)
@@ -282,6 +309,7 @@ Safety:
   Writes require --yes. GitHub-origin skills are read-only until forked.
   Updates fetch into ~/Library/Caches/VaultDesk and write only after confirmation.
   VaultDesk never deletes unknown install directories; it moves them to backup first.
+  External skills are owned by their tools; VaultDesk records the path and only observes it.
 `;
 
 interface CommandResult {
@@ -362,6 +390,11 @@ function printSnapshot(snapshot: VaultSnapshot): string[] {
     `Sources  ${snapshot.counts.sources} sources · ${snapshot.counts.packages} packages · ${snapshot.counts.skills} skills · ${snapshot.counts.plugins} plugins · ${snapshot.counts.pluginSkills} plugin skills`,
   );
   lines.push(`Tools    ${snapshot.counts.tools} external tool cards · ${snapshot.tools.filter((tool) => tool.kind === "mcp").length} MCP`);
+  lines.push(
+    `External ${snapshot.counts.externalSkills} tool-managed skills · ${
+      snapshot.externalSkills.filter((skill) => skill.status !== "ok" && skill.status !== "observed").length
+    } need attention`,
+  );
   lines.push(
     `Targets  ${snapshot.counts.targets} targets · ${snapshot.counts.managedInstalls} managed installs`,
   );
@@ -853,6 +886,71 @@ function printTool(tool: ToolRecord): string[] {
   return lines;
 }
 
+function externalStatusText(status: ExternalSkillRecord["status"]): string {
+  switch (status) {
+    case "ok":
+      return green("synced");
+    case "observed":
+      return dim("observed");
+    case "drift":
+      return yellow("drift");
+    case "missing":
+      return yellow("missing");
+    case "invalid":
+      return red("invalid");
+    case "conflict":
+      return red("conflict");
+  }
+}
+
+function printExternalSkill(skill: ExternalSkillRecord): string[] {
+  const lines: string[] = [];
+  lines.push(bold(skill.name) + `  ${dim(`external · owned by ${skill.owner}`)}`);
+  if (skill.title) lines.push(skill.title);
+  if (skill.description) lines.push(skill.description);
+  lines.push("");
+  lines.push(`Path     ${skill.skillPath}`);
+  lines.push(`Owner    ${skill.owner}`);
+  if (skill.version) lines.push(`Version  ${skill.version}${skill.observedVersion ? dim(` · observed ${skill.observedVersion}`) : ""}`);
+  else if (skill.observedVersion) lines.push(`Version  ${skill.observedVersion}`);
+  if (skill.relatedTool) lines.push(`Tool     ${skill.relatedTool}`);
+  lines.push(`State    ${externalStatusText(skill.status)}`);
+  if (skill.observedHash) lines.push(`Hash     ${skill.observedHash}`);
+  if (skill.expectedHash) lines.push(`Expected ${skill.expectedHash}`);
+  if (skill.modifiedAt) lines.push(`Changed  ${skill.modifiedAt}`);
+  if (skill.markerPresent) lines.push(yellow("A .vault-managed marker is still present at this path."));
+  if (skill.notes) {
+    lines.push("");
+    lines.push(skill.notes);
+  }
+  lines.push("");
+  lines.push(
+    dim(
+      `Card ${skill.relativePath} · record only; VaultDesk does not install, update, or run ${skill.owner}.`,
+    ),
+  );
+  return lines;
+}
+
+function printAdoptPreview(preview: AdoptPreview): string[] {
+  const lines = [
+    bold(`Adopt ${preview.skill} as external`),
+    `Owner    ${preview.owner}`,
+    `Path     ${preview.skillPath}`,
+    `Card     ${preview.cardPath}`,
+    `Source   ${preview.sourceName}`,
+    `Targets  ${preview.targetIds.length > 0 ? preview.targetIds.join(", ") : "none"}`,
+    `Removes  ${preview.contentPath}${preview.vendorPath ? ` · ${preview.vendorPath}` : ""}`,
+  ];
+  if (preview.expectedHash) lines.push(`Expected ${preview.expectedHash}`);
+  if (preview.relatedTool) lines.push(`Tool     ${preview.relatedTool}`);
+  if (preview.markerPath) lines.push(`Marker   ${preview.markerPath} ${dim("(will be removed)")}`);
+  for (const warning of preview.warnings) lines.push(yellow(`warning: ${warning}`));
+  lines.push("");
+  lines.push(dim("The tool becomes the owner. VaultDesk keeps only the card and observed state."));
+  return lines;
+}
+
 function parseInstallFlag(value: string): { label: string; command: string } {
   const equals = value.indexOf("=");
   if (equals <= 0) {
@@ -1205,13 +1303,17 @@ async function dispatch(parsed: Parsed): Promise<CommandResult> {
           data: {
             skills: snapshot.skills.map((skill) => skill.name),
             tools: snapshot.tools.map((tool) => tool.name),
+            externalSkills: snapshot.externalSkills.map((skill) => skill.name),
             preview: true,
           },
           warnings: snapshot.warnings,
           human: [
-            bold(`Rebuild ${snapshot.skills.length} skills and ${snapshot.tools.length} tool cards`),
+            bold(
+              `Rebuild ${snapshot.skills.length} skills, ${snapshot.tools.length} tool cards, and ${snapshot.externalSkills.length} external records`,
+            ),
             ...snapshot.skills.map((skill) => `  ${skill.name}`),
             ...snapshot.tools.map((tool) => `  ${tool.name} ${dim("(tool card)")}`),
+            ...snapshot.externalSkills.map((skill) => `  ${skill.name} ${dim(`(external · ${skill.owner})`)}`),
             "",
             notice(parsed),
           ],
@@ -1224,6 +1326,7 @@ async function dispatch(parsed: Parsed): Promise<CommandResult> {
         human: [
           green(`Built ${result.skills.length} skills into build/skills.`),
           green(`Wrote ${result.tools.length} tool cards to build/tools.json.`),
+          green(`Wrote ${result.externalSkills.length} external records to build/external-skills.json.`),
         ],
       };
     }
@@ -1478,6 +1581,242 @@ async function dispatch(parsed: Parsed): Promise<CommandResult> {
         };
       }
       throw new VaultDeskError("invalid-input", `Unknown presets action: ${action}`);
+    }
+
+    case "external": {
+      const vaultPath = vaultPathOf(parsed);
+      if (action === "list" || action === undefined) {
+        const snapshot = await openVault(vaultPath);
+        if (snapshot.externalSkills.length === 0) {
+          return {
+            data: [],
+            warnings: snapshot.warnings,
+            human: [
+              dim("No tool-managed skills recorded."),
+              dim("Record one with: vaultdesk external add <name> --owner <tool> --path <dir>"),
+            ],
+          };
+        }
+        return {
+          data: snapshot.externalSkills,
+          warnings: snapshot.warnings,
+          human: table(
+            ["NAME", "OWNER", "STATE", "TOOL", "PATH"],
+            snapshot.externalSkills.map((skill) => [
+              skill.name,
+              skill.owner,
+              externalStatusText(skill.status),
+              skill.relatedTool ?? "-",
+              skill.skillPath,
+            ]),
+          ),
+        };
+      }
+      if (action === "show") {
+        const name = rest[0];
+        if (!name) throw new VaultDeskError("invalid-input", "external show requires a skill name.");
+        if (rest.length > 1) throw new VaultDeskError("invalid-input", "external show takes one skill name.");
+        const snapshot = await openVault(vaultPath);
+        const skill = snapshot.externalSkills.find((entry) => entry.name === name);
+        if (!skill) throw new VaultDeskError("unknown-external", `Unknown external skill: ${name}`);
+        return { data: skill, warnings: snapshot.warnings, human: printExternalSkill(skill) };
+      }
+      if (action === "add") {
+        const name = rest[0];
+        if (!name) throw new VaultDeskError("invalid-input", "external add requires a skill name.");
+        if (rest.length > 1) throw new VaultDeskError("invalid-input", "external add takes one skill name.");
+        const snapshot = await openVault(vaultPath);
+        if (snapshot.format !== "v2") {
+          throw new VaultDeskError("not-writable-v1", "Migrate this vault before recording external skills.");
+        }
+        const owner = valueOf(options, "owner");
+        const skillPathInput = valueOf(options, "path");
+        const missing = [!owner ? "--owner" : null, !skillPathInput ? "--path" : null].filter(
+          (entry): entry is string => Boolean(entry),
+        );
+        if (missing.length > 0) {
+          throw new VaultDeskError("invalid-input", `external add requires ${missing.join(", ")}.`);
+        }
+        const namespaceOwner =
+          snapshot.skills.find((skill) => skill.name === name) ??
+          snapshot.plugins.find((plugin) => plugin.name === name) ??
+          snapshot.plugins.flatMap((plugin) => plugin.skills).find((skill) => skill.name === name) ??
+          snapshot.sources.find((source) => source.name === name && source.shape !== "standalone");
+        if (namespaceOwner) {
+          const managed = snapshot.skills.some((skill) => skill.name === name);
+          throw new VaultDeskError(
+            "path-conflict",
+            managed
+              ? `${name} is a managed skill in this vault. Use external adopt to transfer ownership.`
+              : `${name} already exists as a source, plugin, or plugin skill in this vault.`,
+          );
+        }
+        const skillPath = path.resolve(expandHome(skillPathInput as string));
+        if (isInside(skillPath, snapshot.path)) {
+          throw new VaultDeskError("invalid-input", "The external skill path must be outside the vault.");
+        }
+        const exists = isDirectory(skillPath);
+        const hasSkillFile = isFile(path.join(skillPath, "SKILL.md"));
+        const markerPath = path.join(skillPath, ".vault-managed");
+        if (isFile(markerPath)) {
+          throw new VaultDeskError(
+            "path-conflict",
+            `The path carries a .vault-managed marker. Adopt it from its owning vault or remove ${markerPath} first.`,
+          );
+        }
+        const expectedHashInput = valueOf(options, "expected-hash");
+        if (expectedHashInput && hasFlag(options, "pin")) {
+          throw new VaultDeskError("invalid-input", "Use either --expected-hash or --pin, not both.");
+        }
+        const card = parseExternalSkillCard({
+          schema: 1,
+          name,
+          owner,
+          path: skillPathInput,
+          ...(valueOf(options, "title") ? { title: valueOf(options, "title") } : {}),
+          ...(valueOf(options, "owner-version") ? { version: valueOf(options, "owner-version") } : {}),
+          ...(expectedHashInput
+            ? { expected_hash: expectedHashInput }
+            : hasFlag(options, "pin") && exists
+              ? { expected_hash: hashDirectory(skillPath) }
+              : {}),
+          ...(valueOf(options, "related-tool") ? { related_tool: valueOf(options, "related-tool") } : {}),
+          ...(valueOf(options, "description") ? { description: valueOf(options, "description") } : {}),
+          ...(valueOf(options, "notes") ? { notes: valueOf(options, "notes") } : {}),
+        });
+        const file = externalSkillCardPath(vaultPath, card.name);
+        const replaces = isFile(file);
+        if (replaces && !hasFlag(options, "force")) {
+          throw new VaultDeskError("path-conflict", `External skill card already exists: external-skills/${card.name}.yml`, {
+            details: ["Pass --force to replace it."],
+          });
+        }
+        const warnings = !exists
+          ? [`${skillPath} does not exist yet; the card reports missing until the tool installs it.`]
+          : !hasSkillFile
+            ? [`${skillPath} has no SKILL.md; the card reports invalid until the tool writes one.`]
+            : [];
+        if (!parsed.yes || hasFlag(options, "dry-run")) {
+          return {
+            data: { ...card, skillPath, cardPath: file, preview: true, replaces, exists, hasSkillFile },
+            warnings,
+            human: [
+              bold(`Record external skill ${card.name}`),
+              `Owner    ${card.owner}`,
+              `Path     ${skillPath}${exists ? "" : yellow(" (missing)")}${exists && !hasSkillFile ? yellow(" (no SKILL.md)") : ""}`,
+              `Card     external-skills/${card.name}.yml${replaces ? yellow(" (replaces)") : ""}`,
+              ...(card.expected_hash ? [`Expected ${card.expected_hash}`] : []),
+              ...(card.related_tool ? [`Tool     ${card.related_tool}`] : []),
+              ...warnings.map((warning) => yellow(`warning: ${warning}`)),
+              "",
+              dim("Record only: VaultDesk will never write to this path."),
+              notice(parsed),
+            ],
+          };
+        }
+        const { record, fresh } = await withWriteLock(vaultPath, async () => {
+          const written = writeExternalSkillCard(vaultPath, card, { force: true });
+          const next = await openVault(vaultPath);
+          writeExternalSkillsArtifact(next);
+          return { record: written, fresh: next };
+        });
+        const observed = fresh.externalSkills.find((entry) => entry.name === card.name);
+        return {
+          data: observed ?? record,
+          warnings: fresh.warnings,
+          human: [
+            green(`Recorded external skill ${card.name}.`),
+            record.relativePath,
+            "Wrote build/external-skills.json.",
+            dim(`Owned by ${card.owner}; VaultDesk only observes ${skillPath}.`),
+          ],
+        };
+      }
+      if (action === "remove") {
+        const name = rest[0];
+        if (!name) throw new VaultDeskError("invalid-input", "external remove requires a skill name.");
+        if (rest.length > 1) throw new VaultDeskError("invalid-input", "external remove takes one skill name.");
+        const snapshot = await openVault(vaultPath);
+        const skill = snapshot.externalSkills.find((entry) => entry.name === name);
+        if (!skill) throw new VaultDeskError("unknown-external", `Unknown external skill: ${name}`);
+        if (!parsed.yes || hasFlag(options, "dry-run")) {
+          return {
+            data: { ...skill, preview: true },
+            warnings: [],
+            human: [
+              bold(`Remove external record ${name}`),
+              `Card     ${skill.relativePath}`,
+              `Path     ${skill.skillPath} ${dim("(untouched)")}`,
+              "",
+              dim("Only the vault record is removed. The tool keeps owning its files."),
+              notice(parsed),
+            ],
+          };
+        }
+        const cardPath = externalSkillCardPath(vaultPath, name);
+        const fresh = await withWriteLock(vaultPath, async () => {
+          if (isFile(cardPath)) fs.rmSync(cardPath);
+          const next = await openVault(vaultPath);
+          writeExternalSkillsArtifact(next);
+          return next;
+        });
+        return {
+          data: { name, cardPath, removed: true },
+          warnings: fresh.warnings,
+          human: [
+            green(`Removed external record ${name}.`),
+            dim(`${skill.skillPath} was not touched.`),
+            "Wrote build/external-skills.json.",
+          ],
+        };
+      }
+      if (action === "adopt") {
+        const skillName = rest[0];
+        if (!skillName) throw new VaultDeskError("invalid-input", "external adopt requires a skill name.");
+        if (rest.length > 1) throw new VaultDeskError("invalid-input", "external adopt takes one skill name.");
+        const owner = valueOf(options, "owner");
+        const skillPathInput = valueOf(options, "path");
+        const missing = [!owner ? "--owner" : null, !skillPathInput ? "--path" : null].filter(
+          (entry): entry is string => Boolean(entry),
+        );
+        if (missing.length > 0) {
+          throw new VaultDeskError("invalid-input", `external adopt requires ${missing.join(", ")}.`);
+        }
+        const input = {
+          owner: owner as string,
+          path: skillPathInput as string,
+          ...(valueOf(options, "title") ? { title: valueOf(options, "title") } : {}),
+          ...(valueOf(options, "owner-version") ? { version: valueOf(options, "owner-version") } : {}),
+          ...(valueOf(options, "expected-hash") ? { expectedHash: valueOf(options, "expected-hash") } : {}),
+          ...(valueOf(options, "related-tool") ? { relatedTool: valueOf(options, "related-tool") } : {}),
+          ...(valueOf(options, "description") ? { description: valueOf(options, "description") } : {}),
+          ...(valueOf(options, "notes") ? { notes: valueOf(options, "notes") } : {}),
+          ...(hasFlag(options, "pin") ? { pin: true } : {}),
+        };
+        if (!parsed.yes || hasFlag(options, "dry-run")) {
+          const preview = await previewAdoptExternal(vaultPath, skillName, input);
+          return {
+            data: { ...preview, preview: true },
+            warnings: preview.warnings,
+            human: [...printAdoptPreview(preview), "", notice(parsed)],
+          };
+        }
+        const result = await adoptExternalSkill(vaultPath, skillName, input);
+        return {
+          data: result,
+          warnings: result.warnings,
+          human: [
+            green(`Adopted ${skillName} as external.`),
+            `Card     ${result.cardPath}`,
+            `Owner    ${result.owner}`,
+            `Path     ${result.skillPath}`,
+            `Removed  ${result.contentPath}${result.vendorPath ? ` · ${result.vendorPath}` : ""}`,
+            "Wrote build/external-skills.json.",
+            dim("The tool owns the files from now on. VaultDesk only observes them."),
+          ],
+        };
+      }
+      throw new VaultDeskError("invalid-input", `Unknown external action: ${action}`);
     }
 
     case "tool": {

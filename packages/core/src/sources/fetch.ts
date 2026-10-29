@@ -1,7 +1,7 @@
 import path from "node:path";
 import { ensureDir, exists, isDirectory, movePath, removePath, sha256, writeJsonAtomic } from "../fsx.js";
 import { VaultDeskError } from "../errors.js";
-import { git, gitLsRemote } from "../git.js";
+import { git, gitLsRemote, gitWithGitHubFallback } from "../git.js";
 import type { SourceRecord } from "../types.js";
 import { cacheRoot } from "./select.js";
 
@@ -37,24 +37,32 @@ export function cacheBaseFor(source: SourceRecord): string {
 async function cloneInto(source: SourceRecord, remote: string, temp: string): Promise<void> {
   const cwd = cacheRoot();
   ensureDir(cwd);
-  const args = ["clone", "--depth", "1", "--filter=blob:none", "--sparse", "--branch", source.ref, remote, temp];
-  try {
-    await git(args, cwd, { timeoutMs: 180_000 });
-  } catch (error) {
-    if (error instanceof VaultDeskError && (error.code === "auth-failed" || error.code === "network")) throw error;
+  const attempts = [
+    ["clone", "--depth", "1", "--filter=blob:none", "--sparse", "--branch", source.ref, remote, temp],
+    ["clone", "--depth", "1", "--sparse", "--branch", source.ref, remote, temp],
+    ["clone", "--depth", "1", "--branch", source.ref, remote, temp],
+  ];
+  let lastError: unknown;
+  for (const args of attempts) {
     removePath(temp);
     try {
-      await git(["clone", "--depth", "1", "--sparse", "--branch", source.ref, remote, temp], cwd, {
-        timeoutMs: 180_000,
-      });
-    } catch (retryError) {
-      if (retryError instanceof VaultDeskError && (retryError.code === "auth-failed" || retryError.code === "network")) {
-        throw retryError;
+      await gitWithGitHubFallback(
+        ["-c", "http.lowSpeedLimit=1000", "-c", "http.lowSpeedTime=20", ...args], remote, cwd, {
+          timeoutMs: 45_000,
+          sshTimeoutMs: 180_000,
+          beforeSshFallback: () => removePath(temp),
+        },
+      );
+      return;
+    } catch (error) {
+      if (error instanceof VaultDeskError && (error.code === "auth-failed" || error.code === "network")) {
+        removePath(temp);
+        throw error;
       }
-      removePath(temp);
-      await git(["clone", "--depth", "1", "--branch", source.ref, remote, temp], cwd, { timeoutMs: 180_000 });
+      lastError = error;
     }
   }
+  throw lastError ?? new VaultDeskError("git-failed", "Could not clone source repository.");
 }
 
 export async function fetchUpstream(source: SourceRecord): Promise<FetchResult> {

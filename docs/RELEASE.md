@@ -1,7 +1,44 @@
+# VaultDesk v1.2.1 release
+
+Status: locally verified on 2026-10-30. GitHub CI, publication, and the
+installed-app LaunchAgent check will be recorded in QA-CURRENT.md after release.
+
+## v1.2.1 artifact
+
+| Field | Value |
+| --- | --- |
+| File | release/VaultDesk-1.2.1-arm64.dmg |
+| Platform | macOS, Apple Silicon (arm64) |
+| Size | 124,601,920 bytes (118.8 MiB) |
+| SHA-256 | e63079c64d1a01ee8b8048f58a4c047b7dc67d574ce0211900d002eaa86528ca |
+| Bundle ID | com.coderwang404.vaultdesk |
+| Bundle version | 1.2.1 |
+| Signing | Ad-hoc; strict signature verification passed |
+| Notarization | None |
+
+## v1.2.1 changes
+
+- When a standard, credential-free GitHub HTTPS URL fails due to a network
+  error, source checks and clones retry over GitHub SSH on port 443. A short
+  cache avoids waiting on the same HTTPS outage for every source.
+- Authentication failures and URLs containing credentials do not switch
+  transport. Git error output redacts URL credentials.
+- This patch preserves v1.2.0 source policies, transaction boundaries, and
+  managed distribution behavior.
+
+## v1.2.1 local verification
+
+Type checking and 141 unit tests in 26 files passed. CLI and all 17 desktop
+end-to-end scenarios passed, including headless sync and accessibility. The
+mounted-DMG test passed signature, launch, vault edit, and persistence checks.
+A real private Vault check and clone succeeded with an intentionally invalid
+HTTPS proxy, proving the SSH 443 fallback. The previous live sync updated
+and pushed four remote sources; all 15 registered targets verified afterward.
+
 # VaultDesk v1.2.0 release
 
-Status: locally verified on 2026-10-30; publication and installed-app verification
-are recorded separately in [QA-CURRENT.md](QA-CURRENT.md).
+Status: published on 2026-10-30. GitHub CI and the downloaded release asset
+were verified; the formal installed-app LaunchAgent check is deferred to v1.2.1.
 
 ## v1.2.0 artifact
 

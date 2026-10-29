@@ -3,6 +3,29 @@ import { promisify } from "node:util";
 import { VaultDeskError } from "./errors.js";
 
 const execFileAsync = promisify(execFile);
+const GITHUB_HTTPS_FAILURE_TTL_MS = 5 * 60_000;
+let githubHttpsFailedUntil = 0;
+
+function redactGitCredentials(value: string): string {
+  return value
+    .replace(/\b(https?:\/\/)[^\s/@]+@/gi, "$1[redacted]@")
+    .replace(/\b(https?:\/\/[^\s?#]+)\?[^\s#]+/gi, "$1?[redacted]")
+    .replace(/\b(token|api[_-]?key|secret|password|access[_-]?key)=([^\s&]+)/gi, "$1=[redacted]");
+}
+
+export function githubSshFallbackRemote(remote: string): string | undefined {
+  let url: URL;
+  try { url = new URL(remote); } catch { return undefined; }
+  if (url.protocol !== "https:" || url.origin !== "https://github.com" ||
+      url.username || url.password || url.search || url.hash) return undefined;
+  const parts = url.pathname.slice(1).split("/");
+  if (parts.length !== 2) return undefined;
+  const [owner, rawRepo] = parts;
+  const repo = rawRepo?.endsWith(".git") ? rawRepo.slice(0, -4) : rawRepo;
+  const safeSegment = /^[a-zA-Z0-9][a-zA-Z0-9_.-]*$/;
+  if (!owner || !repo || !safeSegment.test(owner) || !safeSegment.test(repo)) return undefined;
+  return "ssh://git@ssh.github.com:443/" + owner + "/" + repo + ".git";
+}
 
 export interface GitOptions {
   timeoutMs?: number;
@@ -51,15 +74,77 @@ export async function git(args: string[], cwd: string, options: GitOptions = {})
     });
     return { stdout: result.stdout, stderr: result.stderr, code: 0 };
   } catch (error) {
-    const err = error as NodeJS.ErrnoException & { stdout?: string; stderr?: string; code?: number | string };
+    const err = error as NodeJS.ErrnoException & { stdout?: string; stderr?: string; code?: number | string; killed?: boolean };
+    args = args.map(redactGitCredentials);
+    err.stdout = redactGitCredentials(err.stdout ?? "");
+    err.stderr = redactGitCredentials(err.stderr ?? "");
+    err.message = redactGitCredentials(err.message);
+    if (err.stack) err.stack = redactGitCredentials(err.stack);
     if (options.allowFailure) {
       return { stdout: err.stdout ?? "", stderr: err.stderr ?? err.message, code: typeof err.code === "number" ? err.code : 1 };
     }
-    const code = classifyGitFailure(err.stderr ?? "", err.stdout ?? "");
+    const code = err.code === "ETIMEDOUT" || err.killed
+      ? "network" : classifyGitFailure(err.stderr ?? "", err.stdout ?? "");
     throw new VaultDeskError(code, `git ${args.join(" ")} failed: ${(err.stderr || err.message).trim()}`, {
       details: { args, cwd, stderr: err.stderr, stdout: err.stdout },
-      cause: error,
+      cause: new Error(err.message),
     });
+  }
+}
+
+export interface GitHubFallbackOptions extends GitOptions {
+  sshTimeoutMs?: number;
+  beforeSshFallback?: () => void;
+}
+
+export async function gitWithGitHubFallback(
+  args: string[], remote: string, cwd: string, options: GitHubFallbackOptions = {},
+): Promise<GitOutput> {
+  const fallback = githubSshFallbackRemote(remote);
+  const index = args.indexOf(remote);
+  const { sshTimeoutMs, beforeSshFallback, ...gitOptions } = options;
+  if (!fallback || index < 0) return git(args, cwd, gitOptions);
+  const sshArgs = [...args];
+  sshArgs[index] = fallback;
+  const sshOptions = { ...gitOptions, timeoutMs: sshTimeoutMs ?? gitOptions.timeoutMs };
+  if (Date.now() < githubHttpsFailedUntil) {
+    try { return await git(sshArgs, cwd, sshOptions); }
+    catch (sshError) {
+      // A different repository may have working HTTPS credentials but no SSH access.
+      try {
+        const result = await git(args, cwd, gitOptions);
+        githubHttpsFailedUntil = 0;
+        return result;
+      } catch (httpsError) {
+        if (httpsError instanceof VaultDeskError && httpsError.code === "network") {
+          const hint = sshError instanceof VaultDeskError && sshError.code === "auth-failed"
+            ? "SSH 443 authentication failed." : "SSH 443 also failed.";
+          throw new VaultDeskError("network", "GitHub HTTPS network unavailable; " + hint + " Check connectivity or SSH access.", {
+            cause: httpsError,
+          });
+        }
+        throw httpsError;
+      }
+    }
+  }
+  try {
+    const result = await git(args, cwd, gitOptions);
+    githubHttpsFailedUntil = 0;
+    return result;
+  } catch (error) {
+    if (!(error instanceof VaultDeskError) || error.code !== "network") throw error;
+    beforeSshFallback?.();
+    try {
+      const result = await git(sshArgs, cwd, sshOptions);
+      githubHttpsFailedUntil = Date.now() + GITHUB_HTTPS_FAILURE_TTL_MS;
+      return result;
+    } catch (sshError) {
+      const hint = sshError instanceof VaultDeskError && sshError.code === "auth-failed"
+        ? "SSH 443 authentication failed." : "SSH 443 also failed.";
+      throw new VaultDeskError("network", "GitHub HTTPS network unavailable; " + hint + " Check connectivity or SSH access.", {
+        cause: error,
+      });
+    }
   }
 }
 
@@ -168,9 +253,9 @@ export async function currentBranch(cwd: string): Promise<string | undefined> {
 }
 
 export async function gitLsRemote(remote: string, ref: string, cwd: string): Promise<string> {
-  const result = await git(
+  const result = await gitWithGitHubFallback(
     ["-c", "http.lowSpeedLimit=1", "-c", "http.lowSpeedTime=20", "ls-remote", remote, ref, `${ref}^{}`],
-    cwd,
+    remote, cwd,
     { timeoutMs: 45_000 },
   );
   const lines = result.stdout
@@ -189,8 +274,8 @@ export async function gitLsRemote(remote: string, ref: string, cwd: string): Pro
     lines.find((entry) => entry.refName === ref) ??
     lines[0];
   if (!exact) {
-    throw new VaultDeskError("upstream-not-found", `Remote ref ${ref} not found at ${remote}`, {
-      details: { remote, ref },
+    throw new VaultDeskError("upstream-not-found", `Remote ref ${ref} not found at ${redactGitCredentials(remote)}`, {
+      details: { remote: redactGitCredentials(remote), ref },
     });
   }
   return exact.sha;

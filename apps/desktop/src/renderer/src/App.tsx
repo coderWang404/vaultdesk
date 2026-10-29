@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import type {
   AppSettings,
+  AutoSyncSourceResult,
   CheckReport,
   ExternalSkillRecord,
   PluginRecord,
@@ -34,6 +35,7 @@ import { ImportModal } from "./components/modals/ImportModal";
 import { InstallModal } from "./components/modals/InstallModal";
 import { MigrationModal } from "./components/modals/MigrationModal";
 import { NewVaultModal } from "./components/modals/NewVaultModal";
+import { PendingSkillsModal } from "./components/modals/PendingSkillsModal";
 import { RemoveSourceModal } from "./components/modals/RemoveSourceModal";
 import { UpdateModal } from "./components/modals/UpdateModal";
 import { ValidationModal } from "./components/modals/ValidationModal";
@@ -54,7 +56,18 @@ interface RemoveTargetResult {
 }
 
 const EMPTY_SELECTION: Selection = { kind: null, name: null };
-const DEFAULT_SETTINGS: AppSettings = { checkIntervalHours: 24, backupRetention: 10 };
+const DEFAULT_SETTINGS: AppSettings = {
+  autoSyncEnabled: true,
+  checkIntervalHours: 1,
+  backupRetention: 3,
+  backupRetentionDays: 7,
+};
+interface AutoSyncRunSummary {
+  checkedVaults: number;
+  updated: number;
+  errors: number;
+  entries: Array<{ source: string; vaultName: string; pendingSkills?: string[] }>;
+}
 type ThemePreference = "system" | "light" | "dark";
 type SidebarPreference = "auto" | "expanded" | "collapsed";
 
@@ -95,6 +108,8 @@ export function App() {
   const [booted, setBooted] = useState(false);
   const [opening, setOpening] = useState<string | null>(null);
   const [checking, setChecking] = useState<string | null>(null);
+  const [syncing, setSyncing] = useState(false);
+  const [modeChanging, setModeChanging] = useState<string | null>(null);
   const [targetToRemove, setTargetToRemove] = useState<string | null>(null);
   const [removingTarget, setRemovingTarget] = useState(false);
   const [themePreference, setThemePreference] = useState<ThemePreference>(() =>
@@ -112,7 +127,7 @@ export function App() {
   const vaultsRef = useRef(vaults);
   vaultsRef.current = vaults;
   const bootStarted = useRef(false);
-  const autoChecked = useRef<Set<string>>(new Set());
+  const lastBackgroundActivity = useRef<string | null>(null);
 
   const activeVault = useMemo(
     () => vaults.find((vault) => vault.path === activePath) ?? null,
@@ -278,6 +293,44 @@ export function App() {
     },
     [notify, reloadVault],
   );
+
+  const runAutoSync = useCallback(async (vaultPath?: string): Promise<void> => {
+    if (syncing) return;
+    setSyncing(true);
+    try {
+      const summary = await call<AutoSyncRunSummary>("app.autoSyncNow", { vaultPath });
+      const openPaths = vaultsRef.current
+        .filter((vault) => !vaultPath || vault.path === vaultPath)
+        .map((vault) => vault.path);
+      await Promise.all(openPaths.map((openPath) => reloadVault(openPath)));
+      const pending = summary.entries.filter((entry) => entry.pendingSkills?.length).length;
+      if (summary.errors > 0) {
+        notify(`${summary.errors} 个来源同步失败，请查看设置中的活动记录`, "danger");
+      } else if (pending > 0) {
+        notify(`${pending} 个来源有新技能待接纳，请查看活动记录`, "warn");
+      } else {
+        notify(`已检查 ${summary.checkedVaults} 个仓库，更新 ${summary.updated} 个来源`, "ok");
+      }
+    } catch (reason) {
+      notify(errorMessage(reason), "danger");
+    } finally {
+      setSyncing(false);
+    }
+  }, [notify, reloadVault, syncing]);
+
+  const changeSourceMode = useCallback(async (source: string, mode: SourceRecord["updateMode"]): Promise<void> => {
+    if (!activeVault || modeChanging) return;
+    setModeChanging(source);
+    try {
+      await call("source.setUpdateMode", { vaultPath: activeVault.path, name: source, mode });
+      notify(`${source} 的更新方式已设为${mode === "auto" ? "自动更新" : mode === "frozen" ? "暂停" : "人工审核"}`, "ok");
+    } catch (reason) {
+      notify(errorMessage(reason), "danger");
+    } finally {
+      await reloadVault(activeVault.path);
+      setModeChanging(null);
+    }
+  }, [activeVault, modeChanging, notify, reloadVault]);
 
   const reveal = useCallback(
     (target: string): void => {
@@ -523,6 +576,38 @@ export function App() {
   }, [notify]);
 
   useEffect(() => {
+    const refreshAfterBackgroundSync = async (): Promise<void> => {
+      if (document.visibilityState !== "visible") return;
+      try {
+        const events = await call<Array<{ at: string; vaultPath: string; source: string }>>("app.autoSyncActivity", { limit: 1 });
+        const latest = events[0];
+        if (!latest) return;
+        const signature = [latest.at, latest.vaultPath, latest.source].join("|");
+        const changed = lastBackgroundActivity.current !== null && lastBackgroundActivity.current !== signature;
+        lastBackgroundActivity.current = signature;
+        if (!changed) return;
+        for (const vault of vaultsRef.current) {
+          void call<VaultSnapshot>("vault.reload", { vaultPath: vault.path })
+            .then((snapshot) => upsert(snapshot))
+            .catch(() => undefined);
+        }
+      } catch {
+        // Activity is best-effort; an inaccessible log must not block the UI.
+      }
+    };
+    const onVisibility = (): void => {
+      if (document.visibilityState === "visible") void refreshAfterBackgroundSync();
+    };
+    document.addEventListener("visibilitychange", onVisibility);
+    void refreshAfterBackgroundSync();
+    const timer = window.setInterval(() => void refreshAfterBackgroundSync(), 30_000);
+    return () => {
+      document.removeEventListener("visibilitychange", onVisibility);
+      window.clearInterval(timer);
+    };
+  }, [upsert]);
+
+  useEffect(() => {
     if (!activeVault) {
       setSelection(EMPTY_SELECTION);
       return;
@@ -661,19 +746,6 @@ export function App() {
     });
   }, []);
 
-  useEffect(() => {
-    if (!activeVault || activeVault.format !== "v2") return;
-    if (settings.checkIntervalHours <= 0) return;
-    if (autoChecked.current.has(activeVault.path)) return;
-    autoChecked.current.add(activeVault.path);
-    const last = activeVault.state?.last_checked_at;
-    if (last) {
-      const age = Date.now() - new Date(last).getTime();
-      if (Number.isFinite(age) && age >= 0 && age < settings.checkIntervalHours * 3_600_000) return;
-    }
-    void checkVault(activeVault.path, true);
-  }, [activeVault, settings.checkIntervalHours, checkVault]);
-
   const modalVault =
     modal && modal.kind !== "new-vault"
       ? vaults.find((vault) => vault.path === modal.vaultPath) ?? null
@@ -705,8 +777,12 @@ export function App() {
             vault={activeVault}
             selected={selection.kind === "source" ? selection.name : null}
             checking={activeChecking}
+            syncing={syncing}
+            modeChanging={modeChanging}
             onSelect={selectSource}
             onCheck={() => void checkVault(activeVault.path, false)}
+            onAutoSync={() => void runAutoSync(activeVault.path)}
+            onUpdateMode={(source, mode) => void changeSourceMode(source, mode)}
             onDiff={(source) => setModal({ kind: "diff", vaultPath: activeVault.path, source })}
             onUpdate={openUpdate}
             onImport={openImport}
@@ -787,6 +863,9 @@ export function App() {
             onThemePreference={setThemePreference}
             info={info}
             presets={presets}
+            syncing={syncing}
+            onAutoSync={() => runAutoSync()}
+            onAdopt={(vaultPath, source) => setModal({ kind: "pending-skills", vaultPath, source })}
             onSaved={(saved) => {
               setSettings(saved);
               notify("设置已保存", "ok");
@@ -941,6 +1020,25 @@ export function App() {
           vaultPath={modal.vaultPath}
           source={modal.source}
           onClose={() => setModal(null)}
+        />
+      ) : null}
+
+      {modal?.kind === "pending-skills" ? (
+        <PendingSkillsModal
+          vaultPath={modal.vaultPath}
+          source={modal.source}
+          onClose={() => setModal(null)}
+          onDone={(result: AutoSyncSourceResult) => {
+            const vaultPath = modal.vaultPath;
+            setModal(null);
+            notify(
+              result.status === "push-failed"
+                ? "已在本地接纳并提交，但推送失败；请查看 Git 状态。"
+                : "新技能已接纳并同步受管目标。",
+              result.status === "push-failed" ? "warn" : "ok",
+            );
+            if (vaultsRef.current.some((vault) => vault.path === vaultPath)) void reloadVault(vaultPath);
+          }}
         />
       ) : null}
 

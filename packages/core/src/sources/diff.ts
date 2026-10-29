@@ -143,9 +143,6 @@ export async function diffSourceRecord(
     }
   }
   const warnings: string[] = [];
-  if (source.updateMode === "auto") {
-    warnings.push(`${source.name} is marked auto, but VaultDesk 0.x always reviews before applying.`);
-  }
   const summary = {
     added: files.filter((file) => file.status === "added").length,
     deleted: files.filter((file) => file.status === "deleted").length,

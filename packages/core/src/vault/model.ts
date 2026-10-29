@@ -277,7 +277,7 @@ async function loadV2(vaultPath: string): Promise<{
     metadata = {
       schema: 1,
       name: path.basename(vaultPath),
-      defaults: { ref: "main", update_mode: "review-before-apply" },
+      defaults: { ref: "main", update_mode: "auto" },
       targets: [],
     };
   } else {
@@ -291,7 +291,7 @@ async function loadV2(vaultPath: string): Promise<{
       metadata = {
         schema: 1,
         name: typeof raw.name === "string" ? raw.name : path.basename(vaultPath),
-        defaults: { ref: "main", update_mode: "review-before-apply" },
+        defaults: { ref: "main", update_mode: "auto" },
         targets: Array.isArray(raw.targets) ? (raw.targets as VaultFile["targets"]) : [],
       };
     }
@@ -626,9 +626,6 @@ async function scanTargets(vaultPath: string, targets: TargetRecord[], skills: S
       const skill = skillByName.get(entry.name);
       const marker = readMarker(slotPath);
       const markerTarget = typeof marker?.target_id === "string" ? marker.target_id : undefined;
-      const owned = target.skills.includes(entry.name) && (!markerTarget || markerTarget === target.id);
-      if (!skill && !owned) continue;
-
       let stat: fs.Stats;
       try {
         stat = fs.lstatSync(slotPath);
@@ -637,8 +634,21 @@ async function scanTargets(vaultPath: string, targets: TargetRecord[], skills: S
       }
       const isSymlink = stat.isSymbolicLink();
       if (!isSymlink && !stat.isDirectory()) continue;
-      if (!owned && !marker) continue;
       const markerVault = typeof marker?.vault === "string" ? canonicalPath(marker.vault) : undefined;
+      const isThisVault = markerVault === canonicalPath(vaultPath);
+      const masterRoot = canonicalPath(process.env.VAULTDESK_AGENTS_SKILLS_DIR || expandHome("~/.agents/skills"));
+      const isMaster = canonicalPath(dest) === masterRoot && markerTarget === "agents-master" &&
+        marker?.skill === entry.name && isThisVault && !isSymlink;
+      const linkedTarget = isSymlink && isThisVault && marker?.skill === entry.name &&
+        Array.isArray(marker?.targets) && marker.targets.some((item: unknown) => {
+          const record = asRecord(item);
+          return record?.id === target.id && record?.path === path.join(canonicalPath(dest), entry.name) &&
+            record?.mode === "symlink";
+        });
+      const owned = target.skills.includes(entry.name) &&
+        (!markerTarget || markerTarget === target.id || isMaster || linkedTarget);
+      if (!skill && !owned) continue;
+      if (!owned && !marker) continue;
       const installed: InstalledSkill = {
         targetId: target.id,
         dest,
@@ -744,7 +754,7 @@ async function loadV1(vaultPath: string): Promise<{
       origin,
       repo: raw.repo,
       ref,
-      updateMode: raw.update_mode === "auto" ? "auto" : "review-before-apply",
+      updateMode: raw.update_mode === "frozen" ? "frozen" : raw.update_mode === "review-before-apply" ? "review-before-apply" : origin === "github" ? "auto" : "review-before-apply",
       workingPath,
       vendorRoot: vendorPath ? path.dirname(vendorPath) : undefined,
       metadataPath: sourcesFile,
@@ -819,7 +829,7 @@ async function loadV1(vaultPath: string): Promise<{
       repo: manifest.repo,
       remoteUrl: manifest.remote_url,
       ref,
-      updateMode: manifest.update_mode === "auto" ? "auto" : "review-before-apply",
+      updateMode: manifest.update_mode === "frozen" ? "frozen" : manifest.update_mode === "review-before-apply" ? "review-before-apply" : origin === "github" ? "auto" : "review-before-apply",
       version: manifest.version,
       description: manifest.description,
       contentPath,
@@ -880,7 +890,7 @@ async function loadV1(vaultPath: string): Promise<{
       metadata: {
         schema: 1,
         name: path.basename(vaultPath),
-        defaults: { ref: "main", update_mode: "review-before-apply" },
+        defaults: { ref: "main", update_mode: "auto" },
         targets: targets.map((target) => ({
           id: target.id,
           dest: target.dest,

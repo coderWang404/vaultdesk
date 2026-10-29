@@ -38,7 +38,7 @@ macOS desktop session; the default suites need no network.
 | GitHub add, check, diff, update, fork, remove | Pinned commit, sparse checkout, upstream check, zero/real diffs, dirty-working-copy guard, review-before-apply update, commit, fork, source removal. |
 | v1 read-only guards and migration | v1 reads, write refusal, recents, migration preview/apply on a branch, clean/dirty gates, commit contents. |
 | Network and auth exit codes | Offline exit code, missing and wrong Basic credentials, token-authenticated private flow, update plus target install, credential hygiene, SSH URL rewrite. |
-| Locks, stale reclaim and journal recovery state | Live cross-process lock, dead-PID/corrupt/aged lock reclaim, journal exposure in status, non-blocking reads, journal retention. |
+| Locks, stale reclaim and journal recovery state | Live cross-process and aged live-PID locks, dead-PID/corrupt lock reclaim, journal exposure in status, non-blocking reads, journal retention. |
 | SIGKILL mid-import leaves journal and stale lock | Sends SIGKILL to a real CLI process while the import journal has a running step; verifies the surviving journal, running step, lock PID, human/JSON status warning, and that read-only status does not clear it. |
 | Unicode paths, symlinks and 120-skill scale | Vault, source, target and skill names with spaces and Chinese characters; symlinked inputs; import, install, verify, build and validate at 120 skills. |
 | Vault on an external APFS volume | Init, import, explicit-path commit and managed install on a mounted APFS disk image. |

@@ -17,6 +17,19 @@ export const ipcCommands = {
   "vault.migrationPreview": z.object({ vaultPath }),
   "vault.migrationApply": z.object({ vaultPath, confirm: z.literal(true) }),
   "source.check": z.object({ vaultPath, names }),
+  "source.autoSync": z.object({ vaultPath }),
+  "source.setUpdateMode": z.object({
+    vaultPath,
+    name: slugSchema,
+    mode: z.enum(["auto", "review-before-apply", "frozen"]),
+  }),
+  "source.pending": z.object({ vaultPath, name: slugSchema }),
+  "source.adopt": z.object({
+    vaultPath,
+    name: slugSchema,
+    paths: z.array(z.string().min(1)).min(1),
+    confirm: z.literal(true),
+  }),
   "source.diff": z.object({ vaultPath, name: slugSchema }),
   "source.updatePreview": z.object({ vaultPath, names }),
   "source.update": z.object({
@@ -126,11 +139,16 @@ export const ipcCommands = {
   "app.settings": z.object({}),
   "app.setSettings": z.object({
     settings: z.object({
-      checkIntervalHours: z.number().int().min(0).max(720).default(24),
-      backupRetention: z.number().int().min(1).max(100).default(10),
+      autoSyncEnabled: z.boolean().default(true),
+      checkIntervalHours: z.number().int().min(0).max(720).default(1),
+      backupRetention: z.number().int().min(1).max(100).default(3),
+      backupRetentionDays: z.number().int().min(1).max(365).default(7),
       backupRoot: z.string().optional(),
     }),
   }),
+  "app.autoSyncNow": z.object({ vaultPath: vaultPath.optional() }),
+  "app.autoSyncActivity": z.object({ limit: z.number().int().min(1).max(100).default(30) }),
+  "app.backgroundStatus": z.object({}),
   "app.recents": z.object({}),
   "app.addRecent": z.object({ path: vaultPath }),
   "app.removeRecent": z.object({ path: vaultPath }),

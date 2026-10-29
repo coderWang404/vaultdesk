@@ -12,16 +12,19 @@ import {
   type IpcMainInvokeEvent,
   type OpenDialogOptions,
 } from "electron";
-import { VaultDeskError, serializeError } from "@vaultdesk/core";
+import { VaultDeskError, readSettings, serializeError } from "@vaultdesk/core";
 import { ipcRequestSchema, type IpcCommand, type IpcResponse } from "@vaultdesk/schema";
 import { knownCommands, runCommand, warningsOf } from "./commands.js";
 import { buildAppMenu } from "./menu.js";
 import { isTrustedRendererUrl } from "./trusted-url.js";
+import { startBackgroundWorker } from "./background-sync.js";
+import { configureLaunchAgent } from "./launch-agent.js";
 import type { DirectoryDialogOptions } from "../shared/api.js";
 
 const dirname = __dirname;
 const isDev = Boolean(process.env.ELECTRON_RENDERER_URL);
 const isSmoke = process.env.VAULTDESK_SMOKE === "1";
+const isBackgroundWorker = process.argv.includes("--vaultdesk-background-worker");
 
 function resolveAgentSkillDir(): string {
   const override = process.env.VAULTDESK_AGENT_SKILL_DIR;
@@ -39,9 +42,9 @@ if (process.env.VAULTDESK_USER_DATA) {
   app.setPath("userData", process.env.VAULTDESK_USER_DATA);
 }
 
-const gotLock = app.requestSingleInstanceLock();
-if (!gotLock) {
-  app.quit();
+if (!isBackgroundWorker) {
+  const gotLock = app.requestSingleInstanceLock();
+  if (!gotLock) app.quit();
 }
 
 function rendererUrl(): string {
@@ -251,6 +254,13 @@ app.on("web-contents-created", (_event, contents) => {
 });
 
 app.whenReady().then(() => {
+  if (isBackgroundWorker) {
+    // The LaunchAgent is headless and should not add a second Dock presence.
+    app.dock?.hide();
+    startBackgroundWorker();
+    return;
+  }
+
   installCsp();
   session.defaultSession.setPermissionRequestHandler((_contents, _permission, callback) => {
     callback(false);
@@ -267,6 +277,13 @@ app.whenReady().then(() => {
 
   mainWindow = createWindow();
   Menu.setApplicationMenu(buildAppMenu(mainWindow));
+
+  try {
+    const settings = readSettings();
+    configureLaunchAgent(settings.autoSyncEnabled && settings.checkIntervalHours > 0);
+  } catch (error) {
+    console.error("Background sync registration failed:", error);
+  }
 
   app.on("activate", () => {
     if (BrowserWindow.getAllWindows().length === 0) {

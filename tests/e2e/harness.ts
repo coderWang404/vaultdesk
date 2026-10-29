@@ -55,8 +55,10 @@ export function createWorkspace(label: string): Workspace {
 
 export function writeSettings(workspace: Workspace, settings: Record<string, unknown>): void {
   const value = {
-    checkIntervalHours: 0,
-    backupRetention: 10,
+    autoSyncEnabled: false,
+    checkIntervalHours: 1,
+    backupRetention: 3,
+    backupRetentionDays: 7,
     backupRoot: workspace.backups,
     ...settings,
   };

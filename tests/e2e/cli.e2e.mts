@@ -1405,16 +1405,18 @@ async function locksAndJournal(suite: CliSuite): Promise<void> {
   const staleBodies: [string, string][] = [
     ["dead pid", JSON.stringify({ pid: 2147483646, vault: vaultPath, created_at: new Date().toISOString() })],
     ["corrupt payload", "{ this is not json"],
-    [
-      "aged live pid",
-      JSON.stringify({ pid: process.pid, vault: vaultPath, created_at: new Date(Date.now() - 20 * 60_000).toISOString() }),
-    ],
   ];
   for (const [label, body] of staleBodies) {
     fs.writeFileSync(lockFile, body, "utf8");
     ok<Payload>(runCli(installArgs, { workspace }), `install reclaims ${label} lock`);
     assert(!fs.existsSync(lockFile), `${label} lock reclaimed`);
   }
+  fs.writeFileSync(lockFile, JSON.stringify({
+    pid: process.pid, vault: vaultPath, created_at: new Date(Date.now() - 20 * 60_000).toISOString(),
+  }), "utf8");
+  failure(runCli(installArgs, { workspace }), 1, "conflict", "aged live PID keeps its lock");
+  assert(fs.existsSync(lockFile), "aged live PID lock remains in place");
+  fs.rmSync(lockFile);
 
   const journalFile = path.join(vaultPath, ".vault/operation.json");
   const journal = {
@@ -1435,7 +1437,7 @@ async function locksAndJournal(suite: CliSuite): Promise<void> {
   fs.rmSync(journalFile);
   const cleanStatus = ok<Payload>(runCli(["vault", "status", "--vault", vaultPath, "--json"], { workspace }), "status without journal");
   equal(cleanStatus.operation, null, "journal cleared from status");
-  console.log("      cross-process lock, stale/corrupt/aged reclaim, journal status and non-blocking reads OK");
+  console.log("      cross-process and aged live locks, dead/corrupt reclaim, journal status and reads OK");
 }
 
 async function crashDuringImport(suite: CliSuite): Promise<void> {

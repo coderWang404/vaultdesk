@@ -16,8 +16,12 @@ export function SourcesView({
   vault,
   selected,
   checking,
+  syncing,
+  modeChanging,
   onSelect,
   onCheck,
+  onAutoSync,
+  onUpdateMode,
   onDiff,
   onUpdate,
   onImport,
@@ -26,8 +30,12 @@ export function SourcesView({
   vault: VaultSnapshot;
   selected: string | null;
   checking: boolean;
+  syncing: boolean;
+  modeChanging: string | null;
   onSelect: (source: SourceRecord) => void;
   onCheck: () => void;
+  onAutoSync: () => void;
+  onUpdateMode: (source: string, mode: SourceRecord["updateMode"]) => void;
   onDiff: (source: string) => void;
   onUpdate: (source: string) => void;
   onImport: () => void;
@@ -57,6 +65,9 @@ export function SourcesView({
         title="来源"
         actions={
           <>
+            <Button icon="refresh" onClick={onAutoSync} loading={syncing} disabled={vault.format === "v1"}>
+              立即同步
+            </Button>
             <Button icon="refresh" onClick={onCheck} loading={checking}>
               检查
             </Button>
@@ -175,6 +186,21 @@ export function SourcesView({
                     <span>本地目录</span>
                   )}
                 </p>
+                {source.origin === "github" ? (
+                  <label className="source-update-mode" onClick={(event) => event.stopPropagation()}>
+                    <span>更新方式</span>
+                    <select
+                      value={source.updateMode}
+                      aria-label={`${source.name} 的更新方式`}
+                      disabled={vault.format === "v1" || modeChanging !== null}
+                      onChange={(event) => onUpdateMode(source.name, event.target.value as SourceRecord["updateMode"])}
+                    >
+                      <option value="auto">自动更新</option>
+                      <option value="review-before-apply">人工审核</option>
+                      <option value="frozen">暂停</option>
+                    </select>
+                  </label>
+                ) : null}
                 {source.lastError ? (
                   <p className="source-row-error" title={source.lastError}>
                     {source.lastError}

@@ -1,3 +1,45 @@
+# VaultDesk v1.2.0 release
+
+Status: locally verified on 2026-10-30; publication and installed-app verification
+are recorded separately in [QA-CURRENT.md](QA-CURRENT.md).
+
+## v1.2.0 artifact
+
+| Field | Value |
+| --- | --- |
+| File | `release/VaultDesk-1.2.0-arm64.dmg` |
+| Platform | macOS, Apple Silicon (`arm64`) |
+| Size | 124,599,623 bytes (118.8 MiB) |
+| SHA-256 | `793ac2aa0ceee3f2b8b4ee4445a64de55cf487174533715fd013f3ef7603ed81` |
+| Bundle ID | `com.coderwang404.vaultdesk` |
+| Bundle version | `1.2.0` |
+| Signing | Ad-hoc; strict `codesign --verify --deep --strict` passed |
+| Notarization | None |
+
+## v1.2.0 release notes
+
+- Adds a macOS login-session worker that checks all registered vaults after login,
+  after observed network recovery, and hourly, even with the app window closed.
+- Applies remote Git updates per source across the vault, `~/.agents/skills`, and
+  registered targets, with rollback on conflict, limited backups, explicit-path
+  commits, normal push, and a clear push-failure state.
+- Adds per-source auto/review/pause controls, activity history, and a pending-skill
+  adoption flow in the app and CLI. Plugin distribution requires an explicitly
+  registered target.
+- Preserves local edits and unknown directory ownership. New upstream skills
+  await adoption; removed upstream skills remain locally until reviewed.
+- Packages from the installed Electron runtime so the macOS build does not
+  depend on a second Electron download. The DMG remains ad-hoc signed and
+  unnotarized; application updates still require a manual replacement.
+
+## v1.2.0 local verification
+
+`pnpm install --frozen-lockfile`, `pnpm typecheck`, and `pnpm test` passed
+(25 files, 130 tests). CLI and desktop E2E passed separately; the desktop suite
+covered 17 scenarios, including the headless worker, two-vault sync, pending
+adoption, and accessibility. `pnpm test:e2e:dmg` passed mounted-DMG
+verification, strict signature validation, launch, and persisted editing.
+
 # VaultDesk v1.1.0 release
 
 Status: published on 2026-10-29. The macOS arm64 artifact passed local

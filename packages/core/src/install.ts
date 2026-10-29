@@ -1,7 +1,7 @@
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import path from "node:path";
 import fs from "node:fs";
-import { canonicalPath, exists, expandHome, hashDirectory, isDirectory, isInside, nowIso, timestampSlug, movePath, listDirectory, removePath } from "./fsx.js";
+import { canonicalPath, copyDirectory, exists, expandHome, hashDirectory, isDirectory, isInside, nowIso, timestampSlug, movePath, listDirectory, removePath } from "./fsx.js";
 import { VaultDeskError } from "./errors.js";
 import type { VaultFile } from "@vaultdesk/schema";
 import type { InstalledSkill, InstallPlan, InstallResult, InstallSlotPlan, SkillRecord, TargetRecord, VaultSnapshot } from "./types.js";
@@ -12,6 +12,7 @@ import { readVaultFile, writeVaultFile } from "./vault/config.js";
 import { withWriteLock } from "./vault/lockfile.js";
 import { Journal } from "./journal.js";
 import { recordTargetInstalled, writeState, readState } from "./vault/state.js";
+import { forgetManagedTargetLinks, managedAgentsSkillsRoot, managedSkillLink } from "./distribution.js";
 
 const MARKER = ".vault-managed";
 
@@ -88,9 +89,11 @@ function slotState(slotPath: string, vaultPath: string, targetId: string): { sta
   if (isSymlink(slotPath)) return { state: "symlink", linkTarget: fs.readlinkSync(slotPath) };
   if (fs.statSync(slotPath).isDirectory() && fs.existsSync(path.join(slotPath, MARKER))) {
     try {
-      const marker = JSON.parse(fs.readFileSync(path.join(slotPath, MARKER), "utf8")) as { vault?: string; target_id?: string };
+      const marker = JSON.parse(fs.readFileSync(path.join(slotPath, MARKER), "utf8")) as { vault?: string; target_id?: string; skill?: string };
       if (typeof marker.vault === "string" && canonicalPath(marker.vault) === canonicalPath(vaultPath)) {
-        if (typeof marker.target_id === "string" && marker.target_id !== targetId) {
+        const isMaster = path.dirname(slotPath) === managedAgentsSkillsRoot() &&
+          marker.target_id === "agents-master" && marker.skill === path.basename(slotPath);
+        if (typeof marker.target_id === "string" && marker.target_id !== targetId && !isMaster) {
           throw new VaultDeskError("conflict", `Install slot ${slotPath} belongs to another target: ${marker.target_id}`);
         }
         return { state: "managed" };
@@ -110,6 +113,21 @@ function isSymlink(target: string): boolean {
   } catch {
     return false;
   }
+}
+
+function preservedMasterTargets(slotPath: string, vaultPath: string, skillName: string): Array<{ id: string; path: string; mode: "symlink" | "copy" }> | undefined {
+  if (path.dirname(slotPath) !== managedAgentsSkillsRoot() || !fs.existsSync(path.join(slotPath, MARKER))) return undefined;
+  const marker = JSON.parse(fs.readFileSync(path.join(slotPath, MARKER), "utf8")) as {
+    vault?: string; skill?: string; targets?: unknown;
+  };
+  if (!marker.vault || canonicalPath(marker.vault) !== vaultPath || marker.skill !== skillName) return undefined;
+  if (marker.targets === undefined) return undefined;
+  if (!Array.isArray(marker.targets) || !marker.targets.every((target) =>
+    target && typeof target === "object" && typeof target.id === "string" &&
+    typeof target.path === "string" && (target.mode === "symlink" || target.mode === "copy"))) {
+    throw new VaultDeskError("conflict", "Master target links are malformed: " + slotPath);
+  }
+  return marker.targets;
 }
 
 function validateDest(vaultPath: string, dest: string): string {
@@ -261,6 +279,9 @@ export async function installSkills(inputPath: string, options: InstallOptions):
         if (!fs.existsSync(path.join(artifact, "SKILL.md"))) {
           throw new VaultDeskError("source-not-found", `Built artifact missing for ${slot.skill}`);
         }
+        const preservedTargets = slot.state === "managed"
+          ? preservedMasterTargets(slot.slot, vaultPath, slot.skill)
+          : undefined;
         switch (slot.action) {
           case "replace-symlink":
             fs.unlinkSync(slot.slot);
@@ -282,7 +303,7 @@ export async function installSkills(inputPath: string, options: InstallOptions):
         const hash = buildHashes[slot.skill] ?? hashDirectory(slot.slot);
         fs.writeFileSync(
           path.join(slot.slot, MARKER),
-          JSON.stringify({ vault: vaultPath, target_id: freshPlan.targetId, skill: slot.skill, installed_at: installedAt, hash }, null, 2) + "\n",
+          JSON.stringify({ vault: vaultPath, target_id: freshPlan.targetId, skill: slot.skill, installed_at: installedAt, hash, ...(preservedTargets ? { targets: preservedTargets } : {}) }, null, 2) + "\n",
           "utf8",
         );
         installed += 1;
@@ -354,6 +375,10 @@ export function verifyTargetRecord(snapshot: VaultSnapshot, targetId: string): I
       missing.push(skillName);
       continue;
     }
+    if (isSymlink(slot)) {
+      if (!managedSkillLink(snapshot.path, targetId, skillName, slot)?.contentMatches) modified.push(skillName);
+      continue;
+    }
     const markerPath = path.join(slot, MARKER);
     if (!fs.existsSync(markerPath)) {
       modified.push(skillName);
@@ -362,7 +387,9 @@ export function verifyTargetRecord(snapshot: VaultSnapshot, targetId: string): I
     try {
       const marker = JSON.parse(fs.readFileSync(markerPath, "utf8")) as { vault?: string; target_id?: string; skill?: string; hash?: string };
       const sameVault = marker.vault ? canonicalPath(marker.vault) === canonicalPath(snapshot.path) : false;
-      if (!sameVault || (marker.target_id && marker.target_id !== targetId) || (marker.skill && marker.skill !== skillName)) {
+      const sharedMaster = canonicalPath(target.expandedDest) === managedAgentsSkillsRoot() &&
+        marker.target_id === "agents-master" && marker.skill === skillName;
+      if (!sameVault || (marker.target_id && marker.target_id !== targetId && !sharedMaster) || (marker.skill && marker.skill !== skillName)) {
         modified.push(skillName);
         continue;
       }
@@ -411,8 +438,13 @@ export async function removeTarget(
         journal.start("files");
         const stamp = timestampSlug();
         for (const skillName of target.skills) {
+          if (canonicalPath(target.expandedDest) === managedAgentsSkillsRoot()) continue;
           const slot = path.join(target.expandedDest, skillName);
           if (!fs.existsSync(slot) && !isSymlink(slot)) continue;
+          if (managedSkillLink(vaultPath, targetId, skillName, slot)) {
+            fs.unlinkSync(slot);
+            continue;
+          }
           const markerPath = path.join(slot, MARKER);
           if (!fs.existsSync(markerPath)) continue;
           let marker: { vault?: string; target_id?: string; skill?: string };
@@ -438,9 +470,26 @@ export async function removeTarget(
         backupPath = filesMoved[0] ? path.dirname(filesMoved[0]) : undefined;
         journal.done("files", `${filesMoved.length} moved`);
       } else {
+        for (const skillName of target.skills) {
+          const slot = path.join(target.expandedDest, skillName);
+          const linked = managedSkillLink(vaultPath, targetId, skillName, slot);
+          if (!linked) continue;
+          const stage = slot + ".vaultdesk-detached-" + randomUUID().slice(0, 8);
+          copyDirectory(linked.master, stage);
+          const oldLink = fs.readlinkSync(slot);
+          try {
+            fs.unlinkSync(slot);
+            fs.renameSync(stage, slot);
+          } catch (error) {
+            fs.rmSync(stage, { recursive: true, force: true });
+            if (!exists(slot) && !isSymlink(slot)) fs.symlinkSync(oldLink, slot);
+            throw error;
+          }
+        }
         journal.skipped("files");
       }
 
+      forgetManagedTargetLinks(vaultPath, targetId, target.dest, target.skills);
       journal.start("unregister");
       const file = readVaultFile(vaultPath);
       file.targets = file.targets.filter((entry) => entry.id !== targetId);

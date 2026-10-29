@@ -4,7 +4,7 @@ import os from "node:os";
 import path from "node:path";
 
 export const INTERNAL_METADATA = new Set([".source.yml", ".source-commit", ".vault-managed", ".DS_Store"]);
-const DEFAULT_EXCLUDED_DIRS = new Set([".git", "node_modules", ".vault", ".DS_Store"]);
+const DEFAULT_EXCLUDED_DIRS = new Set([".git", "node_modules", ".vault", "__pycache__", ".DS_Store"]);
 
 export function expandHome(input: string): string {
   if (input === "~") return os.homedir();
@@ -122,7 +122,7 @@ export function walkFiles(root: string, options: WalkOptions = {}): WalkEntry[] 
     }
     entries.sort((a, b) => a.name.localeCompare(b.name));
     for (const entry of entries) {
-      if (excludeFiles.has(entry.name)) continue;
+      if (excludeFiles.has(entry.name) || entry.name.endsWith(".pyc")) continue;
       const abs = path.join(dir, entry.name);
       const rel = prefix ? `${prefix}/${entry.name}` : entry.name;
       if (entry.isDirectory()) {
@@ -171,7 +171,7 @@ export function copyDirectory(source: string, destination: string, options: Walk
   const copy = (src: string, dest: string): void => {
     ensureDir(dest);
     for (const entry of fs.readdirSync(src, { withFileTypes: true })) {
-      if (excludeFiles.has(entry.name)) continue;
+      if (excludeFiles.has(entry.name) || entry.name.endsWith(".pyc")) continue;
       const from = path.join(src, entry.name);
       const to = path.join(dest, entry.name);
       if (entry.isDirectory()) {

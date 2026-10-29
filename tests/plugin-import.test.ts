@@ -9,6 +9,7 @@ import {
   openVault,
   previewGithubPlugin,
   previewPluginImport,
+  refreshPluginSourceMetadata,
   validateVault,
 } from "@vaultdesk/core";
 import { git, initGitRepo, repoRoot, tempDir } from "./helpers.js";
@@ -88,7 +89,7 @@ describe("plugin import", () => {
 
     const snapshot = await openVault(vaultPath);
     expect(snapshot.counts).toMatchObject({ sources: 1, skills: 0, plugins: 1, pluginSkills: 1 });
-    expect(snapshot.sources[0]).toMatchObject({ name: "claude-kit", shape: "plugin", origin: "local", skills: [] });
+    expect(snapshot.sources[0]).toMatchObject({ name: "claude-kit", shape: "plugin", origin: "local", updateMode: "review-before-apply", skills: [] });
     expect(snapshot.plugins[0]?.workingPath).toBe(path.join(fs.realpathSync(vaultPath), "plugins", "claude-kit"));
     expect(fs.existsSync(path.join(vaultPath, "plugins", "claude-kit", ".claude-plugin", "plugin.json"))).toBe(true);
     expect(fs.existsSync(path.join(vaultPath, "plugins", "claude-kit", "hooks", "on-start.sh.ran"))).toBe(false);
@@ -126,6 +127,7 @@ describe("plugin import", () => {
     const snapshot = await openVault(vaultPath);
     const plugin = snapshot.plugins[0];
     expect(plugin).toMatchObject({ name: "mirror-kit", origin: "github", repo: "fixture/mirror-kit", status: "unknown" });
+    expect(snapshot.sources[0]?.updateMode).toBe("auto");
     expect(plugin?.locked?.commit).toBe(commit);
     expect(plugin?.locked?.hash).toMatch(/^sha256:/);
     expect(Object.keys(plugin?.locked?.skills ?? {})).toEqual(["helper"]);
@@ -136,7 +138,10 @@ describe("plugin import", () => {
 
     const source = fs.readFileSync(path.join(vaultPath, "sources", "mirror-kit.yml"), "utf8");
     expect(source).toContain("repo: fixture/mirror-kit");
+    expect(source).toContain("update_mode: auto");
     expect(source).not.toContain("content_path");
+    refreshPluginSourceMetadata(vaultPath, snapshot.sources[0]!, plugin!.manifests);
+    expect(fs.readFileSync(path.join(vaultPath, "sources", "mirror-kit.yml"), "utf8")).toContain("update_mode: auto");
   });
 
   it("requires an explicit path when a repository holds several plugin roots", async () => {

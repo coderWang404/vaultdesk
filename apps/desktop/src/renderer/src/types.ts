@@ -28,6 +28,7 @@ export type ModalState =
   | { kind: "migration"; vaultPath: string }
   | { kind: "validation"; vaultPath: string }
   | { kind: "diff"; vaultPath: string; source: string }
+  | { kind: "pending-skills"; vaultPath: string; source: string }
   | { kind: "update"; vaultPath: string; source?: string }
   | { kind: "install"; vaultPath: string; targetId?: string }
   | { kind: "import"; vaultPath: string }

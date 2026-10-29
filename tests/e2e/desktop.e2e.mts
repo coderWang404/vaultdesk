@@ -1,6 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
-import { execFileSync } from "node:child_process";
+import { execFileSync, spawn } from "node:child_process";
 import { createRequire } from "node:module";
 import {
   advanceUpstreamRepo,
@@ -471,45 +471,64 @@ async function searchAndSettings(suite: Suite): Promise<void> {
 
   await openSection(page, "设置");
   const checkInterval = page.getByLabel("检查间隔（小时）");
-  const retention = page.getByLabel("每个目标保留备份数");
+  const retention = page.getByLabel("每个目标最多保留备份数");
+  const retentionDays = page.getByLabel("备份保留天数");
+  const autoSyncToggle = page.getByRole("checkbox", { name: /关闭应用后继续自动更新/ });
   const backupRoot = page.getByLabel("备份根目录");
   const intervalLabel = page.locator("label.field-label").filter({ hasText: "检查间隔（小时）" });
   await intervalLabel.click();
   equal(await checkInterval.evaluate((input) => document.activeElement === input), true, "Field label focuses its input");
   const customBackups = path.join(workspace.root, "custom-backups");
-  equal(await checkInterval.inputValue(), "0", "interval setting readback");
-  equal(await retention.inputValue(), "10", "retention setting readback");
+  equal(await checkInterval.inputValue(), "1", "interval setting readback");
+  equal(await retention.inputValue(), "3", "retention setting readback");
+  equal(await retentionDays.inputValue(), "7", "retention days readback");
+  equal(await autoSyncToggle.isChecked(), false, "background service initially disabled in test workspace");
   setDialogChoice(workspace, customBackups);
   const backupPanel = page.locator(".settings-panel").filter({ hasText: "备份根目录" });
   await backupPanel.getByRole("button", { name: "选择" }).click();
   await waitFor(async () => (await backupRoot.inputValue()) === customBackups, "backup root selected via dialog");
-  await retention.fill("3");
+  await page.locator(".auto-sync-toggle").click();
+  equal(await autoSyncToggle.isChecked(), true, "background toggle is keyboard and pointer operable");
+  await retention.fill("4");
+  await retentionDays.fill("6");
   await page.getByRole("button", { name: "保存设置" }).click();
   await waitForText(page, "设置已保存", 30_000);
-  const saved = await readJson<{ checkIntervalHours: number; backupRetention: number; backupRoot?: string }>(
+  const saved = await readJson<{ autoSyncEnabled: boolean; checkIntervalHours: number; backupRetention: number; backupRetentionDays: number; backupRoot?: string }>(
     workspace.settingsFile,
   );
-  equal(saved.checkIntervalHours, 0, "saved interval");
-  equal(saved.backupRetention, 3, "saved retention");
+  equal(saved.autoSyncEnabled, true, "saved auto-sync toggle");
+  equal(saved.checkIntervalHours, 1, "saved interval");
+  equal(saved.backupRetention, 4, "saved retention");
+  equal(saved.backupRetentionDays, 6, "saved retention days");
   equal(saved.backupRoot, customBackups, "saved backup root");
+  await page.getByRole("button", { name: "立即检查并同步全部仓库" }).click();
+  await waitForText(page, "已检查 2 个仓库", 30_000);
+  await waitForText(page, "vault-a · alpha", 30_000);
+  await waitForText(page, "vault-b · beta", 30_000);
 
   await checkInterval.fill("721");
   await page.getByRole("button", { name: "保存设置" }).click();
-  await waitForText(page, "检查间隔必须是 0 到 720 之间的整数小时。", 30_000);
-  await checkInterval.fill("0");
+  await waitForText(page, "后台检查间隔必须是 1 到 720 之间的整数小时", 30_000);
+  await checkInterval.fill("1");
   await retention.fill("0");
   await page.getByRole("button", { name: "保存设置" }).click();
   await waitForText(page, "备份保留数量必须是 1 到 100 之间的整数。", 30_000);
-  await retention.fill("3");
+  await retention.fill("4");
+  await retentionDays.fill("0");
+  await page.getByRole("button", { name: "保存设置" }).click();
+  await waitForText(page, "备份保留天数必须是 1 到 365 之间的整数。", 30_000);
+  await retentionDays.fill("6");
   await page.getByRole("button", { name: "保存设置" }).click();
   await waitForText(page, "设置已保存", 30_000);
-  equal((await readJson<{ backupRetention: number }>(workspace.settingsFile)).backupRetention, 3, "invalid saves blocked");
+  equal((await readJson<{ backupRetention: number }>(workspace.settingsFile)).backupRetention, 4, "invalid saves blocked");
 
   await suite.close(launched);
   const relaunched = await suite.launch({ workspace, initialVault: vaultB });
   await openSection(relaunched.page, "设置");
-  equal(await relaunched.page.getByLabel("检查间隔（小时）").inputValue(), "0", "persisted interval after relaunch");
-  equal(await relaunched.page.getByLabel("每个目标保留备份数").inputValue(), "3", "persisted retention after relaunch");
+  equal(await relaunched.page.getByLabel("检查间隔（小时）").inputValue(), "1", "persisted interval after relaunch");
+  equal(await relaunched.page.getByLabel("每个目标最多保留备份数").inputValue(), "4", "persisted retention after relaunch");
+  equal(await relaunched.page.getByLabel("备份保留天数").inputValue(), "6", "persisted retention days after relaunch");
+  equal(await relaunched.page.getByRole("checkbox", { name: /关闭应用后继续自动更新/ }).isChecked(), true, "persisted background toggle");
   equal(await relaunched.page.getByLabel("备份根目录").inputValue(), customBackups, "persisted backup root after relaunch");
   console.log("      cross-vault keyboard search, selection jump, settings validation and persistence OK");
 }
@@ -982,78 +1001,51 @@ async function externalFlow(suite: Suite): Promise<void> {
   );
 }
 
-async function autoCheckThrottle(suite: Suite): Promise<void> {
+async function manualSourceCheck(suite: Suite): Promise<void> {
   const workspace = suite.workspace("auto-check");
   const vaultPath = path.join(workspace.root, "auto-vault");
   const initialCommit = makeUpstreamRepo(workspace, "auto-repo", { alpha: "Auto check alpha v1." });
   const init = runCli(["vault", "init", vaultPath, "--git", "--name", "auto-vault", "--yes"], { workspace });
-  equal(init.status, 0, `vault init failed: ${init.stderr}`);
-  const add = runCli(
-    ["source", "add", "--repo", "e2e/auto-repo", "--vault", vaultPath, "--yes"],
-    { workspace },
-  );
-  equal(add.status, 0, `GitHub source add failed: ${add.stderr}`);
+  equal(init.status, 0, "vault init failed: " + init.stderr);
+  const add = runCli(["source", "add", "--repo", "e2e/auto-repo", "--vault", vaultPath, "--yes"], { workspace });
+  equal(add.status, 0, "GitHub source add failed: " + add.stderr);
   assert(read(path.join(vaultPath, "vault.lock")).includes(initialCommit), "initial upstream commit pinned");
-  const stateFile = path.join(vaultPath, ".vault/state.json");
-
-  let launched = await suite.launch({
-    workspace,
-    initialVault: vaultPath,
-    settings: { checkIntervalHours: 24, backupRetention: 10, backupRoot: workspace.backups },
-  });
-  await waitFor(
-    async () =>
-      fs.existsSync(stateFile) && Boolean((await readJson<{ last_checked_at?: string }>(stateFile)).last_checked_at),
-    "boot auto-check recorded state",
-    60_000,
-  );
-  const firstCheck = (await readJson<{ last_checked_at: string }>(stateFile)).last_checked_at;
-  assert(Number.isFinite(Date.parse(firstCheck)), "auto-check timestamp parsed");
-  await suite.close(launched);
-
+  commitAll(vaultPath, "chore: import auto source");
+  const vaultRemote = path.join(workspace.remotes, "auto-vault.git");
+  git(workspace.root, ["clone", "--bare", vaultPath, vaultRemote]);
+  git(vaultPath, ["remote", "add", "origin", vaultRemote]);
+  git(vaultPath, ["push", "-u", "origin", "main"]);
   advanceUpstreamRepo(workspace, "auto-repo", (source) => {
     writeSkill(path.join(source, "skills", "alpha"), "alpha", "Auto check alpha v2.", "AUTO-V2 body.");
   });
-  const recent = new Date().toISOString();
-  const state = await readJson<Record<string, unknown> & { last_checked_at?: string }>(stateFile);
-  state.last_checked_at = recent;
-  fs.writeFileSync(stateFile, `${JSON.stringify(state, null, 2)}\n`, "utf8");
 
-  launched = await suite.launch({
-    workspace,
-    initialVault: vaultPath,
-    settings: { checkIntervalHours: 24, backupRetention: 10, backupRoot: workspace.backups },
-  });
-  await launched.page.locator(".source-health").waitFor({ state: "visible", timeout: 30_000 });
-  await new Promise((resolve) => setTimeout(resolve, 2_000));
-  equal(
-    (await readJson<{ last_checked_at: string }>(stateFile)).last_checked_at,
-    recent,
-    "recent check timestamp skips boot auto-check",
-  );
-  equal(await launched.page.getByText("发现 1 个来源有可用更新").count(), 0, "no update toast while throttled");
+  const stateFile = path.join(vaultPath, ".vault/state.json");
+  const lastChecked = async (): Promise<string | null> =>
+    fs.existsSync(stateFile) ? (await readJson<{ last_checked_at?: string }>(stateFile)).last_checked_at ?? null : null;
+  const before = await lastChecked();
+  const launched = await suite.launch({ workspace, initialVault: vaultPath });
   await openSection(launched.page, "来源");
-  await launched.page.locator(".source-row").filter({ hasText: "auto-repo" }).getByLabel("已是最新").waitFor();
-  await suite.close(launched);
-
-  const stale = new Date(Date.now() - 25 * 3_600_000).toISOString();
-  const staleState = await readJson<Record<string, unknown> & { last_checked_at?: string }>(stateFile);
-  staleState.last_checked_at = stale;
-  fs.writeFileSync(stateFile, `${JSON.stringify(staleState, null, 2)}\n`, "utf8");
-  launched = await suite.launch({
-    workspace,
-    initialVault: vaultPath,
-    settings: { checkIntervalHours: 24, backupRetention: 10, backupRoot: workspace.backups },
-  });
+  await launched.page.locator(".source-row").filter({ hasText: "auto-repo" }).waitFor();
+  await new Promise((resolve) => setTimeout(resolve, 1_000));
+  equal(await lastChecked(), before, "development GUI does not schedule a background check");
+  const mode = launched.page.locator(".source-row").filter({ hasText: "auto-repo" }).locator("select");
+  equal(await mode.inputValue(), "auto", "Git source defaults to automatic mode");
+  await mode.selectOption("review-before-apply");
+  await waitFor(async () => (await mode.inputValue()) === "review-before-apply", "source review mode saved");
+  await mode.selectOption("frozen");
+  await waitFor(async () => (await mode.inputValue()) === "frozen", "source freeze saved");
+  await mode.selectOption("auto");
+  await waitFor(async () => (await mode.inputValue()) === "auto", "source automatic mode restored");
+  equal(git(vaultRemote, ["log", "-1", "--pretty=%s"]).trim(), "chore: set alpha update mode to auto", "source mode pushed");
+  await launched.page.getByRole("button", { name: "检查", exact: true }).click();
   await waitForText(launched.page, "发现 1 个来源有可用更新", 60_000);
-  await openSection(launched.page, "来源");
   await launched.page.locator(".source-row").filter({ hasText: "auto-repo" }).getByText("有更新").waitFor();
-  const refreshed = (await readJson<{ last_checked_at: string }>(stateFile)).last_checked_at;
-  assert(Date.parse(refreshed) > Date.parse(stale), "stale timestamp triggers boot auto-check");
-  console.log("      24h boot check gate: skipped recent timestamp, refreshed after stale timestamp");
+  const checked = await lastChecked();
+  assert(checked && Number.isFinite(Date.parse(checked)), "manual source check recorded a timestamp");
+  console.log("      GUI defers scheduling to background worker; source mode and manual check remain available");
 }
 
-async function autoCheckSessionOnce(suite: Suite): Promise<void> {
+async function registeredVaultSync(suite: Suite): Promise<void> {
   const workspace = suite.workspace("auto-session");
   const vaultA = path.join(workspace.root, "session-a");
   const vaultB = path.join(workspace.root, "session-b");
@@ -1080,46 +1072,43 @@ async function autoCheckSessionOnce(suite: Suite): Promise<void> {
       commitAll(vaultPath, `chore: import ${label}`);
     }
 
+    const afterImports = server.stats.requests.length;
     const launched = await suite.launch({
       workspace,
       initialVault: vaultA,
-      settings: { checkIntervalHours: 24, backupRetention: 10, backupRoot: workspace.backups },
       extraEnv: gitRewriteEnv(authenticated, emptyConfig),
     });
     const page = launched.page;
-    const stateA = path.join(vaultA, ".vault/state.json");
-    const stateB = path.join(vaultB, ".vault/state.json");
-    const checked = async (file: string): Promise<boolean> => {
-      if (!fs.existsSync(file)) return false;
-      return Boolean((await readJson<{ last_checked_at?: string }>(file)).last_checked_at);
-    };
-    await waitFor(() => checked(stateA), "session A boot check", 60_000);
-    const afterBoot = server.stats.requests.length;
-    assert(afterBoot > 0, "boot check reached the upstream server");
-
     setDialogChoice(workspace, vaultB);
     await page.getByRole("button", { name: "打开仓库" }).click();
     await page.locator(".vault-tab").filter({ hasText: "session-b" }).waitFor({ state: "visible", timeout: 30_000 });
-    await page.locator(".vault-tab.is-active").filter({ hasText: "session-b" }).waitFor();
-    await waitFor(() => checked(stateB), "session B first-activation check", 60_000);
+    equal(server.stats.requests.length, afterImports, "opening a second vault does not run a GUI background check");
+
+    await openSection(page, "设置");
+    await page.getByRole("button", { name: "立即检查并同步全部仓库" }).click();
+    await waitForText(page, "已检查 2 个仓库", 60_000);
+    await waitForText(page, "session-a · alpha", 30_000);
+    await waitForText(page, "session-b · beta", 30_000);
+    const stateA = path.join(vaultA, ".vault/state.json");
+    const stateB = path.join(vaultB, ".vault/state.json");
+    const checked = async (file: string): Promise<boolean> =>
+      fs.existsSync(file) && Boolean((await readJson<{ last_checked_at?: string }>(file)).last_checked_at);
+    await waitFor(() => checked(stateA), "session A check", 60_000);
+    await waitFor(() => checked(stateB), "session B check", 60_000);
     const afterB = server.stats.requests.length;
-    assert(afterB > afterBoot, "opening session B triggered its check");
+    assert(afterB > afterImports, "manual all-vault sync reached upstream Git repos");
 
     await page.locator(".vault-tab").filter({ hasText: "session-a" }).click();
     await page.locator(".vault-tab.is-active").filter({ hasText: "session-a" }).waitFor();
-    await new Promise((resolve) => setTimeout(resolve, 1_500));
-    equal(server.stats.requests.length, afterB, "switching back does not re-check a vault in the same session");
-
     await page.locator(".vault-tab").filter({ hasText: "session-b" }).click();
     await page.locator(".vault-tab.is-active").filter({ hasText: "session-b" }).waitFor();
-    await new Promise((resolve) => setTimeout(resolve, 1_500));
-    equal(server.stats.requests.length, afterB, "returning to the other vault does not re-check either");
+    equal(server.stats.requests.length, afterB, "tab switching never schedules another check");
 
     await page.locator(".vault-tab").filter({ hasText: "session-a" }).click();
     await openSection(page, "来源");
     await page.getByRole("button", { name: "检查", exact: true }).click();
     await waitForText(page, "所有已检查来源都是最新", 60_000);
-    assert(server.stats.requests.length > afterB, "manual check still reaches the server");
+    assert(server.stats.requests.length > afterB, "manual source check still reaches upstream");
     const afterManual = server.stats.requests.length;
 
     const tabA = page.locator(".vault-tab").filter({ hasText: "session-a" });
@@ -1143,10 +1132,90 @@ async function autoCheckSessionOnce(suite: Suite): Promise<void> {
     await page.getByRole("button", { name: "关闭 session-a" }).click();
     await page.locator(".vault-tab").filter({ hasText: "session-a" }).waitFor({ state: "detached" });
     equal(await page.locator('.vault-tabs .vault-tab').count(), 1, "titlebar close removes the active tab");
-    console.log("      one automatic check per vault per session; roving tab keyboard navigation OK");
+    console.log("      all registered vaults synchronized; tab navigation does not duplicate checks");
   } finally {
     await server.close();
   }
+}
+
+async function headlessBackgroundWorker(suite: Suite): Promise<void> {
+  const workspace = suite.workspace("headless-worker");
+  const vaultPath = path.join(workspace.root, "worker-vault");
+  makeUpstreamRepo(workspace, "worker-repo", { alpha: "Headless worker alpha." });
+  equal(runCli(["vault", "init", vaultPath, "--git", "--name", "worker-vault", "--yes"], { workspace }).status, 0, "worker vault init");
+  const imported = runCli(["source", "add", "--repo", "e2e/worker-repo", "--vault", vaultPath, "--yes"], { workspace });
+  equal(imported.status, 0, "worker source import: " + imported.stderr);
+  commitAll(vaultPath, "chore: add worker source");
+  fs.writeFileSync(path.join(workspace.userData, "recent-vaults.json"), JSON.stringify({
+    vaults: [{ path: vaultPath, name: "worker-vault", openedAt: new Date().toISOString() }],
+  }));
+  fs.writeFileSync(workspace.settingsFile, JSON.stringify({
+    autoSyncEnabled: true, checkIntervalHours: 1, backupRetention: 3, backupRetentionDays: 7,
+    backupRoot: workspace.backups,
+  }));
+  const electronBinary = createRequire(path.join(repoRoot, "apps/desktop/package.json"))("electron") as string;
+  const env = { ...cliEnv(workspace), VAULTDESK_USER_DATA: workspace.userData };
+  delete env.ELECTRON_RUN_AS_NODE;
+  const worker = spawn(electronBinary, [path.join(repoRoot, "apps/desktop"), "--vaultdesk-background-worker"], {
+    cwd: path.join(repoRoot, "apps/desktop"), env, stdio: ["ignore", "pipe", "pipe"],
+  });
+  let stderr = "";
+  worker.stderr?.on("data", (chunk: Buffer) => { stderr += chunk.toString(); });
+  try {
+    const log = path.join(workspace.userData, "auto-sync-activity.jsonl");
+    await waitFor(() => fs.existsSync(log) && fs.readFileSync(log, "utf8").includes('"source":"alpha"'), "headless worker activity", 60_000);
+    const event = JSON.parse(fs.readFileSync(log, "utf8").trim().split("\n").at(-1) ?? "{}") as { status?: string; trigger?: string };
+    equal(event.status, "current", "headless worker checked upstream source");
+    equal(event.trigger, "startup", "headless worker started at login");
+    fs.writeFileSync(workspace.settingsFile, JSON.stringify({
+      autoSyncEnabled: false, checkIntervalHours: 1, backupRetention: 3, backupRetentionDays: 7,
+    }));
+    await waitFor(() => worker.exitCode !== null || worker.signalCode !== null, "disabled worker exits", 25_000);
+    assert(!stderr.includes("Background sync failed"), "headless worker error: " + stderr.slice(-800));
+    console.log("      headless worker checks registered vault and exits after disabling auto-sync");
+  } finally {
+    if (worker.exitCode === null && worker.signalCode === null) worker.kill("SIGTERM");
+  }
+}
+
+async function adoptPendingSkillFromActivity(suite: Suite): Promise<void> {
+  const workspace = suite.workspace("adopt-pending-ui");
+  const vaultPath = path.join(workspace.root, "adopt-vault");
+  makeUpstreamRepo(workspace, "adopt-repo", { alpha: "Alpha in suite.", beta: "Beta in suite." });
+  equal(runCli(["vault", "init", vaultPath, "--git", "--name", "adopt-vault", "--yes"], { workspace }).status, 0, "adopt vault init");
+  const imported = runCli(["source", "add", "--repo", "e2e/adopt-repo", "--vault", vaultPath, "--yes"], { workspace });
+  equal(imported.status, 0, "adopt source import: " + imported.stderr);
+  commitAll(vaultPath, "chore: import suite");
+  const remote = path.join(workspace.remotes, "adopt-vault.git");
+  git(workspace.root, ["clone", "--bare", vaultPath, remote]);
+  git(vaultPath, ["remote", "add", "origin", remote]);
+  git(vaultPath, ["push", "-u", "origin", "main"]);
+  advanceUpstreamRepo(workspace, "adopt-repo", (source) => {
+    writeSkill(path.join(source, "skills", "gamma"), "gamma", "New upstream gamma.");
+  });
+
+  const agentsSkills = path.join(workspace.root, "agents-skills");
+  const launched = await suite.launch({
+    workspace, initialVault: vaultPath,
+    extraEnv: { VAULTDESK_AGENTS_SKILLS_DIR: agentsSkills },
+  });
+  const page = launched.page;
+  await openSection(page, "设置");
+  await page.getByRole("button", { name: "立即检查并同步全部仓库" }).click();
+  await waitForText(page, "待接纳新技能：skills/gamma", 60_000);
+  const activity = page.locator(".auto-sync-activity-row").filter({ hasText: "skills/gamma" }).first();
+  await activity.getByRole("button", { name: "选择接纳" }).click();
+  const pendingDialog = await dialog(page);
+  await pendingDialog.getByText("skills/gamma").waitFor({ timeout: 30_000 });
+  await pendingDialog.locator(".pending-skill-row").filter({ hasText: "gamma" }).click();
+  await pendingDialog.getByRole("button", { name: "接纳所选 1 项" }).click();
+  await waitForText(page, "新技能已接纳并同步受管目标", 60_000);
+  assert(fs.existsSync(path.join(vaultPath, "packages/adopt-repo/skills/gamma/SKILL.md")), "new skill adopted in vault");
+  assert(fs.existsSync(path.join(agentsSkills, "gamma", "SKILL.md")), "new skill distributed to sandboxed master");
+  assert(git(remote, ["log", "-1", "--pretty=%s"]).includes("adopt skills"), "adoption pushed to Vault remote");
+  await openSection(page, "技能");
+  await page.locator(".skill-table-row").filter({ hasText: "gamma" }).waitFor();
+  console.log("      activity exposes exact pending path and adoption updates Vault, master and Git remote");
 }
 
 async function installFlow(suite: Suite): Promise<void> {
@@ -2000,8 +2069,10 @@ async function main(): Promise<void> {
   await run("plugin page, filters, search and imports", pluginsFlow);
   await run("tool page, filters, copy and search routing", toolsFlow);
   await run("external skill record, ownership filter and search routing", externalFlow);
-  await run("boot auto-check honors the 24h interval", autoCheckThrottle);
-  await run("auto-check runs once per vault per session", autoCheckSessionOnce);
+  await run("manual source check and automatic update mode", manualSourceCheck);
+  await run("all registered vaults sync and keyboard tabs", registeredVaultSync);
+  await run("headless background worker startup and disable", headlessBackgroundWorker);
+  await run("pending skill adoption from activity", adoptPendingSkillFromActivity);
   await run("slow check, offline warning and journal recovery banner", slowOfflineAndRecovery);
   await run("custom tool preset installs under a sandboxed HOME", presetInstall);
   await run("120-skill vault renders and searches in the desktop UI", desktopScale);

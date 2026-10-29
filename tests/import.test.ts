@@ -83,6 +83,23 @@ describe("local import", () => {
     ).rejects.toMatchObject({ code: "invalid-input" });
   });
 
+  it("does not import generated Python cache files", async () => {
+    const vaultPath = path.join(tempDir("import-cache-vault"), "vault");
+    await initVault(vaultPath, { name: "imports" });
+    const input = path.join(tempDir("import-cache-input"), "cache-skill");
+    writeSkill(input, "cache-skill", "Cache skill");
+    fs.writeFileSync(path.join(input, "script.py"), "print('ready')\n");
+    fs.writeFileSync(path.join(input, "script.pyc"), "compiled");
+    fs.mkdirSync(path.join(input, "__pycache__"));
+    fs.writeFileSync(path.join(input, "__pycache__", "script.cpython-313.pyc"), "compiled");
+
+    await applyImport(input, vaultPath);
+    const imported = path.join(vaultPath, "skills", "cache-skill");
+    expect(fs.existsSync(path.join(imported, "script.py"))).toBe(true);
+    expect(fs.existsSync(path.join(imported, "script.pyc"))).toBe(false);
+    expect(fs.existsSync(path.join(imported, "__pycache__"))).toBe(false);
+  });
+
   it("warns when a suite entrypoint never mentions a member skill", async () => {
     const vaultPath = path.join(tempDir("import-vault"), "vault");
     await initVault(vaultPath, { name: "imports" });

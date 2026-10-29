@@ -5,6 +5,8 @@ import {
   VaultDeskError,
   addGithubPlugin,
   addGithubSource,
+  adoptPendingSkills,
+  autoSyncVault,
   adoptExternalSkill,
   applyImport,
   applyMigration,
@@ -13,6 +15,7 @@ import {
   checkSources,
   commitPaths,
   detectLocalPlugin,
+  distributeCurrentSource,
   expandHome,
   externalSkillCardPath,
   forkSkill,
@@ -23,6 +26,7 @@ import {
   isFile,
   isInside,
   listPresets,
+  listPendingSkills,
   openVault,
   parseExternalSkillCard,
   parseToolCard,
@@ -37,13 +41,17 @@ import {
   previewPresetVerify,
   previewUpdate,
   push,
+  readVaultFile,
   readBundledAgentSkill,
   removeSource,
+  removePluginTarget,
   removeTarget,
   resolveCommitPaths,
   restoreBackup,
+  registerPluginTarget,
   runPresetVerifyCommand,
   serializeError,
+  setSourceUpdateMode,
   sourceDiff,
   toolCardPath,
   updateSources,
@@ -76,6 +84,7 @@ import { toolKindSchema } from "@vaultdesk/schema";
 const VALUE_FLAGS = new Set([
   "vault",
   "name",
+  "mode",
   "kind",
   "entrypoint",
   "dest",
@@ -219,9 +228,9 @@ function hasFlag(parsed: Parsed, name: string): boolean {
 function version(): string {
   try {
     const pkg = JSON.parse(fs.readFileSync(new URL("../package.json", import.meta.url), "utf8")) as { version?: string };
-    return pkg.version ?? "1.1.0";
+    return pkg.version ?? "1.2.0";
   } catch {
-    return "1.1.0";
+    return "1.2.0";
   }
 }
 
@@ -256,6 +265,13 @@ Commands:
   source check [names...]          Check upstream commits and update local check state
   source diff <name>               Show the upstream diff for one source
   source update [names...]         Preview or apply upstream updates
+  source auto-sync [--yes]         Update, distribute, commit and push auto sources
+  source pending <name>            Show unregistered upstream skill paths
+  source adopt <name> --path <path>... --yes
+                                   Accept selected new skills from a Git source
+  source distribute <name> --yes   Distribute a current source to managed targets
+  source mode <name> --mode <mode> --yes
+                                   Set auto, review-before-apply or frozen
   source add <path> [--plugin|--no-plugin]
                                    Import a local folder, plugin root, or skill suite
   source add --repo owner/name     Add a GitHub source or plugin (preview by default)
@@ -263,6 +279,9 @@ Commands:
   source fork <skill> [--as name]  Fork a GitHub skill into a local skill
   plugin list                      List registered plugins, assets, and status
   plugin show <name>               Show one plugin, its manifests, and contained skills
+  plugin target list               List explicitly registered plugin targets
+  plugin target add <names...> --id <id> --dest <dir> --yes
+  plugin target remove <id> --yes [--delete-files]
   build                            Preview or rebuild build/skills
   target list                      List install targets
   target install <names...> --dest <dir> [--id id]
@@ -306,9 +325,9 @@ Exit codes:
   0 success   1 operation failed   2 usage or validation   3 network or authentication
 
 Safety:
-  Writes require --yes. GitHub-origin skills are read-only until forked.
-  Updates fetch into ~/Library/Caches/VaultDesk and write only after confirmation.
-  VaultDesk never deletes unknown install directories; it moves them to backup first.
+  Manual writes require --yes. GitHub-origin skills are read-only until forked.
+  Auto sources update registered destinations in the background; review and frozen modes do not.
+  Automatic sync never overwrites unknown or manually edited directories.
   External skills are owned by their tools; VaultDesk records the path and only observes it.
 `;
 
@@ -1084,6 +1103,74 @@ async function dispatch(parsed: Parsed): Promise<CommandResult> {
         const diff = await sourceDiff(vaultPath, name);
         return { data: diff, warnings: diff.warnings, human: printDiff(diff) };
       }
+      if (action === "auto-sync") {
+        if (rest.length > 0) throw new VaultDeskError("invalid-input", "source auto-sync does not take names.");
+        if (!parsed.yes) {
+          const snapshot = await openVault(vaultPath);
+          return {
+            data: { sources: snapshot.sources.filter((source) => source.origin === "github" && source.updateMode === "auto").map((source) => source.name) },
+            warnings: [],
+            human: [bold("Automatic source sync"), "Updates eligible Git sources, distributes managed skills, then commits and pushes each successful source.", notice(parsed)],
+          };
+        }
+        const report = await autoSyncVault(vaultPath);
+        return {
+          data: report,
+          warnings: report.sources.filter((source) => source.status === "error" || source.status === "push-failed" || source.pendingSkills?.length).map((source) => source.name + ": " + (source.message || source.status)),
+          exitCode: report.errors > 0 ? 1 : 0,
+          human: [
+            bold("Automatic source sync"),
+            ...report.sources.map((source) => `${source.name}: ${source.status}${source.commit ? " (" + source.commit.slice(0, 12) + ")" : ""}${source.message ? " — " + source.message : ""}`),
+            `${report.updated} updated · ${report.errors} errors`,
+          ],
+        };
+      }
+      if (action === "mode") {
+        const name = rest[0];
+        const mode = valueOf(options, "mode");
+        if (!name || rest.length !== 1 || (mode !== "auto" && mode !== "review-before-apply" && mode !== "frozen")) {
+          throw new VaultDeskError("invalid-input", "source mode requires one name and --mode auto|review-before-apply|frozen.");
+        }
+        if (!parsed.yes) {
+          return { data: { name, mode, preview: true }, warnings: [], human: [bold(`Set ${name} update mode to ${mode}`), notice(parsed)] };
+        }
+        await setSourceUpdateMode(vaultPath, name, mode);
+        return { data: { name, mode }, warnings: [], human: [green(`Set ${name} update mode to ${mode}.`)] };
+      }
+      if (action === "pending") {
+        const name = rest[0];
+        if (!name || rest.length !== 1) throw new VaultDeskError("invalid-input", "source pending requires one source name.");
+        const pending = await listPendingSkills(vaultPath, name);
+        return { data: pending, warnings: [], human: pending.length
+          ? [bold(`Pending skills in ${name}`), ...table(["NAME", "UPSTREAM PATH"], pending.map((entry) => [entry.name, entry.sourcePath])), dim(`Use source adopt ${name} --path <upstream path> --yes.`)]
+          : [green(`No pending skills in ${name}.`)] };
+      }
+      if (action === "adopt") {
+        const name = rest[0];
+        const paths = valuesOf(options, "path");
+        if (!name || rest.length !== 1 || paths.length === 0) {
+          throw new VaultDeskError("invalid-input", "source adopt requires one source name and at least one --path.");
+        }
+        const pending = await listPendingSkills(vaultPath, name);
+        if (!parsed.yes) {
+          return { data: { source: name, selectedPaths: paths, pending, preview: true }, warnings: [], human: [
+            bold(`Adopt new skills in ${name}`), ...paths.map((entry) => `  ${entry}`), "Plugin updates require selecting every pending skill.", notice(parsed),
+          ] };
+        }
+        const result = await adoptPendingSkills(vaultPath, name, paths);
+        return { data: result, warnings: result.message ? [result.message] : [], exitCode: result.status === "error" || result.status === "push-failed" ? 1 : 0, human: [
+          green(`Adopted selected skills in ${name}: ${result.status}.`), ...(result.commit ? [`Commit ${result.commit.slice(0, 12)}`] : []), ...(result.message ? [result.message] : []),
+        ] };
+      }
+      if (action === "distribute") {
+        const name = rest[0];
+        if (!name || rest.length !== 1) throw new VaultDeskError("invalid-input", "source distribute requires one source name.");
+        if (!parsed.yes) {
+          return { data: { source: name, preview: true }, warnings: [], human: [bold(`Distribute current source ${name}`), notice(parsed)] };
+        }
+        const changedPaths = await distributeCurrentSource(vaultPath, name);
+        return { data: { source: name, changedPaths }, warnings: [], human: [green(`Distributed ${name} to ${changedPaths.length} managed paths.`), ...changedPaths] };
+      }
       if (action === "update") {
         const names = rest.length > 0 ? rest : undefined;
         if (!parsed.yes || hasFlag(options, "dry-run")) {
@@ -1266,6 +1353,32 @@ async function dispatch(parsed: Parsed): Promise<CommandResult> {
     case "plugin": {
       const vaultPath = vaultPathOf(parsed);
       const snapshot = await openVault(vaultPath);
+      if (action === "target") {
+        const [verb, ...args] = rest;
+        if (verb === "list") {
+          const targets = readVaultFile(vaultPath).plugin_targets ?? [];
+          return { data: targets, warnings: [], human: targets.length
+            ? table(["ID", "DEST", "PLUGINS", "AUTO"], targets.map((entry) => [entry.id, entry.dest, entry.names.join(", "), entry.install_after_update ? "yes" : "no"]))
+            : [dim("No plugin targets registered.")] };
+        }
+        if (verb === "add") {
+          const id = valueOf(options, "id");
+          const dest = valueOf(options, "dest");
+          const names = [...args, ...valuesOf(options, "name")];
+          if (!id || !dest || names.length === 0) throw new VaultDeskError("invalid-input", "plugin target add requires plugin names, --id and --dest.");
+          if (!parsed.yes) return { data: { id, dest, names, preview: true }, warnings: [], human: [bold(`Register plugin target ${id}`), `Destination ${dest}`, `Plugins ${names.join(", ")}`, notice(parsed)] };
+          await registerPluginTarget(vaultPath, { id, dest, names });
+          return { data: { id, dest, names }, warnings: [], human: [green(`Registered plugin target ${id}.`), "Run source distribute <plugin> --yes now, or wait for the next automatic check."] };
+        }
+        if (verb === "remove") {
+          const id = args[0];
+          if (!id || args.length !== 1) throw new VaultDeskError("invalid-input", "plugin target remove requires one target ID.");
+          if (!parsed.yes) return { data: { id, deleteFiles: hasFlag(options, "delete-files"), preview: true }, warnings: [], human: [bold(`Remove plugin target ${id}`), hasFlag(options, "delete-files") ? "Managed files will move to backup." : "Installed files will stay.", notice(parsed)] };
+          const result = await removePluginTarget(vaultPath, id, { deleteFiles: hasFlag(options, "delete-files") });
+          return { data: result, warnings: [], human: [green(`Removed plugin target ${id}.`), ...result.filesMoved] };
+        }
+        throw new VaultDeskError("invalid-input", `Unknown plugin target action: ${verb}`);
+      }
       if (action === "list" || action === undefined) {
         if (snapshot.plugins.length === 0) {
           return { data: [], warnings: snapshot.warnings, human: [dim("No plugins registered.")] };

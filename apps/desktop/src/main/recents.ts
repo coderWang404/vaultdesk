@@ -1,12 +1,9 @@
 import fs from "node:fs";
 import path from "node:path";
 import { app } from "electron";
+import { mergeRecent, type RecentVault } from "./recent-registry.js";
 
-export interface RecentVault {
-  path: string;
-  name: string;
-  openedAt: string;
-}
+export type { RecentVault } from "./recent-registry.js";
 
 function storePath(): string {
   return path.join(app.getPath("userData"), "recent-vaults.json");
@@ -32,9 +29,7 @@ function writeRecents(vaults: RecentVault[]): void {
 }
 
 export function addRecent(vaultPath: string, name: string): RecentVault[] {
-  const resolved = path.resolve(vaultPath);
-  const existing = readRecents().filter((entry) => entry.path !== resolved);
-  const vaults = [{ path: resolved, name, openedAt: new Date().toISOString() }, ...existing].slice(0, 12);
+  const vaults = mergeRecent(readRecents(), vaultPath, name, new Date().toISOString());
   writeRecents(vaults);
   return vaults;
 }

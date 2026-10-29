@@ -35,6 +35,10 @@ export interface UpdateOptions {
   commitMessage?: string;
   backupRoot?: string;
   retention?: number;
+  /** The caller holds the vault write lock for an outer transaction. */
+  alreadyLocked?: boolean;
+  /** Automatic transactions preflight only the paths they will change. */
+  allowUnrelatedDirty?: boolean;
 }
 
 function lockEntry(snapshot: VaultSnapshot, source: VaultSnapshot["sources"][number]): LockFile["sources"][string] {
@@ -140,7 +144,7 @@ export async function updateSources(inputPath: string, options: UpdateOptions = 
   if (!(await isGitRepo(vaultPath))) {
     throw new VaultDeskError("git-failed", "Updates require the vault to be a Git repository.");
   }
-  if (!(await isWorktreeClean(vaultPath))) {
+  if (!options.allowUnrelatedDirty && !(await isWorktreeClean(vaultPath))) {
     throw new VaultDeskError("git-not-clean", "Commit or stash local changes before updating.");
   }
 
@@ -205,7 +209,7 @@ export async function updateSources(inputPath: string, options: UpdateOptions = 
     return { applied: false, names: github.map((source) => source.name), changes: [], warnings };
   }
 
-  return withWriteLock(vaultPath, async () => {
+  const apply = async (): Promise<UpdateResult> => {
     const journal = Journal.begin(vaultPath, "update", [
       { id: "write", label: "Write vendor and working copies" },
       { id: "lock", label: "Update lock file" },
@@ -360,7 +364,8 @@ export async function updateSources(inputPath: string, options: UpdateOptions = 
       journal.fail(active, (error as Error).message);
       throw error;
     }
-  });
+  };
+  return options.alreadyLocked ? apply() : withWriteLock(vaultPath, apply);
 }
 
 export async function previewUpdate(

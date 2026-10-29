@@ -41,6 +41,18 @@ export function writeVaultFile(vaultPath: string, file: VaultFile): void {
         names: [...target.names],
         install_after_update: target.install_after_update,
       })),
+    ...(file.plugin_targets && file.plugin_targets.length > 0
+      ? {
+          plugin_targets: [...file.plugin_targets]
+            .sort((a, b) => a.id.localeCompare(b.id))
+            .map((target) => ({
+              id: target.id,
+              dest: target.dest,
+              names: [...target.names],
+              install_after_update: target.install_after_update,
+            })),
+        }
+      : {}),
   };
   writeTextAtomic(path.join(vaultPath, "vault.yml"), YAML.stringify(ordered, { lineWidth: 0 }));
 }

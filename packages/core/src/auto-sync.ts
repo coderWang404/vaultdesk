@@ -1,0 +1,576 @@
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
+import YAML from "yaml";
+import { sourceFileSchema } from "@vaultdesk/schema";
+import { VaultDeskError } from "./errors.js";
+import { canonicalPath, copyDirectory, expandHome, hashDirectory, hashText, isInside, readText, writeTextAtomic } from "./fsx.js";
+import { commitPaths, currentCommit, getGitSummary, git, push } from "./git.js";
+import { beginManagedDistribution, managedAgentsSkillsRoot } from "./distribution.js";
+import { withWriteLock } from "./vault/lockfile.js";
+import { openVault, validateVault } from "./vault/validate.js";
+import { readVaultFile } from "./vault/config.js";
+import { readLock, recordCheck, writeLock } from "./vault/state.js";
+import { buildVault } from "./build.js";
+import { checkSources } from "./sources/check.js";
+import { fetchUpstream } from "./sources/fetch.js";
+import { updateSources } from "./sources/update.js";
+import { inspectPlugin } from "./plugins/discover.js";
+import { resolvePluginUpstreamRoot } from "./plugins/upstream.js";
+import { parseFrontmatter } from "./frontmatter.js";
+import { slugSchema } from "@vaultdesk/schema";
+import type { SourceRecord, VaultSnapshot } from "./types.js";
+
+export interface AutoSyncOptions {
+  agentsSkillsDir?: string;
+  backupRoot?: string;
+  retention?: number;
+  retentionDays?: number;
+}
+
+export type AutoSyncSourceStatus = "updated" | "current" | "skipped" | "error" | "push-failed";
+
+export interface AutoSyncSourceResult {
+  name: string;
+  status: AutoSyncSourceStatus;
+  message?: string;
+  commit?: string;
+  pendingSkills?: string[];
+}
+
+export interface AutoSyncReport {
+  vaultPath: string;
+  checkedAt: string;
+  sources: AutoSyncSourceResult[];
+  updated: number;
+  errors: number;
+}
+
+export interface PendingSkill {
+  name: string;
+  sourcePath: string;
+}
+
+interface PathBackup {
+  restore(): void;
+  dispose(): void;
+}
+
+function uniqueRoots(paths: string[]): string[] {
+  const ordered = [...new Set(paths.map((entry) => path.resolve(entry)))].sort((a, b) => a.length - b.length);
+  return ordered.filter((entry, index) => !ordered.slice(0, index).some((parent) => entry.startsWith(parent + path.sep)));
+}
+
+function sourceWritePaths(vaultPath: string, source: SourceRecord): string[] {
+  const paths = [
+    source.workingPath,
+    source.vendorRoot,
+    source.metadataPath,
+    ...source.skills.flatMap((skill) => [skill.workingPath, skill.vendorPath]),
+    path.join(vaultPath, "vault.lock"),
+    path.join(vaultPath, "build"),
+    path.join(vaultPath, ".vault", "state.json"),
+    path.join(vaultPath, ".vault", "operation.json"),
+  ].filter((entry): entry is string => Boolean(entry));
+  for (const entry of paths) {
+    if (!isInside(entry, vaultPath)) {
+      throw new VaultDeskError("path-escape", "Source write path escapes its vault: " + entry);
+    }
+  }
+  return uniqueRoots(paths);
+}
+
+function relativePaths(vaultPath: string, paths: string[]): string[] {
+  return paths.map((entry) => path.relative(vaultPath, entry).split(path.sep).join("/"));
+}
+
+function pathMatches(change: string, root: string): boolean {
+  return change === root || change.startsWith(root + "/") || root.startsWith(change + "/");
+}
+
+async function assertNoDirtyWritePaths(vaultPath: string, paths: string[]): Promise<void> {
+  const protectedPaths = relativePaths(vaultPath, paths).filter((entry) => !entry.startsWith(".vault/"));
+  const summary = await getGitSummary(vaultPath);
+  if (!summary.isRepo) throw new VaultDeskError("git-failed", "Automatic updates require a Git vault.");
+  const conflicts = summary.changes.filter((change) =>
+    [change.path, change.from].some((entry) => entry && protectedPaths.some((root) => pathMatches(entry, root))),
+  );
+  if (conflicts.length > 0) {
+    throw new VaultDeskError("conflict", "This source has local changes in files needed for automatic update: " + conflicts.map((entry) => entry.path).join(", "));
+  }
+}
+
+function backUp(paths: string[]): PathBackup {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "vaultdesk-auto-sync-"));
+  const entries: Array<{ target: string; backup: string; existed: boolean }> = [];
+  try {
+    for (const [index, target] of paths.entries()) {
+      const backup = path.join(root, String(index));
+      const existed = fs.existsSync(target) || isSymlink(target);
+      if (existed) fs.cpSync(target, backup, { recursive: true, dereference: false });
+      entries.push({ target, backup, existed });
+    }
+  } catch (error) {
+    fs.rmSync(root, { recursive: true, force: true });
+    throw error;
+  }
+  return {
+    restore() {
+      for (const entry of entries) {
+        fs.rmSync(entry.target, { recursive: true, force: true });
+        if (entry.existed) {
+          fs.mkdirSync(path.dirname(entry.target), { recursive: true });
+          fs.cpSync(entry.backup, entry.target, { recursive: true, dereference: false });
+        }
+      }
+    },
+    dispose() {
+      fs.rmSync(root, { recursive: true, force: true });
+    },
+  };
+}
+
+function isSymlink(target: string): boolean {
+  try {
+    return fs.lstatSync(target).isSymbolicLink();
+  } catch {
+    return false;
+  }
+}
+
+function safeMessage(error: unknown): string {
+  if (error instanceof VaultDeskError) {
+    if (error.code === "auth-failed") return "Git authentication failed; local changes were preserved.";
+    if (error.code === "network") return "Network unavailable; automatic update will retry.";
+    if (error.code === "git-failed") return "Git operation failed; inspect the vault's Git configuration and remote.";
+    if (error.code === "upstream-not-found") return "An upstream skill was removed; the local copy was preserved for review.";
+  }
+  const raw = error instanceof Error ? error.message : String(error);
+  return raw
+    .replace(/\b[a-z][a-z0-9+.-]*:\/\/[^\s"'<>]+/gi, (url) => {
+      const cut = url.search(/[?#]/);
+      const base = (cut < 0 ? url : url.slice(0, cut)).replace(/^([a-z][a-z0-9+.-]*:\/\/)[^/@\s]+@/i, "$1[redacted]@");
+      return base + (cut < 0 ? "" : "?[redacted]");
+    })
+    .replace(/\b(token|api[_-]?key|secret|password|signature|access[_-]?key)=([^\s&]+)/gi, "$1=[redacted]");
+}
+
+function isRemovedUpstream(error: unknown): boolean {
+  return error instanceof VaultDeskError && error.code === "upstream-not-found";
+}
+
+async function pendingUpstreamSkills(
+  snapshot: VaultSnapshot,
+  source: SourceRecord,
+): Promise<PendingSkill[]> {
+  if (source.shape === "standalone") return [];
+  const fetched = await fetchUpstream(source);
+  if (source.shape === "plugin") {
+    const inspected = inspectPlugin({
+      root: resolvePluginUpstreamRoot(source, fetched.root),
+      vaultPath: snapshot.path,
+      sourceName: source.name,
+      origin: "github",
+      repo: source.repo,
+      ref: source.ref,
+      warnings: [],
+    });
+    const existing = new Set(snapshot.plugins.find((plugin) => plugin.name === source.name)?.skills.map((skill) => skill.name) ?? []);
+    const root = resolvePluginUpstreamRoot(source, fetched.root);
+    return inspected.skills.filter((skill) => !existing.has(skill.name))
+      .map((skill) => ({ name: skill.name, sourcePath: path.relative(root, skill.workingPath).split(path.sep).join("/") }))
+      .sort((a, b) => a.sourcePath.localeCompare(b.sourcePath));
+  }
+  const registered = new Set(source.skills.map((skill) => skill.sourcePath?.replaceAll("\\", "/")).filter((entry): entry is string => Boolean(entry)));
+  const tree = await git(["ls-tree", "-r", "--name-only", "HEAD"], fetched.root, { allowFailure: true });
+  if (tree.code !== 0) throw new VaultDeskError("git-failed", "Could not inspect the upstream skill tree.");
+  const discovered = new Map<string, PendingSkill>();
+  for (const entry of tree.stdout.split("\n")) {
+    if (!entry.endsWith("/SKILL.md")) continue;
+    const skillPath = path.posix.dirname(entry);
+    if ([...registered].some((known) => skillPath === known || skillPath.startsWith(known + "/"))) continue;
+    discovered.set(skillPath, { name: path.posix.basename(skillPath), sourcePath: skillPath });
+  }
+  return [...discovered.values()].sort((a, b) => a.sourcePath.localeCompare(b.sourcePath));
+}
+
+export async function listPendingSkills(inputPath: string, sourceName: string): Promise<PendingSkill[]> {
+  const snapshot = await openVault(inputPath);
+  const source = snapshot.sources.find((entry) => entry.name === sourceName);
+  if (!source) throw new VaultDeskError("unknown-source", "Unknown source: " + sourceName);
+  if (source.origin !== "github") throw new VaultDeskError("unsupported", "Local sources have no remote skills.");
+  return pendingUpstreamSkills(snapshot, source);
+}
+
+export async function adoptPendingSkills(
+  inputPath: string, sourceName: string, selectedPaths: string[], options: AutoSyncOptions = {},
+): Promise<AutoSyncSourceResult> {
+  const vaultPath = canonicalPath(inputPath);
+  const snapshot = await openVault(vaultPath);
+  const source = snapshot.sources.find((entry) => entry.name === sourceName);
+  if (!source || source.origin !== "github") throw new VaultDeskError("unknown-source", "Unknown Git source: " + sourceName);
+  if (source.shape === "standalone") throw new VaultDeskError("unsupported", "Standalone sources cannot adopt additional skills.");
+  const pending = await pendingUpstreamSkills(snapshot, source);
+  const chosen = [...new Set(selectedPaths.map((entry) => entry.replaceAll("\\", "/").replace(/^\.\//, "")))];
+  if (chosen.length === 0 || chosen.some((entry) => !pending.some((skill) => skill.sourcePath === entry))) {
+    throw new VaultDeskError("invalid-input", "Select one or more exact pending source paths.");
+  }
+  if (source.shape === "plugin") {
+    if (chosen.length !== pending.length) {
+      throw new VaultDeskError("unsupported", "Plugin updates copy the whole root; select every pending skill before applying this plugin update.");
+    }
+    return updateOneSource(vaultPath, sourceName, options, [], { allowNonAuto: true, commitMessage: "chore: adopt plugin skills in " + sourceName });
+  }
+  const full = await fetchUpstream({ ...source, skills: [] });
+  const additions = chosen.map((sourcePath) => {
+    const upstream = path.join(full.root, sourcePath);
+    if (!isInside(upstream, full.root) || !fs.existsSync(path.join(upstream, "SKILL.md"))) {
+      throw new VaultDeskError("upstream-not-found", "Selected skill disappeared upstream: " + sourcePath);
+    }
+    const parsed = parseFrontmatter(readText(path.join(upstream, "SKILL.md")));
+    const name = typeof parsed.data.name === "string" && parsed.data.name.trim()
+      ? parsed.data.name.trim() : path.posix.basename(sourcePath);
+    if (!slugSchema.safeParse(name).success || snapshot.skills.some((skill) => skill.name === name)) {
+      throw new VaultDeskError("conflict", "Selected skill name conflicts with the Vault: " + name);
+    }
+    const working = path.join(vaultPath, "packages", sourceName, "skills", name);
+    const vendorRel = `third_party/${sourceName}/${name}`;
+    const vendor = path.join(vaultPath, vendorRel);
+    return { name, sourcePath, upstream, working, vendor, vendorRel };
+  });
+  if (new Set(additions.map((entry) => entry.name)).size !== additions.length) {
+    throw new VaultDeskError("conflict", "Selected upstream skills share a name.");
+  }
+  const selected = new Set(chosen);
+  const remaining = pending.filter((entry) => !selected.has(entry.sourcePath)).map((entry) => entry.sourcePath);
+  return updateOneSource(vaultPath, sourceName, options, remaining, {
+    allowNonAuto: true,
+    extraPaths: additions.flatMap((entry) => [entry.working, entry.vendor]),
+    commitMessage: "chore: adopt skills in " + sourceName,
+    prepare: async (fresh) => {
+      if (!fresh.metadataPath) throw new VaultDeskError("source-not-found", "Source metadata is missing.");
+      for (const entry of additions) {
+        if (fs.existsSync(entry.working) || fs.existsSync(entry.vendor)) {
+          throw new VaultDeskError("conflict", "Selected skill slot already exists: " + entry.name);
+        }
+        fs.mkdirSync(path.dirname(entry.working), { recursive: true });
+        fs.mkdirSync(path.dirname(entry.vendor), { recursive: true });
+        copyDirectory(entry.upstream, entry.working);
+        copyDirectory(entry.upstream, entry.vendor);
+      }
+      const raw = YAML.parse(readText(fresh.metadataPath)) as Record<string, unknown>;
+      const skills = Array.isArray(raw.skills) ? raw.skills : [];
+      const updated = { ...raw, skills: [...skills, ...additions.map((entry) => ({
+        name: entry.name, source_path: entry.sourcePath, vendor_path: entry.vendorRel, user_invocable: true,
+      }))] };
+      if (!sourceFileSchema.safeParse(updated).success) throw new VaultDeskError("unsupported-schema", "New source metadata is invalid.");
+      writeTextAtomic(fresh.metadataPath, YAML.stringify(updated, { lineWidth: 0 }));
+      const lock = readLock(vaultPath);
+      if (!lock?.sources[sourceName]?.skills) throw new VaultDeskError("conflict", "Source lock is missing skill hashes.");
+      const hashes = { ...lock.sources[sourceName].skills };
+      for (const entry of additions) hashes[entry.name] = hashDirectory(entry.working);
+      lock.sources[sourceName] = { ...lock.sources[sourceName], skills: hashes,
+        hash: hashText(JSON.stringify(Object.entries(hashes).sort(([a], [b]) => a.localeCompare(b)))) };
+      writeLock(vaultPath, lock);
+    },
+  });
+}
+
+export async function distributeCurrentSource(
+  inputPath: string, sourceName: string, options: AutoSyncOptions = {},
+): Promise<string[]> {
+  const vaultPath = canonicalPath(inputPath);
+  return withWriteLock(vaultPath, async () => {
+    const snapshot = await openVault(vaultPath);
+    if (!snapshot.sources.some((source) => source.name === sourceName)) {
+      throw new VaultDeskError("unknown-source", "Unknown source: " + sourceName);
+    }
+    const distribution = await beginManagedDistribution(vaultPath, sourceName, options);
+    distribution.finalize();
+    return distribution.changedPaths;
+  });
+}
+
+function needsInitialDistribution(snapshot: VaultSnapshot, source: SourceRecord, options: AutoSyncOptions): boolean {
+  if (source.shape === "plugin") {
+    return (readVaultFile(snapshot.path).plugin_targets ?? []).some((target) => target.install_after_update &&
+      target.names.includes(source.name) && !fs.existsSync(path.join(expandHome(target.dest), source.name)));
+  }
+  const root = canonicalPath(options.agentsSkillsDir ?? managedAgentsSkillsRoot());
+  if (source.skills.some((skill) => !fs.existsSync(path.join(root, skill.name)))) return true;
+  return snapshot.targets.some((target) => target.installAfterUpdate && source.skills.some((skill) =>
+    target.skills.includes(skill.name) && !fs.existsSync(path.join(target.expandedDest, skill.name))));
+}
+
+function changedOwnedPaths(
+  vaultPath: string,
+  paths: string[],
+  changes: Array<{ path: string; from?: string }>,
+): string[] {
+  const owned = relativePaths(vaultPath, paths).filter((entry) => !entry.startsWith(".vault/"));
+  const result = new Set<string>();
+  for (const change of changes) {
+    if (!owned.some((entry) => pathMatches(change.path, entry))) continue;
+    result.add(change.path);
+    if (change.from) result.add(change.from);
+  }
+  return [...result].sort();
+}
+
+async function updateOneSource(
+  vaultPath: string,
+  name: string,
+  options: AutoSyncOptions,
+  pendingSkills: string[],
+  control: {
+    allowNonAuto?: boolean;
+    extraPaths?: string[];
+    prepare?: (source: SourceRecord) => Promise<void>;
+    commitMessage?: string;
+  } = {},
+): Promise<AutoSyncSourceResult> {
+  return withWriteLock(vaultPath, async () => {
+    const fresh = await openVault(vaultPath);
+    const source = fresh.sources.find((entry) => entry.name === name);
+    if (!source || source.origin !== "github" || (!control.allowNonAuto && source.updateMode !== "auto")) {
+      return { name, status: "skipped", message: "Source is no longer eligible for automatic update." };
+    }
+    const paths = uniqueRoots([...sourceWritePaths(vaultPath, source), ...(control.extraPaths ?? [])]);
+    if (paths.some((entry) => !isInside(entry, vaultPath))) throw new VaultDeskError("path-escape", "Source write path escapes its vault.");
+    await assertNoDirtyWritePaths(vaultPath, paths);
+    const backup = backUp(paths);
+    const oldHead = await currentCommit(vaultPath);
+    let distribution: Awaited<ReturnType<typeof beginManagedDistribution>> | undefined;
+    let commit: string | undefined;
+    let finalizationError: string | undefined;
+    try {
+      await control.prepare?.(source);
+      const result = await updateSources(vaultPath, {
+        names: [name],
+        commit: false,
+        install: false,
+        alreadyLocked: true,
+        allowUnrelatedDirty: true,
+      });
+      if (!result.applied && !control.prepare) {
+        backup.dispose();
+        return { name, status: "current" };
+      }
+      if (!result.applied) {
+        await buildVault(vaultPath);
+        const validation = await validateVault(vaultPath);
+        if (!validation.ok) throw new VaultDeskError("validation-failed", "Adopted skill failed Vault validation.");
+      }
+      distribution = await beginManagedDistribution(vaultPath, name, {
+        agentsSkillsDir: options.agentsSkillsDir,
+        backupRoot: options.backupRoot,
+        retention: options.retention,
+        retentionDays: options.retentionDays,
+      });
+      const summary = await getGitSummary(vaultPath);
+      const commitFiles = changedOwnedPaths(vaultPath, paths, summary.changes);
+      if (commitFiles.length === 0) {
+        throw new VaultDeskError("git-failed", "Update changed no commit-eligible Vault files.");
+      }
+      commit = await commitPaths(vaultPath, commitFiles, control.commitMessage ?? "chore: auto-update " + name);
+    } catch (error) {
+      const newHead = await currentCommit(vaultPath);
+      if (newHead && newHead !== oldHead) {
+        commit = newHead;
+        finalizationError = "Commit completed but verification needs attention: " + safeMessage(error);
+      } else {
+        const rollbackErrors: string[] = [];
+        try { distribution?.rollback(); } catch (failed) { rollbackErrors.push(safeMessage(failed)); }
+        try { backup.restore(); } catch (failed) { rollbackErrors.push(safeMessage(failed)); }
+        try {
+          const protectedPaths = relativePaths(vaultPath, paths).filter((entry) => !entry.startsWith(".vault/"));
+          const reset = await git(["reset", "--", ...protectedPaths], vaultPath, { allowFailure: true });
+          if (reset.code !== 0) rollbackErrors.push(reset.stderr || "Git index reset failed.");
+        } catch (failed) { rollbackErrors.push(safeMessage(failed)); }
+        try { backup.dispose(); } catch (failed) { rollbackErrors.push(safeMessage(failed)); }
+        if (rollbackErrors.length > 0) {
+          throw new VaultDeskError("conflict", "Automatic update failed and rollback needs attention: " + rollbackErrors.join("; "), { cause: error });
+        }
+        throw error;
+      }
+    }
+    try { distribution?.finalize(); } catch (error) { finalizationError = [finalizationError, safeMessage(error)].filter(Boolean).join("; "); }
+    try { backup.dispose(); } catch (error) { finalizationError = [finalizationError, safeMessage(error)].filter(Boolean).join("; "); }
+
+    try {
+      await push(vaultPath);
+    } catch (error) {
+      return {
+        name,
+        status: "push-failed",
+        commit,
+        message: ["Update was committed locally, but push failed: " + safeMessage(error), finalizationError].filter(Boolean).join("; "),
+        ...(pendingSkills.length > 0 ? { pendingSkills } : {}),
+      };
+    }
+    if (finalizationError) {
+      return { name, status: "error", commit, message: finalizationError, ...(pendingSkills.length > 0 ? { pendingSkills } : {}) };
+    }
+    return {
+      name,
+      status: "updated",
+      commit,
+      ...(pendingSkills.length > 0 ? { pendingSkills, message: "New upstream skills await adoption: " + pendingSkills.join(", ") } : {}),
+    };
+  });
+}
+
+export async function autoSyncVault(inputPath: string, options: AutoSyncOptions = {}): Promise<AutoSyncReport> {
+  const vaultPath = canonicalPath(inputPath);
+  const snapshot = await openVault(vaultPath);
+  if (snapshot.format !== "v2") {
+    throw new VaultDeskError("not-writable-v1", "Automatic updates require a v2 vault.");
+  }
+  const selected = snapshot.sources
+    .filter((source) => source.origin === "github" && source.updateMode !== "frozen")
+    .map((source) => source.name);
+  const checked = selected.length > 0
+    ? await checkSources(vaultPath, { names: selected, persist: false })
+    : { checkedAt: new Date().toISOString(), results: [], warnings: [] };
+  if (selected.length > 0) {
+    try {
+      recordCheck(vaultPath, {
+        ...checked,
+        results: checked.results.map((result) => result.message
+          ? { ...result, message: safeMessage(new VaultDeskError(
+            result.status === "auth-failed" ? "auth-failed" : "network", result.message,
+          )) }
+          : result),
+        warnings: [],
+      });
+    } catch { /* Local check state is advisory; keep processing the sources. */ }
+  }
+  const byName = new Map(checked.results.map((result) => [result.name, result]));
+  const results: AutoSyncSourceResult[] = [];
+
+  for (const source of [...snapshot.sources].sort((a, b) => a.name.localeCompare(b.name))) {
+    if (source.origin === "local") {
+      results.push({ name: source.name, status: "skipped", message: "Local source has no remote Git update." });
+      continue;
+    }
+    if (source.updateMode === "frozen") {
+      results.push({ name: source.name, status: "skipped", message: "Source is paused." });
+      continue;
+    }
+    const check = byName.get(source.name);
+    if (!check || check.status === "error" || check.status === "auth-failed") {
+      results.push({ name: source.name, status: "error", message: safeMessage(new VaultDeskError(check?.status === "auth-failed" ? "auth-failed" : "network", check?.message ?? "Source check failed.")) });
+      continue;
+    }
+    if (check.status === "current") {
+      let pendingSkills: string[] = [];
+      try {
+        pendingSkills = (await pendingUpstreamSkills(snapshot, source)).map((entry) => entry.sourcePath);
+      } catch (error) {
+        results.push({ name: source.name, status: "error", message: safeMessage(error) });
+        continue;
+      }
+      const pendingMessage = pendingSkills.length > 0 ? "New upstream skills await adoption: " + pendingSkills.join(", ") : undefined;
+      if (source.updateMode === "auto" && needsInitialDistribution(snapshot, source, options)) {
+        try {
+          const changed = await distributeCurrentSource(vaultPath, source.name, options);
+          results.push({ name: source.name, status: "current", message: [`Distributed current source to ${changed.length} managed paths.`, pendingMessage].filter(Boolean).join(" "), ...(pendingSkills.length > 0 ? { pendingSkills } : {}) });
+        } catch (error) {
+          results.push({ name: source.name, status: "error", message: safeMessage(error), ...(pendingSkills.length > 0 ? { pendingSkills } : {}) });
+        }
+      } else {
+        results.push({ name: source.name, status: "current", ...(pendingSkills.length > 0 ? { pendingSkills, message: pendingMessage } : {}) });
+      }
+      continue;
+    }
+    if (source.updateMode !== "auto") {
+      results.push({ name: source.name, status: "skipped", message: "Upstream change awaits manual review." });
+      continue;
+    }
+    try {
+      const pendingSkills = (await pendingUpstreamSkills(snapshot, source)).map((entry) => entry.sourcePath);
+      if (source.shape === "plugin" && pendingSkills.length > 0) {
+        results.push({
+          name: source.name,
+          status: "skipped",
+          pendingSkills,
+          message: "Entire plugin update paused, including registered skills, until new upstream skills are reviewed: " + pendingSkills.join(", "),
+        });
+        continue;
+      }
+      results.push(await updateOneSource(vaultPath, source.name, options, pendingSkills));
+    } catch (error) {
+      results.push({
+        name: source.name,
+        status: isRemovedUpstream(error) ? "skipped" : "error",
+        message: safeMessage(error),
+      });
+    }
+  }
+
+  return {
+    vaultPath,
+    checkedAt: checked.checkedAt,
+    sources: results,
+    updated: results.filter((entry) => entry.status === "updated" || entry.status === "push-failed").length,
+    errors: results.filter((entry) => entry.status === "error" || entry.status === "push-failed").length,
+  };
+}
+
+export async function setSourceUpdateMode(
+  inputPath: string,
+  sourceName: string,
+  mode: "auto" | "review-before-apply" | "frozen",
+): Promise<void> {
+  if (mode !== "auto" && mode !== "review-before-apply" && mode !== "frozen") {
+    throw new VaultDeskError("invalid-input", "Unsupported source update mode.");
+  }
+  const vaultPath = canonicalPath(inputPath);
+  await withWriteLock(vaultPath, async () => {
+    const snapshot = await openVault(vaultPath);
+    if (snapshot.format !== "v2") {
+      throw new VaultDeskError("not-writable-v1", "Source update mode requires a v2 vault.");
+    }
+    const source = snapshot.sources.find((entry) => entry.name === sourceName);
+    if (!source || !source.metadataPath) throw new VaultDeskError("unknown-source", "Unknown source: " + sourceName);
+    if (source.origin !== "github" && mode === "auto") {
+      throw new VaultDeskError("unsupported", "Local sources cannot auto-pull Git updates.");
+    }
+    if (!isInside(source.metadataPath, vaultPath)) {
+      throw new VaultDeskError("path-escape", "Source metadata escapes its vault.");
+    }
+    await assertNoDirtyWritePaths(vaultPath, [source.metadataPath]);
+    const original = readText(source.metadataPath);
+    let parsed: unknown;
+    try {
+      parsed = YAML.parse(original);
+    } catch (error) {
+      throw new VaultDeskError("unsupported-schema", "Source metadata is invalid: " + safeMessage(error));
+    }
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+      throw new VaultDeskError("unsupported-schema", "Source metadata must be an object.");
+    }
+    const raw = parsed as Record<string, unknown>;
+    if (raw.update_mode === mode) return;
+    const updated = { ...raw, update_mode: mode };
+    const validation = sourceFileSchema.safeParse(updated);
+    if (!validation.success) {
+      throw new VaultDeskError("unsupported-schema", "Source update mode failed validation.");
+    }
+    const relative = path.relative(vaultPath, source.metadataPath).split(path.sep).join("/");
+    let committed = false;
+    try {
+      writeTextAtomic(source.metadataPath, YAML.stringify(updated, { lineWidth: 0 }));
+      await openVault(vaultPath);
+      await commitPaths(vaultPath, [relative], "chore: set " + sourceName + " update mode to " + mode);
+      committed = true;
+    } catch (error) {
+      if (!committed) {
+        writeTextAtomic(source.metadataPath, original);
+        await git(["reset", "--", relative], vaultPath, { allowFailure: true });
+      }
+      throw error;
+    }
+    await push(vaultPath);
+  });
+}

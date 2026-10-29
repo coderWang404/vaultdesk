@@ -1,5 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
+import { randomUUID } from "node:crypto";
 import { canonicalPath, ensureDir, expandHome, nowIso, readText, removePath, sha256 } from "../fsx.js";
 import { VaultDeskError } from "../errors.js";
 
@@ -18,7 +19,8 @@ function lockPath(vaultPath: string): string {
 export function acquireWriteLock(vaultPath: string): VaultLockHandle {
   const file = lockPath(vaultPath);
   ensureDir(path.dirname(file));
-  const payload = JSON.stringify({ pid: process.pid, vault: path.resolve(vaultPath), created_at: nowIso() });
+  const owner = randomUUID();
+  const payload = JSON.stringify({ pid: process.pid, owner, vault: path.resolve(vaultPath), created_at: nowIso() });
 
   const tryAcquire = (): boolean => {
     try {
@@ -36,18 +38,16 @@ export function acquireWriteLock(vaultPath: string): VaultLockHandle {
     let stale = false;
     try {
       const raw = JSON.parse(readText(file)) as { pid?: number; created_at?: string };
-      const created = raw.created_at ? Date.parse(raw.created_at) : 0;
-      const ageMs = Date.now() - created;
       let alive = false;
       if (typeof raw.pid === "number") {
         try {
           process.kill(raw.pid, 0);
           alive = true;
-        } catch {
-          alive = false;
+        } catch (error) {
+          alive = (error as NodeJS.ErrnoException).code === "EPERM";
         }
       }
-      stale = !alive || ageMs > 10 * 60 * 1000;
+      stale = !alive;
     } catch {
       stale = true;
     }
@@ -66,11 +66,9 @@ export function acquireWriteLock(vaultPath: string): VaultLockHandle {
       if (released) return;
       released = true;
       try {
-        const raw = JSON.parse(readText(file)) as { pid?: number };
-        if (raw.pid === process.pid) removePath(file);
-      } catch {
-        removePath(file);
-      }
+        const raw = JSON.parse(readText(file)) as { owner?: string };
+        if (raw.owner === owner) removePath(file);
+      } catch { /* A different owner may have replaced the file. */ }
     },
   };
 }

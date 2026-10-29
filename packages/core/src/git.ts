@@ -97,6 +97,9 @@ export async function getGitSummary(cwd: string): Promise<GitSummary> {
 
   const status = await git(["status", "--porcelain=v1", "-z", "--untracked-files=all"], cwd, {
     allowFailure: true,
+    // Read-only status must not refresh the index under an optional lock while
+    // another operation is staging or committing in the same Vault.
+    env: { GIT_OPTIONAL_LOCKS: "0" },
   });
   const fields = status.stdout.split("\0");
   const changes: GitChange[] = [];
@@ -147,7 +150,10 @@ export async function getGitSummary(cwd: string): Promise<GitSummary> {
 }
 
 export async function isWorktreeClean(cwd: string): Promise<boolean> {
-  const status = await git(["status", "--porcelain"], cwd, { allowFailure: true });
+  const status = await git(["status", "--porcelain"], cwd, {
+    allowFailure: true,
+    env: { GIT_OPTIONAL_LOCKS: "0" },
+  });
   return status.code === 0 && status.stdout.trim() === "";
 }
 

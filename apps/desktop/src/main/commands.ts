@@ -4,6 +4,7 @@ import { clipboard, shell } from "electron";
 import {
   addGithubPlugin,
   addGithubSource,
+  adoptPendingSkills,
   applyImport,
   applyMigration,
   applyPluginImport,
@@ -16,6 +17,7 @@ import {
   initVault,
   installSkills,
   listBackups,
+  listPendingSkills,
   listPresets,
   openVault,
   planMigration,
@@ -36,6 +38,7 @@ import {
   restoreBackup,
   runPresetVerifyCommand,
   searchVaults,
+  setSourceUpdateMode,
   sourceDiff,
   updateSources,
   validateVault,
@@ -47,6 +50,8 @@ import {
 } from "@vaultdesk/core";
 import { ipcCommands, type IpcCommand, type IpcPayload } from "@vaultdesk/schema";
 import { addRecent, readRecents, removeRecent } from "./recents.js";
+import { readAutoSyncActivity, runAutoSyncAll } from "./background-sync.js";
+import { backgroundStatus, configureLaunchAgent } from "./launch-agent.js";
 
 export interface CommandContext {
   version: string;
@@ -76,6 +81,20 @@ const handlers: { [K in IpcCommand]: Handler<K> } = {
   "source.check": async ({ vaultPath, names }) => {
     const report = await checkSources(vaultPath, { names, persist: true });
     return report;
+  },
+  "source.autoSync": ({ vaultPath }) => runAutoSyncAll(vaultPath, "manual"),
+  "source.setUpdateMode": async ({ vaultPath, name, mode }) => {
+    await setSourceUpdateMode(vaultPath, name, mode);
+    return { name, mode };
+  },
+  "source.pending": ({ vaultPath, name }) => listPendingSkills(vaultPath, name),
+  "source.adopt": ({ vaultPath, name, paths }) => {
+    const settings = readSettings();
+    return adoptPendingSkills(vaultPath, name, paths, {
+      backupRoot: settings.backupRoot,
+      retention: settings.backupRetention,
+      retentionDays: settings.backupRetentionDays,
+    });
   },
   "source.diff": ({ vaultPath, name }) => sourceDiff(vaultPath, name),
   "source.updatePreview": ({ vaultPath, names }) => previewUpdate(vaultPath, names),
@@ -211,7 +230,14 @@ const handlers: { [K in IpcCommand]: Handler<K> } = {
     node: process.versions.node,
   }),
   "app.settings": () => readSettings(),
-  "app.setSettings": ({ settings }) => writeSettings(settings),
+  "app.setSettings": ({ settings }) => {
+    const saved = writeSettings(settings);
+    configureLaunchAgent(saved.autoSyncEnabled && saved.checkIntervalHours > 0);
+    return saved;
+  },
+  "app.autoSyncNow": ({ vaultPath }) => runAutoSyncAll(vaultPath, "manual"),
+  "app.autoSyncActivity": ({ limit }) => readAutoSyncActivity(limit),
+  "app.backgroundStatus": () => backgroundStatus(),
   "app.recents": () =>
     readRecents().map((entry) => ({ ...entry, exists: fs.existsSync(entry.path) })),
   "app.addRecent": ({ path: vaultPath }) => addRecent(vaultPath, path.basename(vaultPath)),

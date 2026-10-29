@@ -2058,6 +2058,32 @@ kbd {
   white-space: nowrap;
 }
 
+.source-update-mode {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 7px;
+  color: var(--ink-muted);
+  font-size: 12px;
+  cursor: default;
+}
+
+.source-update-mode select {
+  min-height: 30px;
+  max-width: 150px;
+  border: 1px solid var(--line-strong);
+  border-radius: 6px;
+  padding: 3px 22px 3px 8px;
+  color: var(--ink);
+  background: var(--surface-input);
+  cursor: pointer;
+}
+
+.source-update-mode select:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
 .source-row-stats {
   display: flex;
   flex-wrap: wrap;
@@ -2666,6 +2692,117 @@ kbd {
   display: inline-flex;
   align-items: center;
   gap: 5px;
+}
+
+.auto-sync-toggle {
+  margin-bottom: 12px;
+}
+
+.auto-sync-toggle .toggle-label {
+  font-size: 14px;
+}
+
+.auto-sync-help,
+.auto-sync-empty {
+  margin: 9px 0 13px;
+  color: var(--ink-muted);
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.auto-sync-activity {
+  margin-bottom: 16px;
+}
+
+.auto-sync-activity-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.auto-sync-activity-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: start;
+  gap: 3px 12px;
+  padding: 10px 0;
+  border-top: 1px solid var(--line);
+}
+
+.auto-sync-activity-main {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 10px;
+  align-items: baseline;
+  min-width: 0;
+}
+
+.auto-sync-activity-main strong {
+  font-size: 14px;
+  overflow-wrap: anywhere;
+}
+
+.auto-sync-activity-main time {
+  color: var(--ink-muted);
+  font-size: 12px;
+}
+
+.auto-sync-activity-detail {
+  grid-column: 1 / -1;
+  margin: 0;
+  color: var(--ink-muted);
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+
+.auto-sync-activity-actions {
+  grid-column: 1 / -1;
+  margin-top: 4px;
+}
+
+.pending-skills-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 8px;
+  color: var(--ink-muted);
+}
+
+.pending-skills-list {
+  border-top: 1px solid var(--line);
+}
+
+.pending-skill-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 54px;
+  padding: 8px 4px;
+  border-bottom: 1px solid var(--line);
+  cursor: pointer;
+}
+
+.pending-skill-row input {
+  accent-color: var(--accent);
+  width: 17px;
+  height: 17px;
+  flex: 0 0 auto;
+}
+
+.pending-skill-row span {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.pending-skill-row strong {
+  font-size: 14px;
+}
+
+.pending-skill-row small {
+  color: var(--ink-muted);
+  overflow-wrap: anywhere;
 }
 
 .settings-save {

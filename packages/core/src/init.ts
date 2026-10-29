@@ -61,7 +61,7 @@ export async function initVault(inputPath: string, options: InitOptions = {}): P
       {
         schema: 1,
         name,
-        defaults: { ref: "main", update_mode: "review-before-apply" },
+        defaults: { ref: "main", update_mode: "auto" },
         targets: [],
       },
       { lineWidth: 0 },

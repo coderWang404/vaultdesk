@@ -1,0 +1,253 @@
+import fs from "node:fs";
+import path from "node:path";
+import { spawnSync } from "node:child_process";
+import { describe, expect, it } from "vitest";
+import { addGithubPlugin, adoptPendingSkills, autoSyncVault, initVault, listPendingSkills } from "@vaultdesk/core";
+import { copyFixture, git, initGitRepo, repoRoot, tempDir } from "./helpers.js";
+
+function runCli(vaultPath: string, args: string[], env: Record<string, string> = {}) {
+  const result = spawnSync(process.execPath, [path.join(repoRoot, "packages/cli/dist/index.js"), "--json", "--vault", vaultPath, ...args], {
+    cwd: repoRoot, encoding: "utf8", env: { ...process.env, NO_COLOR: "1", ...env }, timeout: 30_000,
+  });
+  if (result.error) throw result.error;
+  return { status: result.status, data: JSON.parse(result.stdout) as { data: unknown; errors: Array<{ code: string; message: string }> } };
+}
+
+function setup(mode: "auto" | "review-before-apply" | "frozen" = "auto") {
+  const vaultPath = copyFixture("v2-basic");
+  const upstream = tempDir("auto-upstream");
+  const remote = tempDir("auto-bare");
+  const agentsSkillsDir = tempDir("auto-agents");
+  const target = tempDir("auto-target");
+  const backupRoot = tempDir("auto-backup");
+  const workingFile = path.join(vaultPath, "skills", "gh-standalone", "SKILL.md");
+  const vendorFile = path.join(vaultPath, "third_party", "gh-standalone", "SKILL.md");
+  const upstreamSkill = path.join(upstream, "skills", "gh-standalone");
+  fs.mkdirSync(upstreamSkill, { recursive: true });
+  fs.writeFileSync(path.join(upstreamSkill, "SKILL.md"), fs.readFileSync(workingFile, "utf8") + "\nVersion two.\n");
+  initGitRepo(upstream);
+  const sourceFile = path.join(vaultPath, "sources", "gh-standalone.yml");
+  fs.writeFileSync(sourceFile, fs.readFileSync(sourceFile, "utf8")
+    .replace("ref: main\n", `ref: main\nremote_url: file://${upstream}\n`)
+    .replace("update_mode: review-before-apply", `update_mode: ${mode}`));
+  const otherSource = path.join(vaultPath, "sources", "gh-pack.yml");
+  fs.writeFileSync(otherSource, fs.readFileSync(otherSource, "utf8")
+    .replace("update_mode: review-before-apply", "update_mode: frozen"));
+  const configFile = path.join(vaultPath, "vault.yml");
+  fs.writeFileSync(configFile, fs.readFileSync(configFile, "utf8").replace("~/.vaultdesk-fixtures/v2-agents", target));
+  initGitRepo(vaultPath);
+  git(remote, ["init", "--bare", "-b", "main"]);
+  git(vaultPath, ["remote", "add", "origin", remote]);
+  git(vaultPath, ["push", "-u", "origin", "main"]);
+  return { vaultPath, upstream, remote, agentsSkillsDir, target, backupRoot, workingFile, vendorFile, upstreamSkill };
+}
+
+describe("automatic source sync", () => {
+  it("updates master and registered targets, commits only its files, and pushes", async () => {
+    const ctx = setup();
+    const unrelated = path.join(ctx.vaultPath, "unrelated.txt");
+    fs.writeFileSync(unrelated, "local work\n");
+    git(ctx.vaultPath, ["add", "unrelated.txt"]);
+
+    const report = await autoSyncVault(ctx.vaultPath, ctx);
+    expect(report.sources.find((source) => source.name === "gh-standalone")?.status).toBe("updated");
+    expect(fs.readFileSync(ctx.workingFile, "utf8")).toContain("Version two.");
+    expect(fs.readFileSync(ctx.vendorFile, "utf8")).toContain("Version two.");
+    const master = path.join(ctx.agentsSkillsDir, "gh-standalone");
+    const installed = path.join(ctx.target, "gh-standalone");
+    expect(fs.readFileSync(path.join(master, "SKILL.md"), "utf8")).toContain("Version two.");
+    expect(fs.lstatSync(installed).isSymbolicLink()).toBe(true);
+    expect(fs.realpathSync(installed)).toBe(fs.realpathSync(master));
+    expect(git(ctx.vaultPath, ["rev-parse", "HEAD"]).trim()).toBe(git(ctx.remote, ["rev-parse", "refs/heads/main"]).trim());
+    expect(git(ctx.vaultPath, ["show", "--pretty=", "--name-only", "HEAD"])).not.toContain("unrelated.txt");
+    expect(git(ctx.vaultPath, ["status", "--porcelain"])).toContain("A  unrelated.txt");
+    fs.rmSync(master, { recursive: true, force: true });
+    fs.unlinkSync(installed);
+    expect(() => fs.lstatSync(installed)).toThrow();
+    const current = await autoSyncVault(ctx.vaultPath, ctx);
+    expect(current.sources.find((source) => source.name === "gh-standalone")?.message).toMatch(/Distributed current source/);
+    expect(current.sources.find((source) => source.name === "gh-standalone")).toMatchObject({ status: "current" });
+    expect(fs.readFileSync(path.join(master, "SKILL.md"), "utf8")).toContain("Version two.");
+    expect(fs.lstatSync(installed).isSymbolicLink()).toBe(true);
+  });
+
+  it("preserves a modified source file and skips automatic overwrite", async () => {
+    const ctx = setup();
+    fs.appendFileSync(ctx.workingFile, "\nPersonal edit.\n");
+    const before = fs.readFileSync(ctx.workingFile, "utf8");
+    const head = git(ctx.vaultPath, ["rev-parse", "HEAD"]).trim();
+    const report = await autoSyncVault(ctx.vaultPath, ctx);
+    expect(report.sources.find((source) => source.name === "gh-standalone")?.status).toBe("error");
+    expect(fs.readFileSync(ctx.workingFile, "utf8")).toBe(before);
+    expect(git(ctx.vaultPath, ["rev-parse", "HEAD"]).trim()).toBe(head);
+  });
+
+  it("rolls back Vault files when the managed master has unknown ownership", async () => {
+    const ctx = setup();
+    const master = path.join(ctx.agentsSkillsDir, "gh-standalone");
+    fs.mkdirSync(master);
+    fs.writeFileSync(path.join(master, "SKILL.md"), "Unowned local copy\n");
+    const before = fs.readFileSync(ctx.workingFile, "utf8");
+    const vendorBefore = fs.readFileSync(ctx.vendorFile, "utf8");
+    const lockBefore = fs.readFileSync(path.join(ctx.vaultPath, "vault.lock"), "utf8");
+    const head = git(ctx.vaultPath, ["rev-parse", "HEAD"]).trim();
+    const report = await autoSyncVault(ctx.vaultPath, ctx);
+    expect(report.sources.find((source) => source.name === "gh-standalone")?.status).toBe("error");
+    expect(fs.readFileSync(ctx.workingFile, "utf8")).toBe(before);
+    expect(fs.readFileSync(ctx.vendorFile, "utf8")).toBe(vendorBefore);
+    expect(fs.readFileSync(path.join(ctx.vaultPath, "vault.lock"), "utf8")).toBe(lockBefore);
+    expect(fs.readFileSync(path.join(master, "SKILL.md"), "utf8")).toBe("Unowned local copy\n");
+    expect(fs.existsSync(path.join(ctx.vaultPath, ".vault", "operation.json"))).toBe(false);
+    expect(git(ctx.vaultPath, ["rev-parse", "HEAD"]).trim()).toBe(head);
+    expect(git(ctx.vaultPath, ["status", "--porcelain"]).trim()).toBe("");
+  });
+
+  it("keeps a local commit and distributed content when push is rejected", async () => {
+    const ctx = setup();
+    const hook = path.join(ctx.remote, "hooks", "pre-receive");
+    fs.writeFileSync(hook, "#!/bin/sh\nexit 1\n", { mode: 0o755 });
+    const originalRemote = git(ctx.remote, ["rev-parse", "refs/heads/main"]).trim();
+    const report = await autoSyncVault(ctx.vaultPath, ctx);
+    const result = report.sources.find((source) => source.name === "gh-standalone");
+    expect(result?.status).toBe("push-failed");
+    expect(result?.commit).toBe(git(ctx.vaultPath, ["rev-parse", "HEAD"]).trim());
+    expect(result?.commit).not.toBe(originalRemote);
+    expect(git(ctx.remote, ["rev-parse", "refs/heads/main"]).trim()).toBe(originalRemote);
+    expect(fs.readFileSync(path.join(ctx.agentsSkillsDir, "gh-standalone", "SKILL.md"), "utf8")).toContain("Version two.");
+  });
+
+  it.each(["review-before-apply", "frozen"] as const)("does not apply a %s source", async (mode) => {
+    const ctx = setup(mode);
+    const before = fs.readFileSync(ctx.workingFile, "utf8");
+    const report = await autoSyncVault(ctx.vaultPath, ctx);
+    expect(report.sources.find((source) => source.name === "gh-standalone")?.status).toBe("skipped");
+    expect(fs.readFileSync(ctx.workingFile, "utf8")).toBe(before);
+  });
+
+  it("preserves an upstream-removed skill for review", async () => {
+    const ctx = setup();
+    fs.rmSync(ctx.upstreamSkill, { recursive: true });
+    git(ctx.upstream, ["add", "-A"]);
+    git(ctx.upstream, ["commit", "-m", "remove skill"]);
+    const before = fs.readFileSync(ctx.workingFile, "utf8");
+    const report = await autoSyncVault(ctx.vaultPath, ctx);
+    expect(report.sources.find((source) => source.name === "gh-standalone")?.status).toBe("skipped");
+    expect(fs.readFileSync(ctx.workingFile, "utf8")).toBe(before);
+  });
+
+  it("does not expose remote URL query secrets in check errors", async () => {
+    const ctx = setup();
+    const sourceFile = path.join(ctx.vaultPath, "sources", "gh-standalone.yml");
+    fs.writeFileSync(sourceFile, fs.readFileSync(sourceFile, "utf8")
+      .replace(/^remote_url: .*$/m, "remote_url: file:///no-such-vaultdesk-remote?token=TOP_SECRET_TEST_VALUE"));
+    const report = await autoSyncVault(ctx.vaultPath, ctx);
+    expect(report.sources.find((source) => source.name === "gh-standalone")?.status).toBe("error");
+    expect(JSON.stringify(report)).not.toContain("TOP_SECRET_TEST_VALUE");
+    expect(fs.readFileSync(path.join(ctx.vaultPath, ".vault", "state.json"), "utf8")).not.toContain("TOP_SECRET_TEST_VALUE");
+  });
+
+  it("updates known collection skills while leaving new upstream skills pending", async () => {
+    const ctx = setup("frozen");
+    const sourceFile = path.join(ctx.vaultPath, "sources", "gh-pack.yml");
+    const packageRoot = path.join(ctx.vaultPath, "packages", "gh-pack", "skills");
+    const upstream = tempDir("auto-collection");
+    for (const name of ["gh-pack-alpha", "gh-pack-beta"]) {
+      const dest = path.join(upstream, "skills", name);
+      fs.mkdirSync(dest, { recursive: true });
+      fs.copyFileSync(path.join(packageRoot, name, "SKILL.md"), path.join(dest, "SKILL.md"));
+    }
+    fs.appendFileSync(path.join(upstream, "skills", "gh-pack-alpha", "SKILL.md"), "\nKnown skill update.\n");
+    const newcomer = path.join(upstream, "skills", "gh-pack-gamma");
+    fs.mkdirSync(newcomer);
+    fs.writeFileSync(path.join(newcomer, "SKILL.md"), "---\nname: gh-pack-gamma\ndescription: Third skill\n---\n\n# New skill\n");
+    const nested = path.join(upstream, "extra", "nested", "gh-pack-delta");
+    fs.mkdirSync(nested, { recursive: true });
+    fs.writeFileSync(path.join(nested, "SKILL.md"), "---\nname: gh-pack-delta\ndescription: Fourth skill\n---\n\n# New skill\n");
+    initGitRepo(upstream);
+    fs.writeFileSync(sourceFile, fs.readFileSync(sourceFile, "utf8")
+      .replace("ref: main\n", `ref: main\nremote_url: file://${upstream}\n`)
+      .replace("update_mode: frozen", "update_mode: auto"));
+    git(ctx.vaultPath, ["add", "sources/gh-pack.yml"]);
+    git(ctx.vaultPath, ["commit", "-m", "configure collection"]);
+    git(ctx.vaultPath, ["push"]);
+
+    const report = await autoSyncVault(ctx.vaultPath, ctx);
+    const result = report.sources.find((source) => source.name === "gh-pack");
+    expect(result?.status).toBe("updated");
+    expect(result?.pendingSkills).toEqual(["extra/nested/gh-pack-delta", "skills/gh-pack-gamma"]);
+    expect(fs.readFileSync(path.join(packageRoot, "gh-pack-alpha", "SKILL.md"), "utf8")).toContain("Known skill update.");
+    expect(fs.existsSync(path.join(packageRoot, "gh-pack-gamma"))).toBe(false);
+    expect(fs.existsSync(path.join(ctx.agentsSkillsDir, "gh-pack-gamma"))).toBe(false);
+    expect((await listPendingSkills(ctx.vaultPath, "gh-pack")).map((entry) => entry.sourcePath)).toEqual(["extra/nested/gh-pack-delta", "skills/gh-pack-gamma"]);
+    const env = { VAULTDESK_AGENTS_SKILLS_DIR: ctx.agentsSkillsDir, VAULTDESK_BACKUP_DIR: ctx.backupRoot };
+    const pending = runCli(ctx.vaultPath, ["source", "pending", "gh-pack"], env);
+    expect(pending.status).toBe(0);
+    expect((pending.data.data as Array<{ sourcePath: string }>).map((entry) => entry.sourcePath)).toEqual(["extra/nested/gh-pack-delta", "skills/gh-pack-gamma"]);
+    const adoption = runCli(ctx.vaultPath, ["source", "adopt", "gh-pack", "--path", "skills/gh-pack-gamma", "--yes"], env);
+    expect(adoption.status).toBe(0);
+    const adopted = adoption.data.data as { status: string; pendingSkills: string[] };
+    expect(adopted.status).toBe("updated");
+    expect(adopted.pendingSkills).toEqual(["extra/nested/gh-pack-delta"]);
+    expect(fs.existsSync(path.join(packageRoot, "gh-pack-gamma", "SKILL.md"))).toBe(true);
+    expect(fs.existsSync(path.join(ctx.agentsSkillsDir, "gh-pack-gamma", "SKILL.md"))).toBe(true);
+    expect(fs.existsSync(path.join(packageRoot, "gh-pack-delta"))).toBe(false);
+    expect(git(ctx.vaultPath, ["status", "--porcelain"]).trim()).toBe("");
+  });
+
+  it("pauses an entire plugin update when it introduces an unadopted skill", async () => {
+    const base = tempDir("auto-plugin");
+    const vaultPath = path.join(base, "vault");
+    const upstream = path.join(base, "upstream");
+    const remote = path.join(base, "remote.git");
+    await initVault(vaultPath, { name: "plugin-test" });
+    initGitRepo(vaultPath);
+    fs.mkdirSync(path.join(upstream, "skills", "helper"), { recursive: true });
+    fs.writeFileSync(path.join(upstream, "plugin.json"), JSON.stringify({ name: "pending-kit", version: "1.0.0" }));
+    const firstSkill = "---\nname: helper\ndescription: Helper\n---\n\n# Existing helper\n";
+    fs.writeFileSync(path.join(upstream, "skills", "helper", "SKILL.md"), firstSkill);
+    initGitRepo(upstream);
+    await addGithubPlugin(vaultPath, { repo: "fixture/pending-kit", remoteUrl: `file://${upstream}`, ref: "main" });
+    git(vaultPath, ["add", "."]);
+    git(vaultPath, ["commit", "-m", "register plugin"]);
+    fs.mkdirSync(remote);
+    git(remote, ["init", "--bare", "-b", "main"]);
+    git(vaultPath, ["remote", "add", "origin", remote]);
+    git(vaultPath, ["push", "-u", "origin", "main"]);
+    const beforeHead = git(vaultPath, ["rev-parse", "HEAD"]).trim();
+    const workingSkill = path.join(vaultPath, "plugins", "pending-kit", "skills", "helper", "SKILL.md");
+    fs.writeFileSync(path.join(upstream, "skills", "helper", "SKILL.md"), firstSkill.replace("Existing", "Updated"));
+    fs.mkdirSync(path.join(upstream, "skills", "second"));
+    fs.writeFileSync(path.join(upstream, "skills", "second", "SKILL.md"), "---\nname: second\ndescription: New helper\n---\n\n# New skill\n");
+    git(upstream, ["add", "."]);
+    git(upstream, ["commit", "-m", "v2"]);
+
+    const report = await autoSyncVault(vaultPath, { agentsSkillsDir: path.join(base, "agents") });
+    const result = report.sources.find((source) => source.name === "pending-kit");
+    expect(result?.status).toBe("skipped");
+    expect(result?.pendingSkills).toEqual(["skills/second"]);
+    expect(result?.message).toContain("Entire plugin update paused");
+    expect(fs.readFileSync(workingSkill, "utf8")).toBe(firstSkill);
+    expect(fs.existsSync(path.join(vaultPath, "plugins", "pending-kit", "skills", "second"))).toBe(false);
+    expect(git(vaultPath, ["rev-parse", "HEAD"]).trim()).toBe(beforeHead);
+    const adopted = await adoptPendingSkills(vaultPath, "pending-kit", ["skills/second"], { agentsSkillsDir: path.join(base, "agents") });
+    expect(adopted.status).toBe("updated");
+    expect(fs.readFileSync(workingSkill, "utf8")).toContain("Updated helper");
+    expect(fs.existsSync(path.join(vaultPath, "plugins", "pending-kit", "skills", "second", "SKILL.md"))).toBe(true);
+  });
+
+  it("supports plugin target registration, first distribution, and safe removal through CLI", () => {
+    const vaultPath = copyFixture("v2-plugins");
+    const dest = tempDir("cli-plugin-target");
+    const env = { VAULTDESK_BACKUP_DIR: tempDir("cli-plugin-backups") };
+    const added = runCli(vaultPath, ["plugin", "target", "add", "claude-kit", "--id", "cli-plugin", "--dest", dest, "--yes"], env);
+    expect(added.status).toBe(0);
+    const listed = runCli(vaultPath, ["plugin", "target", "list"], env);
+    expect((listed.data.data as Array<{ id: string }>).some((entry) => entry.id === "cli-plugin")).toBe(true);
+    const distributed = runCli(vaultPath, ["source", "distribute", "claude-kit", "--yes"], env);
+    expect(distributed.status).toBe(0);
+    expect(fs.existsSync(path.join(dest, "claude-kit", ".vaultdesk-plugin-managed"))).toBe(true);
+    const removed = runCli(vaultPath, ["plugin", "target", "remove", "cli-plugin", "--yes"], env);
+    expect(removed.status).toBe(0);
+    expect(fs.existsSync(path.join(dest, "claude-kit"))).toBe(true);
+  });
+});

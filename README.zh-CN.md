@@ -18,7 +18,7 @@
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-Apache--2.0-blue.svg" alt="许可证：Apache-2.0"></a>
   <img src="https://img.shields.io/badge/platform-macOS%2013%2B-lightgrey.svg" alt="平台：macOS 13+">
   <img src="https://img.shields.io/badge/node-22%2B-339933.svg" alt="Node.js 22+">
-  <img src="https://img.shields.io/badge/version-1.1.0-brightgreen.svg" alt="版本 1.1.0">
+  <img src="https://img.shields.io/badge/version-1.2.0-brightgreen.svg" alt="版本 1.2.0">
 </p>
 
 <p align="center">
@@ -26,7 +26,7 @@
 </p>
 
 > [!NOTE]
-> VaultDesk 1.1.0 已在 [GitHub Releases](https://github.com/coderWang404/vaultdesk/releases/tag/v1.1.0) 提供 Apple Silicon DMG。构建采用 ad-hoc 签名，未公证；目前没有 Homebrew formula 或 npm 包。
+> VaultDesk 1.2.0 已在 [GitHub Releases](https://github.com/coderWang404/vaultdesk/releases/tag/v1.2.0) 提供 Apple Silicon DMG。构建采用 ad-hoc 签名，未公证；目前没有 Homebrew formula 或 npm 包。
 
 ## 目录
 
@@ -110,7 +110,7 @@ VaultDesk 面向同时使用多个编码 agent、并且维护自己技能库的�
 - **构建：** Node.js 22+、pnpm 11.5.2、`PATH` 中可用的 Git
 - **CLI：** Node.js 22+；CI 也会在 Ubuntu 上构建和测试
 
-Apple Silicon 桌面版可从 [GitHub Releases](https://github.com/coderWang404/vaultdesk/releases/tag/v1.1.0) 下载。CLI 尚未发布到 npm，需要从本仓库构建；Intel 用户也可从源码构建桌面版。
+Apple Silicon 桌面版可从 [GitHub Releases](https://github.com/coderWang404/vaultdesk/releases/tag/v1.2.0) 下载。CLI 尚未发布到 npm，需要从本仓库构建；Intel 用户也可从源码构建桌面版。
 
 ### 从源码运行桌面应用
 
@@ -126,7 +126,7 @@ pnpm dev
 
 ```bash
 pnpm package:mac
-# release/VaultDesk-1.1.0-<arch>.dmg
+# release/VaultDesk-1.2.0-<arch>.dmg
 ```
 
 构建产物使用 ad-hoc 签名，没有公证。第一次启动时右键点击应用并选择 **打开**，或者在 **系统设置 → 隐私与安全性** 中放行。
@@ -171,7 +171,15 @@ vaultdesk source update some-source --vault "$VAULT" --yes
 
 `source check` 查询远端提交，并把检查结果写入被 Git 忽略的 `.vault/state.json`；它不修改 Git 跟踪的 vault 内容。`source diff` 会在 vault 外缓存上游内容，并显示逐文件的 unified diff。`source update` 先预览，只有传入 `--yes` 才应用；桌面应用会把同样的预览放在确认对话框后面。
 
-对插件来说，更新会刷新已存储的插件目录和对应的 lock 条目。它不会改动 agent 可能已经安装的副本，单纯更新插件也不会触发技能重建或目标重装。
+手动更新插件会刷新已存储的插件目录和对应的 lock 条目。自动同步只会写入 VaultDesk 明确登记的插件目标，不接管 agent 自行安装的插件。
+
+## 自动同步
+
+安装在 `/Applications/VaultDesk.app` 的 macOS 版本默认注册用户级后台任务：登录后、恢复网络后以及每小时检查所有仍登记的 vault；应用窗口关闭后仍可运行。可在「设置」中暂停、手动同步、查看活动记录并调整间隔与备份保留期。开发版和挂载 DMG 中的应用不会注册该后台任务。
+
+远程 Git 来源默认使用 `auto`，也可逐来源切换为人工审核或暂停。自动更新按来源完成 Vault 内容、`~/.agents/skills` 主库与已登记目标的同步；目标优先使用逐技能符号链接，不支持时复制。手动修改、未知归属或同名冲突会阻止该来源并保留原文件。成功后仅提交本轮改动并普通推送；推送失败保留本地提交并提示，不强推。新增上游技能等待接纳，上游删除不会自动删掉现有副本。
+
+CLI 可用 `source pending <来源>` 查看待接纳技能，`source adopt <来源> --path <上游相对路径> --yes` 明确接纳，`source distribute <来源> --yes` 初始化或刷新受管分发。插件目标可通过 `plugin target add|list|remove` 登记和管理。
 
 ## CLI
 
@@ -182,8 +190,8 @@ vaultdesk <group> <action> [arguments] [options]
 | 命令组 | 操作 |
 | --- | --- |
 | `vault` | `status`、`validate`、`init`、`migrate` |
-| `source` | `list`、`show`、`check`、`diff`、`update`、`add`、`remove`、`fork` |
-| `plugin` | `list`、`show` |
+| `source` | `list`、`show`、`check`、`diff`、`update`、`auto-sync`、`mode`、`pending`、`adopt`、`distribute`、`add`、`remove`、`fork` |
+| `plugin` | `list`、`show`、`target add/list/remove` |
 | `tool` | `list`、`show`、`add` |
 | `external` | `list`、`show`、`add`、`remove`、`adopt` |
 | `target` | `list`、`install`、`remove`、`verify`、`restore` |
@@ -401,14 +409,14 @@ VaultDesk 会在自己拥有的每个安装槽位写入 `.vault-managed` 标记�
 
 ## 安全模型
 
-- **先预览，再确认。** 每次写入都先显示预览。CLI 需要 `--yes`，应用需要确认对话框。
+- **手动操作先预览。** CLI 手动写入需要 `--yes`，应用需要确认对话框；仅选为 `auto` 的远程来源按已登记的目标自动同步。
 - **在 vault 之外拉取。** 上游数据先落到缓存，预览被接受之前不会写入 vault。
 - **GitHub 内容在 fork 前只读。** 来自 GitHub 的技能不能就地编辑。
 - **插件只存储，不执行。** 插件目录内的 hooks、脚本、命令与 MCP 服务都不会运行。VaultDesk 不生成市场清单或适配器清单。
 - **工具卡只是记录。** 不下载、不安装、不执行、不检查版本，也不向 agent 注册。
 - **外部技能属于它的工具。** VaultDesk 读取并计算路径 hash，报告漂移，从不写入。`adopt` 只删除 vault 自己的内容和本 vault 的标记。
 - **一个路径一个所有者。** 受管技能与外部技能不能共用路径；其他所有者的标记会阻止 `adopt`。
-- **未托管目录不会被覆盖。** 它们会被移动到带时间戳的备份；安装产生备份时默认保留该目标最近十份快照。
+- **自动同步不覆盖未托管目录。** 手动安装可在明确确认后备份旧目录；自动同步遇到未知归属或手动修改时暂停受影响来源。自动分发备份最多保留最近 3 次或 7 天。
 - **Git 暂存是显式的。** VaultDesk 只提交自己改过的路径，从不执行 `git add -A`，并拒绝 vault 之外或 `.git` 之下的路径。
 - **校验的范围是明确的。** `target verify` 证明预期文件存在且 hash 一致，不能证明某个 agent 已经加载了技能。
 - **密钥不进入 vault。** 不要在 vault、插件记录或工具卡中存放 token、密钥或私有 URL。
@@ -429,21 +437,21 @@ E2E 套件会启动真实的 Electron 应用和构建后的 CLI，面向隔离�
 CI 会运行类型检查、单元与集成测试，并在 macOS 和 Ubuntu 上构建。macOS 任务还会运行 Electron 冒烟测试、上传截图、打包 DMG 并作为构建产物上传。
 
 场景矩阵和有意的覆盖边界见 [tests/e2e/README.md](tests/e2e/README.md)。
-发布验收结果另记于 [docs/QA-CURRENT.md](docs/QA-CURRENT.md)；[docs/RELEASE.md](docs/RELEASE.md) 记录 v1.1.0 并保留早先 v1.0.0 本地 DMG 的验收快照。
+发布验收结果另记于 [docs/QA-CURRENT.md](docs/QA-CURRENT.md)；[docs/RELEASE.md](docs/RELEASE.md) 记录 v1.2.0 并保留早先 v1.0.0 本地 DMG 的验收快照。
 
 ## 状态
 
 | 范围 | 状态 |
 | --- | --- |
-| 桌面应用与 CLI | 1.1.0；Apple Silicon DMG 已发布，CLI 可从源码使用 |
-| 工具卡与 MCP 页面 | 已包含在 v1.1.0 |
-| 外部技能记录 | 已包含在 v1.1.0 |
+| 桌面应用与 CLI | 1.2.0；Apple Silicon DMG 已发布，CLI 可从源码使用 |
+| 工具卡与 MCP 页面 | 已包含在 v1.2.0 |
+| 外部技能记录 | 已包含在 v1.2.0 |
 | DMG | Apple Silicon 版本已发布，ad-hoc 签名，未公证 |
 | GitHub Release / Homebrew / npm | GitHub Release 已发布；Homebrew 与 npm 未发布 |
-| 自动更新 | 未实现 |
-| Windows 与 Linux 桌面端 | v1.1.0 未包含 |
+| 来源自动同步 | 已在 macOS 安装版提供，支持逐来源自动/审核/暂停 |
+| Windows 与 Linux 桌面端 | v1.2.0 未包含 |
 
-桌面应用在 1.1.0 只支持 macOS。CLI 已在 macOS 和 Ubuntu 上测试。
+桌面应用在 1.2.0 只支持 macOS。CLI 已在 macOS 和 Ubuntu 上测试。
 
 ## 参与贡献
 

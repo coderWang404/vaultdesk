@@ -281,6 +281,7 @@ function sourceMetadata(input: {
   version?: string;
   description?: string;
   contentPath?: string;
+  updateMode?: SourceRecord["updateMode"];
 }): Record<string, unknown> {
   return {
     schema: 1,
@@ -293,7 +294,7 @@ function sourceMetadata(input: {
     ...(input.contentPath && input.contentPath !== "." ? { content_path: input.contentPath } : {}),
     ...(input.version ? { version: input.version } : {}),
     ...(input.description ? { description: input.description } : {}),
-    update_mode: "review-before-apply",
+    update_mode: input.updateMode ?? (input.origin === "github" ? "auto" : "review-before-apply"),
     skills: [],
   };
 }
@@ -330,6 +331,7 @@ export function refreshPluginSourceMetadata(
         version: manifestVersion(manifests),
         description: manifestDescription(manifests),
         contentPath: source.contentPath,
+        updateMode: source.updateMode,
       }),
       { lineWidth: 0 },
     ),

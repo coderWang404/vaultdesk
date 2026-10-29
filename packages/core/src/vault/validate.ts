@@ -23,7 +23,7 @@ import { parseFrontmatter, frontmatterDescription, frontmatterName } from "../fr
 import type { PluginRecord, SourceRecord, ValidationIssue, ValidationReport, VaultSnapshot } from "../types.js";
 import { loadVault } from "./model.js";
 
-const V2_VAULT_KEYS = new Set(["schema", "name", "defaults", "targets"]);
+const V2_VAULT_KEYS = new Set(["schema", "name", "defaults", "targets", "plugin_targets"]);
 const V2_SOURCE_KEYS = new Set([
   "schema",
   "name",
@@ -43,6 +43,7 @@ const V2_SOURCE_KEYS = new Set([
   "forked_from",
 ]);
 const V2_TARGET_KEYS = new Set(["id", "dest", "names", "install_after_update"]);
+const V2_PLUGIN_TARGET_KEYS = new Set(["id", "dest", "names", "install_after_update"]);
 const V2_TOOL_KEYS = new Set([
   "schema",
   "name",
@@ -574,6 +575,14 @@ async function checkV2Files(snapshot: VaultSnapshot, issues: ValidationIssue[]):
       const target = asRecord(rawTarget);
       for (const key of unknownKeys(target, V2_TARGET_KEYS)) {
         push(issues, "warning", "target.unknown-key", `vault.yml targets[${index}] has an unknown key: ${key}`);
+      }
+    }
+  }
+  if (Array.isArray(vaultRecord.plugin_targets)) {
+    for (const [index, rawTarget] of vaultRecord.plugin_targets.entries()) {
+      const target = asRecord(rawTarget);
+      for (const key of unknownKeys(target, V2_PLUGIN_TARGET_KEYS)) {
+        push(issues, "warning", "plugin-target.unknown-key", "vault.yml plugin_targets[" + index + "] has an unknown key: " + key);
       }
     }
   }

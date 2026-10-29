@@ -1,3 +1,23 @@
+# v1.2.0 发布 QA 记录
+
+> 日期：2026-10-30。本节记录 v1.2.0 本地验收；GitHub 发布、CI 和 `/Applications` 实机后台任务将在完成后补记。v1.1.0 和 v1.0.0 的记录保留在后文。
+
+| 检查 | 状态 | 证据或备注 |
+| --- | --- | --- |
+| `pnpm install --frozen-lockfile` | 通过 | 5 个 workspace，锁文件兼容 |
+| `pnpm typecheck`、`pnpm test` | 通过 | 4/4 workspace；25 个文件，130/130 项测试 |
+| CLI、桌面 E2E | 通过 | CLI 全场景；桌面 17/17 场景，包含无窗口 worker、双 Vault 同步、待接纳后分发推送；axe 扫描 0 项违规 |
+| `pnpm test:e2e:dmg` | 通过 | 挂载、`hdiutil verify`、严格签名、应用启动及编辑持久化 |
+| 真实 Personal Skills Vault | 通过 | 36/36 个 Vault 技能已投影到 `~/.agents/skills`，15/15 个登记目标验证通过；未知归属内容保持原样 |
+| GitHub Release、CI、正式安装版 LaunchAgent | 待发布后验证 | 本地构建与沙盒 worker 测试不能替代正式安装验收 |
+
+| v1.2.0 DMG 字段 | 值 |
+| --- | --- |
+| 文件 | `release/VaultDesk-1.2.0-arm64.dmg` |
+| 大小 | 124,599,623 字节（约 118.8 MiB） |
+| SHA-256 | `793ac2aa0ceee3f2b8b4ee4445a64de55cf487174533715fd013f3ef7603ed81` |
+| 签名与公证 | Ad-hoc 签名，严格校验通过；未公证 |
+
 # v1.1.0 发布 QA 记录
 
 > 日期：2026-10-29。v1.1.0 最终构建、本地验收、应用替换及公开发布均已完成。下方 1.0.0 数据是此前本地工作树的历史记录，不能用于当前发布产物。[RELEASE.md](RELEASE.md) 另保留 2026-10-27 的 1.0.0 本地 DMG 验收快照。

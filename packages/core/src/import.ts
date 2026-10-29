@@ -414,7 +414,7 @@ export async function addGithubSource(
               origin: "github",
               repo: preview.repo,
               ref: preview.ref,
-              update_mode: "review-before-apply",
+              update_mode: "auto",
               skills: [
                 {
                   name: sourceSkills[0]?.name,
@@ -435,7 +435,7 @@ export async function addGithubSource(
               repo: preview.repo,
               ref: preview.ref,
               content_path: `packages/${preview.suggestedName}`,
-              update_mode: "review-before-apply",
+              update_mode: "auto",
               skills: sourceSkills,
             };
       writeTextAtomic(

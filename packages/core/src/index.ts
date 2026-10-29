@@ -28,3 +28,5 @@ export * from "./sources/fetch.js";
 export * from "./sources/check.js";
 export * from "./sources/diff.js";
 export * from "./sources/update.js";
+export * from "./auto-sync.js";
+export * from "./distribution.js";

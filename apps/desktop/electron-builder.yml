@@ -11,6 +11,7 @@ extraResources:
   - from: ../../agent-skill
     to: agent-skill
 asar: true
+electronDist: node_modules/electron/dist
 mac:
   category: public.app-category.developer-tools
   identity: "-"

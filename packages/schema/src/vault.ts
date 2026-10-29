@@ -11,7 +11,7 @@ const optionalPath = z.string().min(1).optional();
 export const originSchema = z.enum(["github", "local"]);
 export const shapeSchema = z.enum(["standalone", "package", "plugin"]);
 export const packageKindSchema = z.enum(["suite", "collection"]);
-export const updateModeSchema = z.enum(["review-before-apply", "auto"]);
+export const updateModeSchema = z.enum(["review-before-apply", "auto", "frozen"]);
 
 export const skillEntrySchema = z.object({
   name: slugSchema,
@@ -43,7 +43,7 @@ export const sourceFileSchema = z
     content_path: optionalPath,
     version: z.string().optional(),
     description: z.string().optional(),
-    update_mode: updateModeSchema.default("review-before-apply"),
+    update_mode: updateModeSchema.default("auto"),
     skills: z.array(skillEntrySchema).default([]),
     script_deps: z.record(z.array(z.string())).optional(),
     forked_from: forkedFromSchema.optional(),
@@ -134,16 +134,26 @@ export const targetSchema = z.object({
   install_after_update: z.boolean().default(true),
 });
 
+export const pluginTargetSchema = z.object({
+  id: z.string().min(1),
+  dest: z.string().min(1).refine((value) => value.startsWith("/") || value === "~" || value.startsWith("~/"), {
+    message: "dest must be absolute or start with ~/",
+  }),
+  names: z.array(slugSchema).min(1),
+  install_after_update: z.boolean().default(true),
+});
+
 export const vaultFileSchema = z.object({
   schema: z.literal(1).default(1),
   name: z.string().min(1),
   defaults: z
     .object({
       ref: z.string().min(1).default("main"),
-      update_mode: updateModeSchema.default("review-before-apply"),
+      update_mode: updateModeSchema.default("auto"),
     })
-    .default({ ref: "main", update_mode: "review-before-apply" }),
+    .default({ ref: "main", update_mode: "auto" }),
   targets: z.array(targetSchema).default([]),
+  plugin_targets: z.array(pluginTargetSchema).optional(),
 });
 
 export const lockSchema = z.object({

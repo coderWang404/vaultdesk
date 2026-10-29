@@ -13,6 +13,7 @@ const electronBinary = createRequire(path.join(desktopDir, "package.json"))("ele
 export interface Workspace {
   root: string;
   userData: string;
+  agentsSkills: string;
   cache: string;
   backups: string;
   locks: string;
@@ -39,6 +40,7 @@ export function createWorkspace(label: string): Workspace {
   const workspace: Workspace = {
     root,
     userData: path.join(root, "user-data"),
+    agentsSkills: path.join(root, "agents-skills"),
     cache: path.join(root, "cache"),
     backups: path.join(root, "backups"),
     locks: path.join(root, "locks"),
@@ -46,7 +48,7 @@ export function createWorkspace(label: string): Workspace {
     dialogFile: path.join(root, "dialog-choice.txt"),
     remotes: path.join(root, "remotes"),
   };
-  for (const dir of [workspace.userData, workspace.cache, workspace.backups, workspace.locks, workspace.remotes]) {
+  for (const dir of [workspace.userData, workspace.agentsSkills, workspace.cache, workspace.backups, workspace.locks, workspace.remotes]) {
     fs.mkdirSync(dir, { recursive: true });
   }
   writeSettings(workspace, {});
@@ -121,6 +123,7 @@ export function cliEnv(workspace: Workspace): NodeJS.ProcessEnv {
     ...env,
     ...configureGitUrlRewrite(workspace),
     VAULTDESK_CACHE_DIR: workspace.cache,
+    VAULTDESK_AGENTS_SKILLS_DIR: workspace.agentsSkills,
     VAULTDESK_BACKUP_DIR: workspace.backups,
     VAULTDESK_LOCK_DIR: workspace.locks,
     VAULTDESK_SETTINGS_FILE: workspace.settingsFile,
@@ -236,6 +239,7 @@ export async function launchApp(options: {
   env.VAULTDESK_SETTINGS_FILE = workspace.settingsFile;
   env.VAULTDESK_USER_DATA = workspace.userData;
   env.VAULTDESK_CACHE_DIR = workspace.cache;
+  env.VAULTDESK_AGENTS_SKILLS_DIR = workspace.agentsSkills;
   env.VAULTDESK_BACKUP_DIR = workspace.backups;
   env.VAULTDESK_LOCK_DIR = workspace.locks;
   env.VAULTDESK_TEST_DIRECTORY_FILE = workspace.dialogFile;

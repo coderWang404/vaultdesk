@@ -5,7 +5,7 @@
 | 检查 | 状态 | 证据或备注 |
 | --- | --- | --- |
 | `pnpm install --frozen-lockfile` | 通过 | 5 个 workspace，锁文件兼容 |
-| `pnpm typecheck`、`pnpm test` | 通过 | 4/4 workspace；25 个文件，130/130 项测试 |
+| `pnpm typecheck`、`pnpm test` | 通过 | 4/4 workspace；25 个文件，139/139 项测试 |
 | CLI、桌面 E2E | 通过 | CLI 全场景；桌面 17/17 场景，包含无窗口 worker、双 Vault 同步、待接纳后分发推送；axe 扫描 0 项违规 |
 | `pnpm test:e2e:dmg` | 通过 | 挂载、`hdiutil verify`、严格签名、应用启动及编辑持久化 |
 | 真实 Personal Skills Vault | 通过 | 36/36 个 Vault 技能已投影到 `~/.agents/skills`，15/15 个登记目标验证通过；未知归属内容保持原样 |
@@ -14,8 +14,8 @@
 | v1.2.0 DMG 字段 | 值 |
 | --- | --- |
 | 文件 | `release/VaultDesk-1.2.0-arm64.dmg` |
-| 大小 | 124,599,623 字节（约 118.8 MiB） |
-| SHA-256 | `793ac2aa0ceee3f2b8b4ee4445a64de55cf487174533715fd013f3ef7603ed81` |
+| 大小 | 124,602,245 字节（约 118.8 MiB） |
+| SHA-256 | `ac1b8f1aa5adcf05ad9c65c34673eab67f3f494e9c77c28db87d61b5fabf9d57` |
 | 签名与公证 | Ad-hoc 签名，严格校验通过；未公证 |
 
 # v1.1.0 发布 QA 记录

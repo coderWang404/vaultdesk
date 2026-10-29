@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { adoptMasterSkills, beginManagedDistribution, installSkills, registerPluginTarget, removePluginTarget, removeTarget, verifyTarget } from "@vaultdesk/core";
+import { adoptMasterSkills, beginManagedDistribution, inspectManagedMaster, installSkills, registerPluginTarget, removePluginTarget, removeTarget, verifyTarget } from "@vaultdesk/core";
 import { copyFixture, setTargetDest, tempDir } from "./helpers.js";
 
 function setup() {
@@ -40,6 +40,19 @@ describe("managed distribution", () => {
     const transaction = await beginManagedDistribution(vault, "local-notes", options);
     transaction.finalize();
     expect(fs.existsSync(path.join(slot, "__pycache__"))).toBe(false);
+  });
+
+  it("inspects a master without changing its files", async () => {
+    const { vault, master, options } = setup();
+    const slot = path.join(master, "local-notes");
+    expect(inspectManagedMaster(vault, "local-notes", master)).toBe("missing");
+    fs.mkdirSync(master, { recursive: true });
+    fs.cpSync(path.join(vault, "skills", "local-notes"), slot, { recursive: true });
+    expect(inspectManagedMaster(vault, "local-notes", master)).toBe("unmanaged");
+    await adoptMasterSkills(vault, ["local-notes"], options);
+    expect(inspectManagedMaster(vault, "local-notes", master)).toBe("current");
+    fs.appendFileSync(path.join(slot, "SKILL.md"), "\nhand-edited\n");
+    expect(inspectManagedMaster(vault, "local-notes", master)).toBe("modified");
   });
 
   it("migrates an owned legacy copy to a link and restores it on rollback", async () => {
@@ -163,6 +176,26 @@ describe("managed distribution", () => {
     const third = await beginManagedDistribution(vault, "local-notes", options);
     third.finalize();
     expect(fs.readFileSync(path.join(slot, "SKILL.md"), "utf8")).toBe(old);
+  });
+
+  it("leaves a hand-edited paused copy untouched while updating active targets", async () => {
+    const { vault, dest, root, backupRoot, options } = setup();
+    await installSkills(vault, {
+      names: ["local-notes"], dest, id: "fixture-agents", backupRoot: path.join(backupRoot, "legacy"),
+    });
+    const paused = path.join(dest, "local-notes", "SKILL.md");
+    fs.appendFileSync(paused, "\nprivate customization\n");
+    const config = path.join(vault, "vault.yml");
+    fs.writeFileSync(config, fs.readFileSync(config, "utf8").replace("install_after_update: true", "install_after_update: false"));
+    const activeDest = path.join(root, "claude", "skills");
+    fs.appendFileSync(config, "  - id: active-agent\n    dest: " + activeDest + "\n    names: [local-notes]\n    install_after_update: true\n");
+    updateSkill(vault, "new upstream content");
+    const transaction = await beginManagedDistribution(vault, "local-notes", options);
+    transaction.finalize();
+    expect(fs.readFileSync(paused, "utf8")).toContain("private customization");
+    expect(fs.lstatSync(path.join(dest, "local-notes")).isSymbolicLink()).toBe(false);
+    expect(fs.lstatSync(path.join(activeDest, "local-notes")).isSymbolicLink()).toBe(true);
+    expect(fs.readFileSync(path.join(activeDest, "local-notes", "SKILL.md"), "utf8")).toContain("new upstream content");
   });
 
   it("keeps linked targets valid across a manual reinstall into the master", async () => {

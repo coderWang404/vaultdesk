@@ -9,8 +9,8 @@ are recorded separately in [QA-CURRENT.md](QA-CURRENT.md).
 | --- | --- |
 | File | `release/VaultDesk-1.2.0-arm64.dmg` |
 | Platform | macOS, Apple Silicon (`arm64`) |
-| Size | 124,599,623 bytes (118.8 MiB) |
-| SHA-256 | `793ac2aa0ceee3f2b8b4ee4445a64de55cf487174533715fd013f3ef7603ed81` |
+| Size | 124,602,245 bytes (118.8 MiB) |
+| SHA-256 | `ac1b8f1aa5adcf05ad9c65c34673eab67f3f494e9c77c28db87d61b5fabf9d57` |
 | Bundle ID | `com.coderwang404.vaultdesk` |
 | Bundle version | `1.2.0` |
 | Signing | Ad-hoc; strict `codesign --verify --deep --strict` passed |
@@ -22,7 +22,7 @@ are recorded separately in [QA-CURRENT.md](QA-CURRENT.md).
   after observed network recovery, and hourly, even with the app window closed.
 - Applies remote Git updates per source across the vault, `~/.agents/skills`, and
   registered targets, with rollback on conflict, limited backups, explicit-path
-  commits, normal push, and a clear push-failure state.
+  commits, normal push, and guarded retry of a failed push.
 - Adds per-source auto/review/pause controls, activity history, and a pending-skill
   adoption flow in the app and CLI. Plugin distribution requires an explicitly
   registered target.
@@ -35,7 +35,7 @@ are recorded separately in [QA-CURRENT.md](QA-CURRENT.md).
 ## v1.2.0 local verification
 
 `pnpm install --frozen-lockfile`, `pnpm typecheck`, and `pnpm test` passed
-(25 files, 130 tests). CLI and desktop E2E passed separately; the desktop suite
+(25 files, 139 tests). CLI and desktop E2E passed separately; the desktop suite
 covered 17 scenarios, including the headless worker, two-vault sync, pending
 adoption, and accessibility. `pnpm test:e2e:dmg` passed mounted-DMG
 verification, strict signature validation, launch, and persisted editing.

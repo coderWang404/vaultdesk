@@ -123,6 +123,19 @@ export function managedAgentsSkillsRoot(): string {
   return agentsRoot({});
 }
 
+export type ManagedMasterStatus = "missing" | "unmanaged" | "current" | "modified";
+
+export function inspectManagedMaster(inputPath: string, skillName: string, agentsSkillsDir?: string): ManagedMasterStatus {
+  const vault = canonicalPath(inputPath);
+  const slot = path.join(agentsRoot({ agentsSkillsDir }), safeName(skillName));
+  if (!hasEntry(slot)) return "missing";
+  if (isLink(slot) || !fs.statSync(slot).isDirectory()) return "unmanaged";
+  const marker = readMarker(path.join(slot, MARKER));
+  if (!marker?.vault || canonicalPath(marker.vault) !== vault || marker.skill !== skillName) return "unmanaged";
+  const actual = contentHash(slot);
+  return marker.hash && (marker.hash === actual || marker.hash === hashDirectory(slot)) ? "current" : "modified";
+}
+
 export function managedSkillLink(
   inputPath: string,
   targetId: string,
@@ -302,6 +315,7 @@ export async function beginManagedDistribution(
           const slot = path.join(dest, skill.name);
           const recordIndex = links.findIndex((item) => item.id === target.id && item.path === slot);
           const oldLink = isLink(slot);
+          if (!target.installAfterUpdate && !oldLink) continue;
           if (hasEntry(slot)) {
             if (oldLink) {
               const resolved = path.resolve(path.dirname(slot), fs.readlinkSync(slot));
@@ -315,7 +329,6 @@ export async function beginManagedDistribution(
                 registeredOwners.length === 1 && registeredOwners[0]?.id === target.id);
             }
           }
-          if (!target.installAfterUpdate && !oldLink) continue;
           if (!target.installAfterUpdate && !hasEntry(master)) {
             throw new VaultDeskError("conflict", "Cannot freeze missing master for target: " + target.id);
           }

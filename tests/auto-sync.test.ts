@@ -2,7 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
 import { describe, expect, it } from "vitest";
-import { addGithubPlugin, adoptPendingSkills, autoSyncVault, initVault, listPendingSkills } from "@vaultdesk/core";
+import { addGithubPlugin, adoptPendingSkills, autoSyncVault, distributeCurrentSource, initVault, listPendingSkills, setSourceUpdateMode } from "@vaultdesk/core";
 import { copyFixture, git, initGitRepo, repoRoot, tempDir } from "./helpers.js";
 
 function runCli(vaultPath: string, args: string[], env: Record<string, string> = {}) {
@@ -20,6 +20,7 @@ function setup(mode: "auto" | "review-before-apply" | "frozen" = "auto") {
   const agentsSkillsDir = tempDir("auto-agents");
   const target = tempDir("auto-target");
   const backupRoot = tempDir("auto-backup");
+  const pendingRoot = tempDir("auto-pending");
   const workingFile = path.join(vaultPath, "skills", "gh-standalone", "SKILL.md");
   const vendorFile = path.join(vaultPath, "third_party", "gh-standalone", "SKILL.md");
   const upstreamSkill = path.join(upstream, "skills", "gh-standalone");
@@ -39,7 +40,7 @@ function setup(mode: "auto" | "review-before-apply" | "frozen" = "auto") {
   git(remote, ["init", "--bare", "-b", "main"]);
   git(vaultPath, ["remote", "add", "origin", remote]);
   git(vaultPath, ["push", "-u", "origin", "main"]);
-  return { vaultPath, upstream, remote, agentsSkillsDir, target, backupRoot, workingFile, vendorFile, upstreamSkill };
+  return { vaultPath, upstream, remote, agentsSkillsDir, target, backupRoot, pendingRoot, workingFile, vendorFile, upstreamSkill };
 }
 
 describe("automatic source sync", () => {
@@ -114,6 +115,115 @@ describe("automatic source sync", () => {
     expect(result?.commit).not.toBe(originalRemote);
     expect(git(ctx.remote, ["rev-parse", "refs/heads/main"]).trim()).toBe(originalRemote);
     expect(fs.readFileSync(path.join(ctx.agentsSkillsDir, "gh-standalone", "SKILL.md"), "utf8")).toContain("Version two.");
+    expect(fs.readdirSync(ctx.pendingRoot)).toHaveLength(1);
+  });
+
+  it("retries exactly its recorded commit after a rejected push becomes available", async () => {
+    const ctx = setup();
+    const hook = path.join(ctx.remote, "hooks", "pre-receive");
+    fs.writeFileSync(hook, "#!/bin/sh\nexit 1\n", { mode: 0o755 });
+    const first = await autoSyncVault(ctx.vaultPath, ctx);
+    expect(first.sources.find((source) => source.name === "gh-standalone")?.status).toBe("push-failed");
+    const pendingCommit = git(ctx.vaultPath, ["rev-parse", "HEAD"]).trim();
+    expect(fs.readdirSync(ctx.pendingRoot)).toHaveLength(1);
+    fs.unlinkSync(hook);
+    const second = await autoSyncVault(ctx.vaultPath, ctx);
+    const recovered = second.sources.find((source) => source.name === "gh-standalone");
+    expect(recovered?.status).toBe("updated");
+    expect(recovered?.message).toContain("Previously pending automatic commit pushed");
+    expect(git(ctx.vaultPath, ["rev-parse", "HEAD"]).trim()).toBe(pendingCommit);
+    expect(git(ctx.remote, ["rev-parse", "refs/heads/main"]).trim()).toBe(pendingCommit);
+    expect(fs.readdirSync(ctx.pendingRoot)).toHaveLength(0);
+  });
+
+  it("never retries a pending push after an unrelated new commit", async () => {
+    const ctx = setup();
+    const hook = path.join(ctx.remote, "hooks", "pre-receive");
+    fs.writeFileSync(hook, "#!/bin/sh\nexit 1\n", { mode: 0o755 });
+    const remoteBefore = git(ctx.remote, ["rev-parse", "refs/heads/main"]).trim();
+    const first = await autoSyncVault(ctx.vaultPath, ctx);
+    expect(first.sources.find((source) => source.name === "gh-standalone")?.status).toBe("push-failed");
+    fs.writeFileSync(path.join(ctx.vaultPath, "manual.txt"), "manual commit\n");
+    git(ctx.vaultPath, ["add", "manual.txt"]);
+    git(ctx.vaultPath, ["commit", "-m", "manual commit"]);
+    fs.unlinkSync(hook);
+    const second = await autoSyncVault(ctx.vaultPath, ctx);
+    expect(second.sources.find((source) => source.name === "gh-standalone")?.status).toBe("error");
+    expect(git(ctx.remote, ["rev-parse", "refs/heads/main"]).trim()).toBe(remoteBefore);
+    expect(fs.readdirSync(ctx.pendingRoot)).toHaveLength(1);
+  });
+
+  it("never retries a pending push after the push URL changes", async () => {
+    const ctx = setup();
+    const hook = path.join(ctx.remote, "hooks", "pre-receive");
+    fs.writeFileSync(hook, "#!/bin/sh\nexit 1\n", { mode: 0o755 });
+    const remoteBefore = git(ctx.remote, ["rev-parse", "refs/heads/main"]).trim();
+    expect((await autoSyncVault(ctx.vaultPath, ctx)).sources.find((source) => source.name === "gh-standalone")?.status).toBe("push-failed");
+    const otherRemote = tempDir("auto-other-bare");
+    git(otherRemote, ["init", "--bare", "-b", "main"]);
+    git(ctx.vaultPath, ["remote", "set-url", "--push", "origin", otherRemote]);
+    fs.unlinkSync(hook);
+    const retried = await autoSyncVault(ctx.vaultPath, ctx);
+    expect(retried.sources.find((source) => source.name === "gh-standalone")?.status).toBe("error");
+    expect(git(ctx.remote, ["rev-parse", "refs/heads/main"]).trim()).toBe(remoteBefore);
+    expect(git(otherRemote, ["branch", "--list"]).trim()).toBe("");
+    expect(fs.readdirSync(ctx.pendingRoot)).toHaveLength(1);
+  });
+
+  it("does not push commits that existed before the automatic update", async () => {
+    const ctx = setup();
+    fs.writeFileSync(path.join(ctx.vaultPath, "manual.txt"), "manual commit\n");
+    git(ctx.vaultPath, ["add", "manual.txt"]);
+    git(ctx.vaultPath, ["commit", "-m", "manual commit"]);
+    const remoteBefore = git(ctx.remote, ["rev-parse", "refs/heads/main"]).trim();
+    const report = await autoSyncVault(ctx.vaultPath, ctx);
+    expect(report.sources.find((source) => source.name === "gh-standalone")?.status).toBe("error");
+    expect(git(ctx.remote, ["rev-parse", "refs/heads/main"]).trim()).toBe(remoteBefore);
+    expect(fs.readdirSync(ctx.pendingRoot)).toHaveLength(0);
+  });
+
+  it("does not commit a source-mode change over unrelated ahead commits", async () => {
+    const ctx = setup();
+    const metadata = path.join(ctx.vaultPath, "sources", "gh-standalone.yml");
+    const before = fs.readFileSync(metadata, "utf8");
+    fs.writeFileSync(path.join(ctx.vaultPath, "manual.txt"), "manual\n");
+    git(ctx.vaultPath, ["add", "manual.txt"]);
+    git(ctx.vaultPath, ["commit", "-m", "manual"]);
+    const head = git(ctx.vaultPath, ["rev-parse", "HEAD"]).trim();
+    const remote = git(ctx.remote, ["rev-parse", "refs/heads/main"]).trim();
+    await expect(setSourceUpdateMode(ctx.vaultPath, "gh-standalone", "frozen")).rejects.toMatchObject({ code: "conflict" });
+    expect(fs.readFileSync(metadata, "utf8")).toBe(before);
+    expect(git(ctx.vaultPath, ["rev-parse", "HEAD"]).trim()).toBe(head);
+    expect(git(ctx.remote, ["rev-parse", "refs/heads/main"]).trim()).toBe(remote);
+  });
+
+  it("reports local master edits without overwriting or committing them", async () => {
+    const ctx = setup("frozen");
+    await distributeCurrentSource(ctx.vaultPath, "local-notes", ctx);
+    const masterFile = path.join(ctx.agentsSkillsDir, "local-notes", "SKILL.md");
+    fs.appendFileSync(masterFile, "\nPersonal edit.\n");
+    const before = fs.readFileSync(masterFile, "utf8");
+    const head = git(ctx.vaultPath, ["rev-parse", "HEAD"]).trim();
+    const report = await autoSyncVault(ctx.vaultPath, ctx);
+    expect(report.sources.find((source) => source.name === "local-notes")?.status).toBe("error");
+    expect(report.sources.find((source) => source.name === "local-notes")?.message).toContain("manually modified");
+    expect(fs.readFileSync(masterFile, "utf8")).toBe(before);
+    expect(git(ctx.vaultPath, ["rev-parse", "HEAD"]).trim()).toBe(head);
+  });
+
+  it("refuses to distribute a current Git working copy that differs from its lock", async () => {
+    const ctx = setup();
+    expect((await autoSyncVault(ctx.vaultPath, ctx)).sources.find((source) => source.name === "gh-standalone")?.status).toBe("updated");
+    const master = path.join(ctx.agentsSkillsDir, "gh-standalone");
+    const installed = path.join(ctx.target, "gh-standalone");
+    fs.rmSync(master, { recursive: true, force: true });
+    fs.unlinkSync(installed);
+    fs.appendFileSync(ctx.workingFile, "\nUnreviewed edit.\n");
+    const report = await autoSyncVault(ctx.vaultPath, ctx);
+    expect(report.sources.find((source) => source.name === "gh-standalone")?.status).toBe("error");
+    expect(fs.existsSync(master)).toBe(false);
+    expect(() => fs.lstatSync(installed)).toThrow();
+    await expect(distributeCurrentSource(ctx.vaultPath, "gh-standalone", ctx)).rejects.toMatchObject({ code: "conflict" });
   });
 
   it.each(["review-before-apply", "frozen"] as const)("does not apply a %s source", async (mode) => {
@@ -239,15 +349,16 @@ describe("automatic source sync", () => {
     const vaultPath = copyFixture("v2-plugins");
     const dest = tempDir("cli-plugin-target");
     const env = { VAULTDESK_BACKUP_DIR: tempDir("cli-plugin-backups") };
-    const added = runCli(vaultPath, ["plugin", "target", "add", "claude-kit", "--id", "cli-plugin", "--dest", dest, "--yes"], env);
+    const added = runCli(vaultPath, ["plugin", "target", "add", "codex-only", "--id", "cli-plugin", "--dest", dest, "--yes"], env);
     expect(added.status).toBe(0);
     const listed = runCli(vaultPath, ["plugin", "target", "list"], env);
     expect((listed.data.data as Array<{ id: string }>).some((entry) => entry.id === "cli-plugin")).toBe(true);
-    const distributed = runCli(vaultPath, ["source", "distribute", "claude-kit", "--yes"], env);
+    const distributed = runCli(vaultPath, ["source", "distribute", "codex-only", "--yes"], env);
+    expect(distributed.data.errors).toEqual([]);
     expect(distributed.status).toBe(0);
-    expect(fs.existsSync(path.join(dest, "claude-kit", ".vaultdesk-plugin-managed"))).toBe(true);
+    expect(fs.existsSync(path.join(dest, "codex-only", ".vaultdesk-plugin-managed"))).toBe(true);
     const removed = runCli(vaultPath, ["plugin", "target", "remove", "cli-plugin", "--yes"], env);
     expect(removed.status).toBe(0);
-    expect(fs.existsSync(path.join(dest, "claude-kit"))).toBe(true);
+    expect(fs.existsSync(path.join(dest, "codex-only"))).toBe(true);
   });
 });

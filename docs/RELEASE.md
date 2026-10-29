@@ -1,7 +1,45 @@
+# VaultDesk v1.2.2 release
+
+Status: locally verified and installed on 2026-10-30. CI and public release
+verification will be recorded in QA-CURRENT.md after publication.
+
+## v1.2.2 artifact
+
+| Field | Value |
+| --- | --- |
+| File | release/VaultDesk-1.2.2-arm64.dmg |
+| Platform | macOS, Apple Silicon (arm64) |
+| Size | 124,602,082 bytes (118.8 MiB) |
+| SHA-256 | c53bf4e2a3b4369645c834e553f1ef7396956ef7053539e53d9f3de840f81351 |
+| Bundle ID | com.coderwang404.vaultdesk |
+| Bundle version | 1.2.2 |
+| Signing | Ad-hoc; strict signature verification passed |
+| Notarization | None |
+
+## v1.2.2 changes
+
+- When the macOS LaunchAgent is the only VaultDesk process, a standard Finder
+  or Dock reopen launches a separate GUI instance. The worker stays active.
+- A second-instance request recreates a closed GUI window, or focuses the
+  existing one, with no duplicate window on repeated opens.
+- Includes the v1.2.1 GitHub HTTPS-to-SSH transport fallback and the v1.2.0
+  transactional skill synchronization features.
+
+## v1.2.2 local verification
+
+Type checking and 141 unit tests in 26 files passed. CLI and all 18 desktop
+end-to-end scenarios passed; the new scenario covers reopening a closed GUI
+window. The mounted-DMG test passed signature, launch, edit, and persistence.
+The installed 1.2.2 app has a matching app.asar SHA-256 of
+2fbe9bf38625978602372488549eaf90710d0fad6a2298cb38c41dbdc2527de1.
+Its LaunchAgent ran independently after the GUI exited; ordinary open
+restored exactly one GUI process, and repeated open did not create another.
+
 # VaultDesk v1.2.1 release
 
-Status: locally verified on 2026-10-30. GitHub CI, publication, and the
-installed-app LaunchAgent check will be recorded in QA-CURRENT.md after release.
+Status: published on 2026-10-30. GitHub CI and downloaded DMG verification
+passed. The installed worker worked, but a normal reopen routed to the worker
+instead of a GUI; v1.2.2 fixes that issue.
 
 ## v1.2.1 artifact
 

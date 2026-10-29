@@ -1,5 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
+import { spawn } from "node:child_process";
 import { pathToFileURL } from "node:url";
 import {
   app,
@@ -34,6 +35,7 @@ function resolveAgentSkillDir(): string {
 }
 
 let mainWindow: BrowserWindow | null = null;
+let lastWorkerReopenAt = 0;
 
 app.setName("VaultDesk");
 
@@ -242,11 +244,19 @@ function installCsp(): void {
   });
 }
 
-app.on("second-instance", () => {
-  if (mainWindow) {
-    if (mainWindow.isMinimized()) mainWindow.restore();
-    mainWindow.focus();
+function showMainWindow(): void {
+  if (!mainWindow || mainWindow.isDestroyed()) {
+    mainWindow = createWindow();
+    Menu.setApplicationMenu(buildAppMenu(mainWindow));
+    return;
   }
+  if (mainWindow.isMinimized()) mainWindow.restore();
+  mainWindow.show();
+  mainWindow.focus();
+}
+
+app.on("second-instance", () => {
+  if (!isBackgroundWorker && app.isReady()) showMainWindow();
 });
 
 app.on("web-contents-created", (_event, contents) => {
@@ -257,6 +267,18 @@ app.whenReady().then(() => {
   if (isBackgroundWorker) {
     // The LaunchAgent is headless and should not add a second Dock presence.
     app.dock?.hide();
+    // LaunchServices may send a normal Finder/Dock reopen to this process
+    // because it belongs to the same bundle as the GUI. Start a GUI process
+    // directly; opening via LaunchServices would route back to this worker.
+    app.on("activate", () => {
+      const now = Date.now();
+      if (now - lastWorkerReopenAt < 750) return;
+      lastWorkerReopenAt = now;
+      const guiArgs = process.argv.slice(1).filter((arg) => arg !== "--vaultdesk-background-worker");
+      const child = spawn(app.getPath("exe"), guiArgs, { detached: true, stdio: "ignore" });
+      child.on("error", (error) => console.error("Could not reopen VaultDesk:", error));
+      child.unref();
+    });
     startBackgroundWorker();
     return;
   }
@@ -275,8 +297,7 @@ app.whenReady().then(() => {
     credits: "本地优先的技能仓库管理器",
   });
 
-  mainWindow = createWindow();
-  Menu.setApplicationMenu(buildAppMenu(mainWindow));
+  showMainWindow();
 
   try {
     const settings = readSettings();
@@ -286,10 +307,7 @@ app.whenReady().then(() => {
   }
 
   app.on("activate", () => {
-    if (BrowserWindow.getAllWindows().length === 0) {
-      mainWindow = createWindow();
-      if (mainWindow) Menu.setApplicationMenu(buildAppMenu(mainWindow));
-    }
+    showMainWindow();
   });
 });
 

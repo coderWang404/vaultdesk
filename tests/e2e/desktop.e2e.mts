@@ -1178,6 +1178,33 @@ async function headlessBackgroundWorker(suite: Suite): Promise<void> {
   }
 }
 
+async function reopenClosedGuiWindow(suite: Suite): Promise<void> {
+  const workspace = suite.workspace("reopen-gui");
+  const launched = await suite.launch({ workspace, initialVault: null });
+  await launched.page.close();
+  await waitFor(() => launched.app.windows().length === 0, "GUI window closed while app remains running");
+
+  const electronBinary = createRequire(path.join(repoRoot, "apps/desktop/package.json"))("electron") as string;
+  const env = { ...cliEnv(workspace), VAULTDESK_USER_DATA: workspace.userData };
+  delete env.ELECTRON_RUN_AS_NODE;
+  const spawnGui = () => spawn(electronBinary, [path.join(repoRoot, "apps/desktop")], {
+    cwd: path.join(repoRoot, "apps/desktop"), env, stdio: "ignore",
+  });
+
+  const reopenedPromise = launched.app.waitForEvent("window", { timeout: 20_000 });
+  const second = spawnGui();
+  const reopened = await reopenedPromise;
+  await reopened.waitForSelector(".app-shell", { timeout: 20_000 });
+  await waitFor(() => second.exitCode !== null, "second GUI instance exits after handing off focus");
+  equal(launched.app.windows().length, 1, "one GUI window after reopening");
+
+  const third = spawnGui();
+  await waitFor(() => third.exitCode !== null, "extra GUI instance exits after handing off focus");
+  equal(launched.app.windows().length, 1, "repeated open does not duplicate the GUI window");
+  await suite.close(launched);
+  console.log("      closed GUI window reopens via second-instance; repeated opens keep one window");
+}
+
 async function adoptPendingSkillFromActivity(suite: Suite): Promise<void> {
   const workspace = suite.workspace("adopt-pending-ui");
   const vaultPath = path.join(workspace.root, "adopt-vault");
@@ -2072,6 +2099,7 @@ async function main(): Promise<void> {
   await run("manual source check and automatic update mode", manualSourceCheck);
   await run("all registered vaults sync and keyboard tabs", registeredVaultSync);
   await run("headless background worker startup and disable", headlessBackgroundWorker);
+  await run("closed GUI window reopens through the single-instance handoff", reopenClosedGuiWindow);
   await run("pending skill adoption from activity", adoptPendingSkillFromActivity);
   await run("slow check, offline warning and journal recovery banner", slowOfflineAndRecovery);
   await run("custom tool preset installs under a sandboxed HOME", presetInstall);

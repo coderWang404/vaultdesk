@@ -1,11 +1,13 @@
 import path from "node:path";
 import YAML from "yaml";
+import { slugSchema } from "@vaultdesk/schema";
 import {
   copyDirectory,
   exists,
   ensureDir,
   isDirectory,
   isFile,
+  isInside,
   listDirectory,
   readText,
   writeTextAtomic,
@@ -42,6 +44,9 @@ function candidateFrom(dir: string, root: string): ImportSkillCandidate {
     if (typeof parsed.data.name === "string" && parsed.data.name.trim()) name = parsed.data.name.trim();
   } catch {
     // validation reports unreadable skills later
+  }
+  if (!slugSchema.safeParse(name).success) {
+    throw new VaultDeskError("invalid-input", `Skill name must be a lowercase slug: ${name}`);
   }
   return { name, path: dir, relativePath: relativeSlash(root, dir) || ".", description };
 }
@@ -94,6 +99,9 @@ export async function previewImport(
   const detection = detectImport(inputPath);
   const snapshot = await openVault(vaultPath);
   const sourceName = name ?? detection.suggestedName;
+  if (!slugSchema.safeParse(sourceName).success) {
+    throw new VaultDeskError("invalid-input", `Source name must be a lowercase slug: ${sourceName}`);
+  }
   const shape = options.kind ? "package" : detection.shape;
   const kind = options.kind ?? "collection";
   const entrypoint =
@@ -243,7 +251,10 @@ export async function applyImport(
 }
 
 function detectGithubSkills(root: string, requestedPath?: string): { base: string; skills: ImportSkillCandidate[] } {
-  const base = requestedPath ? path.join(root, requestedPath) : root;
+  const base = requestedPath ? path.resolve(root, requestedPath) : root;
+  if (!isInside(base, root)) {
+    throw new VaultDeskError("path-escape", `Repository path escapes the checkout: ${requestedPath}`);
+  }
   if (!isDirectory(base)) {
     throw new VaultDeskError("upstream-not-found", `Path not found in repository: ${requestedPath ?? "."}`);
   }
@@ -287,6 +298,9 @@ export async function previewAddGithub(
   const repoSlug = slugifyName(repoName);
   const shape = (input.kind || detected.skills.length > 1 ? "package" : "standalone") as "package" | "standalone";
   const sourceName = input.name ?? (shape === "standalone" ? detected.skills[0]?.name ?? repoSlug : repoSlug);
+  if (!slugSchema.safeParse(sourceName).success) {
+    throw new VaultDeskError("invalid-input", `Source name must be a lowercase slug: ${sourceName}`);
+  }
   const kind = input.kind ?? "collection";
   const entrypoint = kind === "suite" ? input.entrypoint ?? (detected.skills.length === 1 ? detected.skills[0]?.name : undefined) : undefined;
   if (kind === "suite" && !entrypoint) throw new VaultDeskError("invalid-input", "A suite GitHub import requires --entrypoint.");

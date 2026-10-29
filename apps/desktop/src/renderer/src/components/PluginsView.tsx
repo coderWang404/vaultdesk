@@ -79,6 +79,7 @@ export function PluginsView({
             <button
               key={value}
               className={filter === value ? "is-active" : ""}
+              aria-pressed={filter === value}
               onClick={() => setFilter(value)}
             >
               {label}
@@ -98,7 +99,9 @@ export function PluginsView({
                 导入插件
               </Button>
             }
-          />
+          >
+            导入包含插件资产的来源，在此查看技能、工具和 manifest。
+          </EmptyState>
         ) : (
           <EmptyState
             icon="search"
@@ -115,7 +118,9 @@ export function PluginsView({
                 清除筛选
               </Button>
             }
-          />
+          >
+            更换关键词，或清除来源类型筛选。
+          </EmptyState>
         )
       ) : (
         <div className="source-list">
@@ -202,8 +207,10 @@ export function PluginsView({
                     ) : null}
                   </div>
                 </div>
-                <div className="row-actions">
-                  <Icon name="chevron-right" size={14} className="row-chevron" />
+                <div className="row-actions" onClick={(event) => event.stopPropagation()}>
+                  <Button className="row-action-primary" size="sm" variant="quiet" onClick={() => onSelect(plugin)} aria-pressed={selected === plugin.name} aria-label={"查看详情：" + plugin.name}>
+                    查看详情
+                  </Button>
                 </div>
               </article>
             );

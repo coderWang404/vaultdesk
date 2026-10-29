@@ -1,5 +1,6 @@
 import path from "node:path";
 import YAML from "yaml";
+import { slugSchema } from "@vaultdesk/schema";
 import {
   copyDirectory,
   exists,
@@ -103,6 +104,9 @@ export async function previewPluginImport(
   }
   const snapshot = await openVault(vaultPath);
   const suggestedName = options.name ?? slugifyName(manifestName(manifests) ?? path.basename(root));
+  if (!slugSchema.safeParse(suggestedName).success) {
+    throw new VaultDeskError("invalid-input", `Plugin name must be a lowercase slug: ${suggestedName}`);
+  }
   const warnings: string[] = [];
   if (manifests.length === 0) {
     warnings.push(
@@ -227,6 +231,9 @@ export async function previewGithubPlugin(
   const fallbackName =
     resolved.relativePath === "." ? (repo.split("/")[1] ?? path.basename(fetched.root)) : path.basename(resolved.root);
   const suggestedName = input.name ?? slugifyName(manifestName(manifests) ?? fallbackName);
+  if (!slugSchema.safeParse(suggestedName).success) {
+    throw new VaultDeskError("invalid-input", `Plugin name must be a lowercase slug: ${suggestedName}`);
+  }
   const warnings = [...resolved.warnings, `Pinned to ${fetched.commit.slice(0, 12)} on ${ref}.`];
   if (manifests.length === 0) {
     warnings.push(

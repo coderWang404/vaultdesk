@@ -18,7 +18,7 @@
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-Apache--2.0-blue.svg" alt="License: Apache-2.0"></a>
   <img src="https://img.shields.io/badge/platform-macOS%2013%2B-lightgrey.svg" alt="Platform: macOS 13+">
   <img src="https://img.shields.io/badge/node-22%2B-339933.svg" alt="Node.js 22+">
-  <img src="https://img.shields.io/badge/version-1.0.0-brightgreen.svg" alt="Version 1.0.0">
+  <img src="https://img.shields.io/badge/version-1.1.0-brightgreen.svg" alt="Version 1.1.0">
 </p>
 
 <p align="center">
@@ -26,7 +26,7 @@
 </p>
 
 > [!NOTE]
-> 1.0.0 is usable from source. The tool-card, MCP, and external-skill record layers are on `main` but are not part of a tagged release. There is no notarized build, GitHub Release, Homebrew formula, or npm package yet.
+> VaultDesk 1.1.0 is available as an Apple Silicon DMG from [GitHub Releases](https://github.com/coderWang404/vaultdesk/releases/tag/v1.1.0). The build is ad-hoc signed and is not notarized. There is no Homebrew formula or npm package yet.
 
 ## Contents
 
@@ -55,8 +55,8 @@ Agent skills are easy to write and hard to keep track of. They get copied into s
 The project is built on four rules:
 
 1. **The repository is the source of truth.** Install destinations are artifacts, not the primary copy.
-2. **Review before write.** Network fetches happen outside the vault, and every write has a preview.
-3. **Third-party stays third-party.** Plugins, external tools, and tool-managed skills are stored or recorded, never executed, installed, or rewritten by VaultDesk.
+2. **Review before changing managed content.** Network fetches happen outside the vault; changes to skills, plugins, and targets have previews. Source checks record local state separately.
+3. **Third-party stays third-party.** VaultDesk stores plugins and can update their in-vault copies after review; it only records or observes external tools and tool-managed skills. It never executes or installs those assets or rewrites a tool-owned external path.
 4. **One core, two surfaces.** The desktop app and CLI share the same TypeScript core, rules, and JSON contract.
 
 VaultDesk is for people who run more than one coding agent and maintain their own skill library. It is not a marketplace, an agent runtime, or a plugin installer.
@@ -89,7 +89,7 @@ The desktop app is an Electron + React shell around the shared core. It provides
 - Import flows for local folders, GitHub repositories, skills, packages, and plugin roots
 - Installation previews, slot classification, timestamped backups, verification, and restore
 - Explicit Git commit and push limited to the paths VaultDesk changed
-- Read-only record pages for plugins, tool cards, and MCP servers
+- Plugin import and update review pages, plus read-only record pages for tool cards and MCP servers
 - Tool-managed skills grouped by owner, with an external filter and an observation-only inspector
 
 The desktop UI copy is currently Chinese. CLI output and JSON envelopes are English. Documentation is bilingual: this README has a Simplified Chinese edition, and the design notes under `docs/` are a mix of Chinese and English.
@@ -110,7 +110,7 @@ Both screenshots use a demo vault built from the public fixtures. No personal sk
 - **Build:** Node.js 22+, pnpm 11.5.2, Git on `PATH`
 - **CLI:** Node.js 22+; CI also builds and tests on Ubuntu
 
-The desktop app has no published binary yet. The CLI is not on npm. Both are built from this repository.
+Download the Apple Silicon desktop DMG from [GitHub Releases](https://github.com/coderWang404/vaultdesk/releases/tag/v1.1.0). The CLI is not on npm; build it from this repository. Intel users can build the desktop app from source.
 
 ### Desktop from source
 
@@ -126,7 +126,7 @@ To package an ad-hoc signed DMG:
 
 ```bash
 pnpm package:mac
-# release/VaultDesk-1.0.0-<arch>.dmg
+# release/VaultDesk-1.1.0-<arch>.dmg
 ```
 
 The build is ad-hoc signed and not notarized. On first launch, right-click the app and choose **Open**, or allow it in **System Settings → Privacy & Security**.
@@ -169,7 +169,7 @@ vaultdesk source diff some-source --vault "$VAULT"
 vaultdesk source update some-source --vault "$VAULT" --yes
 ```
 
-`source check` only fetches into the cache and does not write tracked vault files. `source diff` shows a per-file unified diff. `source update` previews first and applies only with `--yes`; the desktop app shows the same preview behind a confirmation dialog.
+`source check` queries upstream commits and writes its results to the Git-ignored `.vault/state.json`; it does not change tracked vault content. `source diff` caches upstream content outside the vault and shows a per-file unified diff. `source update` previews first and applies only with `--yes`; the desktop app shows the same preview behind a confirmation dialog.
 
 For plugins, an update refreshes the stored plugin root and its lock entry. It does not touch the copy an agent may have installed, and a pure plugin update does not rebuild skills or reinstall targets.
 
@@ -192,7 +192,7 @@ vaultdesk <group> <action> [arguments] [options]
 | `agent` | `skill` |
 | `git` | `status`, `commit`, `push` |
 
-Read commands never write. Write commands print a preview unless `--yes` is passed. Global options are `--vault <path>`, `--json`, `--yes`, `--help`, and `--version`.
+Pure query commands do not write to disk. `source check` does not change managed content, but it records local check state; commands that change managed content print a preview unless `--yes` is passed. Global options are `--vault <path>`, `--json`, `--yes`, `--help`, and `--version`.
 
 Every command supports `--json`, which returns one envelope on stdout:
 
@@ -286,7 +286,7 @@ description: Reverse engineering workflows bundled with the REA tool.
 notes: Owned by rea-agents; re-pin after a tool update.
 ```
 
-`path` is absolute or starts with `~/` and must be outside the vault. `name` must not collide with a managed skill. One path has one owner: VaultDesk rejects a path that already carries a `.vault-managed` marker. `expected_hash` is optional and pins the content snapshot; `version` is whatever the tool declares, not something VaultDesk discovers. `related_tool` points at a tool card name.
+`path` is absolute or starts with `~/` and must be outside the vault. `name` must not collide with a managed skill. One path has one owner: VaultDesk rejects a path that already carries a `.vault-managed` marker. `expected_hash` is optional and pins the content snapshot. The card's `version` is recorded by the user; VaultDesk only reads an observed version from the skill's `SKILL.md` `metadata.version` and does not query the installed tool's version. `related_tool` points at a tool card name.
 
 | Status | Meaning |
 | --- | --- |
@@ -401,14 +401,14 @@ The renderer has no Node access. The main process owns all filesystem, Git, and 
 
 ## Safety model
 
-- **Preview and confirm.** Every write shows a preview first. The CLI requires `--yes`; the app requires a confirmation dialog.
-- **Fetch outside the vault.** Upstream data lands in the cache first. Nothing is written to the vault until the preview is accepted.
+- **Preview and confirm.** Managed-content changes show a preview first. The CLI requires `--yes`; the app requires a confirmation dialog.
+- **Fetch outside the vault.** Upstream content lands in the cache first. `source check` may update ignored local state; tracked vault content is written only after the preview is accepted.
 - **GitHub content is read-only until forked.** GitHub-origin skills cannot be edited in place.
 - **Plugins are stored, not executed.** Hooks, scripts, commands, and MCP servers inside a plugin root are never run. VaultDesk does not generate marketplace or adapter manifests.
 - **Tool cards are records.** No download, installation, execution, version check, or agent registration.
 - **External skills belong to their tool.** VaultDesk reads and hashes the path, reports drift, and never writes it. `adopt` removes only vault-owned content and a marker owned by this vault.
 - **One owner per path.** A managed skill and an external skill cannot share a path; a marker from another owner blocks `adopt`.
-- **Unmanaged directories survive.** They are moved to a timestamped backup, and VaultDesk keeps the ten most recent snapshots per target.
+- **Unmanaged directories survive.** They are moved to a timestamped backup; installs retain the ten most recent snapshots per target by default when creating a backup.
 - **Git staging is explicit.** VaultDesk commits only the paths it changed. It never runs `git add -A` and refuses paths outside the vault or under `.git`.
 - **Verification has a defined scope.** `target verify` proves that expected files exist and hashes match. It does not prove that an agent loaded a skill.
 - **Secrets stay out.** Do not store tokens, keys, or private URLs in a vault, a plugin record, or a tool card.
@@ -417,7 +417,7 @@ The renderer has no Node access. The main process owns all filesystem, Git, and 
 
 ```bash
 pnpm typecheck
-pnpm test             # 75 tests across 15 files
+pnpm test             # unit and integration tests
 pnpm test:e2e         # CLI + desktop Playwright suites
 pnpm test:e2e:cli
 pnpm test:e2e:desktop
@@ -429,20 +429,21 @@ The E2E suites launch the real Electron app and the built CLI against isolated t
 CI runs typecheck, unit and integration tests, and builds on macOS and Ubuntu. The macOS job also runs the Electron smoke test, uploads a screenshot, packages the DMG, and uploads it as a build artifact.
 
 See [tests/e2e/README.md](tests/e2e/README.md) for the scenario matrix and deliberate coverage limits.
+Release QA results are recorded in [docs/QA-CURRENT.md](docs/QA-CURRENT.md); [docs/RELEASE.md](docs/RELEASE.md) covers v1.1.0 and preserves the earlier v1.0.0 local DMG verification snapshot.
 
 ## Status
 
 | Area | State |
 | --- | --- |
-| Desktop app and CLI | 1.0.0, usable from source |
-| Tool cards and MCP view | Implemented on `main`, not in a tagged release |
-| External skill records | Implemented on `main`, not in a tagged release |
-| DMG | Builds locally, ad-hoc signed, not notarized |
-| GitHub Release / Homebrew / npm | Not published |
+| Desktop app and CLI | 1.1.0; Apple Silicon DMG published, CLI available from source |
+| Tool cards and MCP view | Included in v1.1.0 |
+| External skill records | Included in v1.1.0 |
+| DMG | Apple Silicon release; ad-hoc signed, not notarized |
+| GitHub Release / Homebrew / npm | GitHub Release published; Homebrew and npm not published |
 | Auto-update | Not implemented |
-| Windows and Linux desktop | Not planned for 1.0 |
+| Windows and Linux desktop | Not included in v1.1.0 |
 
-The desktop app is macOS-only at 1.0.0. The CLI is tested on macOS and Ubuntu.
+The desktop app is macOS-only at 1.1.0. The CLI is tested on macOS and Ubuntu.
 
 ## Contributing
 

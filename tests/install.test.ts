@@ -3,7 +3,9 @@ import path from "node:path";
 import { describe, expect, it } from "vitest";
 import {
   acquireWriteLock,
+  backupRootFor,
   installSkills,
+  listBackups,
   openVault,
   planInstall,
   removeTarget,
@@ -192,5 +194,88 @@ describe("install slots and backups", () => {
     const inside = path.join(vaultPath, "installed");
     const snapshot = await openVault(vaultPath);
     expect(() => planInstall(snapshot, { names: ["local-notes"], dest: inside })).toThrow(/inside the vault/);
+  });
+
+  it("never overwrites a slot managed by another vault", async () => {
+    const { vaultPath, dest, backupRoot } = scaffold();
+    const slot = path.join(dest, "gh-pack-alpha");
+    fs.mkdirSync(slot, { recursive: true });
+    fs.writeFileSync(path.join(slot, "SKILL.md"), "foreign content\n");
+    fs.writeFileSync(path.join(slot, ".vault-managed"), JSON.stringify({ vault: tempDir("foreign-vault"), skill: "gh-pack-alpha" }));
+    const snapshot = await openVault(vaultPath);
+    expect(() => planInstall(snapshot, { names: ["gh-pack-alpha"], dest, id: "test-target", backupRoot })).toThrow(/another vault/);
+    await expect(installSkills(vaultPath, { names: ["gh-pack-alpha"], dest, id: "test-target", backupRoot })).rejects.toMatchObject({ code: "conflict" });
+    expect(fs.readFileSync(path.join(slot, "SKILL.md"), "utf8")).toBe("foreign content\n");
+  });
+
+  it("attributes a shared directory slot to the target that installed it", async () => {
+    const { vaultPath, dest, backupRoot } = scaffold();
+    await installSkills(vaultPath, { names: ["local-notes"], dest, id: "new-target", backupRoot });
+    const snapshot = await openVault(vaultPath);
+    expect(snapshot.targets.find((target) => target.id === "fixture-agents")?.installed.filter((entry) => entry.managed)).toEqual([]);
+    expect(snapshot.targets.find((target) => target.id === "new-target")?.installed).toHaveLength(1);
+    expect(snapshot.counts.managedInstalls).toBe(1);
+    await expect(installSkills(vaultPath, { names: ["local-notes"], dest, id: "fixture-agents", backupRoot })).rejects.toMatchObject({ code: "conflict" });
+    const removed = await removeTarget(vaultPath, "fixture-agents", { deleteFiles: true, backupRoot });
+    expect(removed.filesMoved).toEqual([]);
+    expect(fs.existsSync(path.join(dest, "local-notes", "SKILL.md"))).toBe(true);
+  });
+
+  it("records each target's own installed content hash", async () => {
+    const { vaultPath, backupRoot } = scaffold();
+    const root = tempDir("two-target-hashes");
+    await installSkills(vaultPath, { names: ["local-notes"], dest: path.join(root, "notes"), id: "notes-target", backupRoot });
+    await installSkills(vaultPath, { names: ["gh-standalone"], dest: path.join(root, "github"), id: "github-target", backupRoot });
+    const snapshot = await openVault(vaultPath);
+    const notesHash = snapshot.targets.find((target) => target.id === "notes-target")?.installedHash;
+    const githubHash = snapshot.targets.find((target) => target.id === "github-target")?.installedHash;
+    expect(notesHash).toMatch(/^sha256:/);
+    expect(githubHash).toMatch(/^sha256:/);
+    expect(notesHash).not.toBe(githubHash);
+  });
+
+  it("separates backup roots for target IDs that sanitize alike", async () => {
+    const { vaultPath, backupRoot } = scaffold();
+    const destinations = [tempDir("colon-target"), tempDir("underscore-target")];
+    for (const dest of destinations) {
+      fs.mkdirSync(path.join(dest, "local-notes"), { recursive: true });
+      fs.writeFileSync(path.join(dest, "local-notes", "user.txt"), "original\n");
+    }
+    const first = await installSkills(vaultPath, { names: ["local-notes"], dest: destinations[0]!, id: "a:b", backupRoot });
+    await installSkills(vaultPath, { names: ["local-notes"], dest: destinations[1]!, id: "a_b", backupRoot });
+    expect(backupRootFor("a:b", backupRoot)).not.toBe(backupRootFor("a_b", backupRoot));
+    expect(path.dirname(backupRootFor("..", backupRoot))).toBe(backupRoot);
+    const firstBackup = first.backups[0]?.to;
+    if (!firstBackup) throw new Error("Missing first backup");
+    await expect(restoreBackup(vaultPath, { targetId: "a_b", backupPath: firstBackup, name: "local-notes", backupRoot })).rejects.toMatchObject({ code: "invalid-input" });
+    const ambiguousLegacy = path.join(backupRoot, "a_b", "legacy-stamp", "local-notes");
+    fs.mkdirSync(path.dirname(ambiguousLegacy), { recursive: true });
+    fs.cpSync(firstBackup, ambiguousLegacy, { recursive: true });
+    await expect(restoreBackup(vaultPath, { targetId: "a_b", backupPath: ambiguousLegacy, name: "local-notes", backupRoot })).rejects.toMatchObject({ code: "invalid-input" });
+  });
+
+  it("continues to list and restore an unambiguous legacy backup", async () => {
+    const { vaultPath, dest, backupRoot } = scaffold();
+    const installed = await installSkills(vaultPath, { names: ["local-notes"], dest, id: "legacy-target", backupRoot });
+    const original = installed.backups[0]?.to;
+    if (!original) throw new Error("Missing fixture backup");
+    const legacyPath = path.join(backupRoot, "legacy-target", "legacy-stamp", "local-notes");
+    fs.mkdirSync(path.dirname(legacyPath), { recursive: true });
+    fs.cpSync(original, legacyPath, { recursive: true });
+    expect((await listBackups("legacy-target", backupRoot)).some((entry) => entry.path === path.dirname(legacyPath))).toBe(true);
+    expect((await restoreBackup(vaultPath, { targetId: "legacy-target", backupPath: legacyPath, name: "local-notes", backupRoot })).restored).toBe("local-notes");
+  });
+
+  it("restores only a named skill from its target's own backup tree", async () => {
+    const { vaultPath, dest, backupRoot } = scaffold();
+    const first = await installSkills(vaultPath, { names: ["local-notes"], dest, id: "test-target", backupRoot });
+    const recordedBackup = first.backups[0]?.to;
+    if (!recordedBackup) throw new Error("Missing fixture backup");
+    const unrelated = path.join(tempDir("unrelated-backup"), "local-notes");
+    fs.mkdirSync(unrelated, { recursive: true });
+    fs.writeFileSync(path.join(unrelated, "SKILL.md"), "unrelated content\n");
+    await expect(restoreBackup(vaultPath, { targetId: "test-target", backupPath: unrelated, name: "local-notes", backupRoot })).rejects.toMatchObject({ code: "invalid-input" });
+    await expect(restoreBackup(vaultPath, { targetId: "test-target", backupPath: recordedBackup, name: "gh-pack-alpha", backupRoot })).rejects.toMatchObject({ code: "invalid-input" });
+    expect(fs.existsSync(path.join(dest, "gh-pack-alpha"))).toBe(false);
   });
 });

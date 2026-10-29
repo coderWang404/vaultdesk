@@ -2,7 +2,7 @@ import { useMemo, useState } from "react";
 import type { ExternalSkillRecord, SkillRecord, VaultSnapshot } from "@vaultdesk/core";
 import { externalStatusLabel, externalStatusTone, originLabel } from "../format";
 import { Icon } from "./icons";
-import { Button, EmptyState, IconButton, SectionHeader, StatusMark, StatusPill } from "./ui";
+import { ActionMenu, Button, EmptyState, SectionHeader, StatusMark, StatusPill } from "./ui";
 
 type TypeFilter = "all" | "standalone" | "suite" | "collection" | "external";
 
@@ -148,6 +148,7 @@ export function SkillsView({
             <button
               key={value}
               className={typeFilter === value ? "is-active" : ""}
+              aria-pressed={typeFilter === value}
               onClick={() => setTypeFilter(value)}
             >
               {label}
@@ -177,7 +178,9 @@ export function SkillsView({
                 导入技能
               </Button>
             }
-          />
+          >
+            导入本地目录或 GitHub 来源，建立可检查、可安装的技能记录。
+          </EmptyState>
         ) : (
           <EmptyState
             icon="search"
@@ -195,7 +198,9 @@ export function SkillsView({
                 清除筛选
               </Button>
             }
-          />
+          >
+            试试其他关键词，或清除类型与安装状态筛选。
+          </EmptyState>
         )
       ) : (
         <div className="skill-groups">
@@ -290,8 +295,10 @@ function ExternalGroup({
                 <StatusPill tone={externalStatusTone(skill.status)}>{externalStatusLabel(skill.status)}</StatusPill>
               )}
             </div>
-            <div className="skill-row-actions">
-              <Icon name="chevron-right" size={14} className="row-chevron" />
+            <div className="skill-row-actions" onClick={(event) => event.stopPropagation()}>
+              <Button className="row-action-primary" size="sm" variant="quiet" onClick={() => onSelect(skill)} aria-pressed={selected === skill.name} aria-label={"查看详情：" + skill.name}>
+                查看详情
+              </Button>
             </div>
           </div>
         ))}
@@ -376,12 +383,16 @@ function SourceGroup({
               )}
             </div>
             <div className="skill-row-actions" onClick={(event) => event.stopPropagation()}>
-              {skill.origin === "github" ? (
-                <IconButton icon="branch" label={`Fork ${skill.name}`} onClick={() => selection.onFork(skill)} />
-              ) : (
-                <IconButton icon="edit" label={`编辑 ${skill.name}`} onClick={() => selection.onEditor(skill)} />
-              )}
-              <Icon name="chevron-right" size={14} className="row-chevron" />
+              <Button className="row-action-primary" size="sm" variant="quiet" onClick={() => selection.onSelect(skill)} aria-pressed={selection.selected === skill.name} aria-label={"查看详情：" + skill.name}>
+                查看详情
+              </Button>
+              <ActionMenu label={"更多技能操作：" + skill.name}>
+                {skill.origin === "github" ? (
+                  <button onClick={() => selection.onFork(skill)}>Fork 到本地</button>
+                ) : (
+                  <button onClick={() => selection.onEditor(skill)}>编辑技能</button>
+                )}
+              </ActionMenu>
             </div>
           </div>
         ))}

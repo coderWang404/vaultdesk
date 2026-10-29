@@ -163,7 +163,7 @@ export async function currentBranch(cwd: string): Promise<string | undefined> {
 
 export async function gitLsRemote(remote: string, ref: string, cwd: string): Promise<string> {
   const result = await git(
-    ["-c", "http.lowSpeedLimit=1", "-c", "http.lowSpeedTime=20", "ls-remote", remote, ref],
+    ["-c", "http.lowSpeedLimit=1", "-c", "http.lowSpeedTime=20", "ls-remote", remote, ref, `${ref}^{}`],
     cwd,
     { timeoutMs: 45_000 },
   );
@@ -178,6 +178,7 @@ export async function gitLsRemote(remote: string, ref: string, cwd: string): Pro
     .filter((entry) => entry.sha && entry.refName);
   const exact =
     lines.find((entry) => entry.refName === `refs/heads/${ref}`) ??
+    lines.find((entry) => entry.refName === `refs/tags/${ref}^{}`) ??
     lines.find((entry) => entry.refName === `refs/tags/${ref}`) ??
     lines.find((entry) => entry.refName === ref) ??
     lines[0];

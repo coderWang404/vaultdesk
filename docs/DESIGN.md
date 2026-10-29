@@ -1,7 +1,7 @@
 # VaultDesk 设计定稿
 
-- 状态：0.1–1.0 已实现；截至 2026-10-28，1.0.0 已构建并通过本地 DMG 验收，尚未发布；工具卡、MCP 与外部技能记录层已实现但未随版本发布；插件登记设计见 `docs/PLUGINS.md`，SkillDeck 互操作结论见 `docs/SKILLDECK-INTEROP.md`，发布状态与 Homebrew/公证评估见 `docs/RELEASE.md`
-- 日期：2026-10-28
+- 状态：当前源码版本为 1.1.0；1.0.0 的本地构建与验证属于历史快照。工具卡、MCP、外部技能记录与界面重做纳入本轮发布；插件登记设计见 `docs/PLUGINS.md`，SkillDeck 互操作结论见 `docs/SKILLDECK-INTEROP.md`，发布记录见 `docs/RELEASE.md`，最终验收见 `docs/QA-CURRENT.md`
+- 日期：2026-10-29
 - 产品名：VaultDesk
 - CLI：`vaultdesk`
 - 仓库：`github.com/coderWang404/vaultdesk`
@@ -12,11 +12,11 @@
 
 ## 实现状态（2026-10-28）
 
-> 1.0 的状态记录保留在下方；工具卡、外部技能记录层与界面重做是本轮新增、尚未随版本发布的功能。
+> 1.0 的状态记录保留在下方；工具卡、外部技能记录层与界面重做属于 v1.1.0 的改动。
 
-- 界面重做（未发布）：九个导航页、欢迎页、搜索面板、标题栏与全部对话框统一到自解释视觉语法；目标归属细化为槽位级；新增 flow strip、slot strip 与状态字形；行内动作改为带 `title`/`aria-label` 的图标按钮；无拖拽交互。
-- 工具卡记录层（未发布）：`tools/<name>.yml` 独立记录、schema 与校验、`tool list/show/add`、`tool list --kind`、`build/tools.json`、搜索、桌面只读工具页与 MCP 页、随 CLI 分发的 `vaultdesk` skill 契约已实现。
-- 外部技能记录层（未发布）：`external-skills/<name>.yml` 卡片、只读观察（路径、目录哈希、description、`metadata.version`、`.vault-managed` 标记）、`external list/show/add/remove/adopt`、`build/external-skills.json`、搜索、技能页外部托管分组与只读 inspector、校验规则已实现。VaultDesk 不写入外部路径。
+- 界面重做（v1.1.0）：九个导航页、欢迎页、搜索面板、标题栏与全部对话框统一到自解释视觉语法；目标归属细化为槽位级；新增 flow strip 与带技能名称的 slot strip；常用操作显示文字，低频操作收进互斥的“更多”菜单；无拖拽交互。
+- 工具卡记录层（v1.1.0）：`tools/<name>.yml` 独立记录、schema 与校验、`tool list/show/add`、`tool list --kind`、`build/tools.json`、搜索、桌面只读工具页与 MCP 页、随 CLI 分发的 `vaultdesk` skill 契约已实现。
+- 外部技能记录层（v1.1.0）：`external-skills/<name>.yml` 卡片、只读观察（路径、目录哈希、description、`metadata.version`、`.vault-managed` 标记）、`external list/show/add/remove/adopt`、`build/external-skills.json`、搜索、技能页外部托管分组与只读 inspector、校验规则已实现。VaultDesk 不写入外部路径。
 - 0.1 只读浏览、校验、上游检查与 diff、迁移预览、多 tab、跨库 Cmd+K 已实现。
 - 0.2 迁移写盘（独立分支、要求干净工作区、提交不推送）已实现。
 - 0.3 安装、目标管理、槽位判定、备份/恢复、文件级验证已实现。
@@ -30,6 +30,15 @@
 - 真实 v1 仓库只读验收：6 个来源、27 个技能、8 个安装目标，`vault validate` 无错误；迁移预览生成 9 个写入与 5 个删除；验收前后 `git status` 完全一致，未创建 `.vault/`。该仓库因已有未跟踪文件而 `cleanWorktree: false`，迁移按设计被阻止。
 - 插件边界：VaultDesk 只存储、校验、展示；不安装、不启用、不适配、不生成 marketplace/adapter manifest、不写 agent 注册表。agent 通过随 CLI 提供的 `vaultdesk` skill 自行安装。
 
+
+## 桌面界面约定（2026-10-29，v1.1.0）
+
+- 视觉：保留暖纸色与立方体标识，页面大标题少量使用中文衬线；正文和操作使用系统无衬线，普通正文至少 14px。通过语义颜色变量成对维护浅色与深色主题，并在设置与欢迎页提供“系统 / 浅色 / 深色”选择，本机持久化。
+- 布局：侧栏可手动折叠，在窄窗口默认收起；未选中资产时不占用详情空间。宽窗口并排显示详情，宽度不超过 1360px 时改用右侧抽屉；抽屉有遮罩、Esc 关闭、焦点约束和关闭后回焦。
+- 信息优先级：总览先呈现下一步、错误与更新状态，再展示资产统计；“尚未检查上游”与“没有待更新”必须区分。列表与安装目标保留快速扫描能力，状态用可见文字说明，空状态给出下一步按钮。
+- 交互：主操作用文字按钮，低频与危险操作进入“更多”菜单；菜单互斥，外点或 Esc 可关闭。搜索结果绑定当前查询，不能用回车选中旧结果；模态层不能叠加打开命令面板。
+- 验收：在 1100、1280、1440px 宽度和浅深主题检查主要页面与弹窗，无横向溢出；普通文字对比度、键盘路径、减少动态效果与 Axe 扫描纳入回归。
+- 本轮验证：92 个单元测试、16 个桌面端端到端场景、12 个 CLI 端到端场景通过；浅深主题的九个页面及搜索/安装弹窗共 20 次 Axe 扫描无严重违规，欢迎页主题切换与重载持久化已加入回归。
 
 ## 1. 产品定义
 
@@ -48,7 +57,7 @@ VaultDesk 是一个本地优先的 skill / plugin 资产管理器。它把一个
 核心承诺：
 
 1. 仓库是唯一事实源。安装目录只是产物，随时可以重建。
-2. 先看差异，再落盘。网络抓取永远发生在仓库之外的缓存，用户确认后才写入。
+2. 先看差异，再修改受管内容。网络抓取发生在仓库之外的缓存；`source check` 可更新被 Git 忽略的本机状态，受管内容仍须用户确认后才写入。
 3. 可复现。锁文件记录每个上游来源的 commit 与内容哈希。
 4. 不替用户删除。安装、更新、迁移都不自动清理未识别的内容。
 5. 桌面与 CLI 共用一套 TypeScript core，行为一致，JSON 输出稳定。
@@ -328,7 +337,7 @@ notes: 由 rea-agents 管理；工具升级后重新 pin。
 
 - 用 `git ls-remote <remote> <ref>` 解析远端 commit。
 - 与 `vault.lock` 比较，得出 `current / update-available / not-downloaded / auth-failed / error`。
-- 结果写入 state，不写仓库。
+- 结果写入被 Git 忽略的 `.vault/state.json`，不修改 Git 跟踪文件；因此 `source check` 并非完全无写盘操作。
 - 启动时若距上次成功检查超过 24 小时，自动检查一次；运行期间不设定时器。手动刷新始终可用。
 
 ### 5.2 预览与落盘
@@ -345,14 +354,14 @@ notes: 由 rea-agents 管理；工具升级后重新 pin。
 - managed：原地替换。
 - symlink：只删除链接，绝不触碰链接目标。
 - unmanaged：先移动到备份根，再写入。
-- 每个安装目录写 `.vault-managed` JSON，包含 vault、skill、installed_at、hash。
+- 每个安装目录写 `.vault-managed` JSON，包含 vault、target_id、skill、installed_at、hash。旧标记若没有 `target_id` 仍可读取与校验。
 - 不自动删除目标中多余的技能。卸载必须显式调用。
-- 每目标保留最近 10 份备份，更早的由用户手动清理。0.1 只读，备份功能从 0.3 生效。
+- 安装产生备份时，每目标默认保留最近 10 份，超出部分自动清理；注销或恢复仅在调用方传入 `retention` 时清理旧备份。0.1 只读，备份功能从 0.3 生效。
 - 验证只到文件层面：期望文件存在且哈希匹配，文案为「files in place」，不声称工具已识别。
 - 插件不参与安装。`target install` 遇到插件 source 或插件内技能时返回 `plugin-not-installable`。
 - 外部技能不参与安装。target 引用外部技能时校验报 `target.external-not-installable`；安装路径由归属工具负责。
 - 目标是一条命名安装规则，指向一个目录，目标本身不等于目录；多个目标可以共用同一个 `dest`。
-- 槽位归属只看 `names`：列在本目标 `names` 中的槽位计入 `installed`；同目录下带 `.vault-managed` 标记但不在 `names` 中的槽位计入 `otherManaged`，可能来自其他目标或其他 vault。
+- 槽位归属同时看目标的 `names` 与标记的 `target_id`：技能在本目标的 `names` 中，且标记未写 `target_id` 或与本目标一致时计入 `installed`；其他带标记的槽位计入 `otherManaged`。旧标记缺少 `target_id` 时仍按 `names` 兼容识别，多个目标共用同目录且引用同名技能时可能无法单靠旧标记区分归属。
 - 注销目标只处理本目标的槽位，`otherManaged` 保持原样；目录是否存在单独用 `exists` 表示，不参与归属判断。
 
 ### 5.4 编辑与 fork
@@ -478,7 +487,7 @@ vaultdesk agent skill
 - core 单元测试：schema、路径、哈希、校验规则、迁移、安装槽位、fork、导入检测、搜索、Git 路径过滤、插件发现与校验、工具卡与 MCP 解析及产物、外部技能观察与 adopt。
 - fixture 集成测试：v1 与 v2 各一套，覆盖 local/GitHub、standalone/package/suite/collection；插件 fixture 覆盖 Claude/Codex/Qoder/manifest 冲突/hooks/路径逃逸，以及无 manifest 的组合识别与显式强制导入。工具卡覆盖合法/非法字段、`tool list/show/add`、`tool list --kind` 过滤与非法 kind、重复写入与 `--force`、`build/tools.json`、搜索命中（含 `toolKind`）。外部技能覆盖只读观察、哈希 pin、drift/missing/marker 冲突、路径与命名冲突、目标引用拒绝、搜索索引、adopt 与 CLI 全命令。
 - 迁移 golden：固定 fixture 的 dry-run 输出与 golden 文件一致，重复调用结果稳定。
-- CLI 测试：JSON 信封、退出码、`--yes` 门禁、只读命令不写盘。
+- CLI 测试：JSON 信封、退出码、`--yes` 门禁、纯查询命令不写盘；`source check` 仅更新本机状态。
 - Electron smoke：本地脚本启动生产构建，打开临时 fixture，校验渲染文本并截图；CI 的 macOS 任务运行同一脚本。
 - 发布前关键路径 E2E：打开真实 v1 vault → 检查 → diff → 迁移预览，确认 git status 不变。2026-10-26 已对真实仓库执行。
 - CI：`.github/workflows/ci.yml` 在 macOS + Ubuntu 跑 typecheck、test、build；macOS 额外运行 smoke 并打包 DMG。
@@ -486,9 +495,9 @@ vaultdesk agent skill
 ## 10. 发布
 
 - 1.0.0 提供有效 ad-hoc bundle 签名、未公证的 arm64 DMG；README 说明首次打开需右键或「隐私与安全性」放行。
-- 版本遵循 SemVer；当前为 1.0.0。0.1 至 0.9 的功能已全部并入本次发布。
-- 2026-10-27 已在本地完成构建与 DMG 验收，未创建 tag、GitHub release、Homebrew cask 或公证提交。产物哈希、发布清单、公证步骤与 cask 草案见 `docs/RELEASE.md`。
-- 发布动作（commit/tag/push/GitHub release/cask/公证）逐项需要明确批准。
+- 版本遵循 SemVer；当前源码为 1.1.0。0.1 至 0.9 的功能已并入历史 1.0.0 版本。
+- 2026-10-27 的 1.0.0 本地 DMG 验收属于历史记录；v1.1.0 的最终产物、校验值和发布状态见 `docs/RELEASE.md` 与 `docs/QA-CURRENT.md`。
+- v1.1.0 的桌面发布产物为 macOS arm64 DMG，仍采用 ad-hoc 签名，未公证；未提供 Homebrew cask 或 npm 包。
 
 ## 11. 关键决策记录
 

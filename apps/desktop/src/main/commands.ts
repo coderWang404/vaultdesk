@@ -145,7 +145,20 @@ const handlers: { [K in IpcCommand]: Handler<K> } = {
   "target.verify": ({ vaultPath, id }) => verifyTarget(vaultPath, id),
   "target.backups": async ({ vaultPath, targetId }): Promise<{ backups: BackupEntry[] }> => {
     const settings = readSettings();
-    return { backups: await listBackups(targetId, settings.backupRoot) };
+    const backups = await listBackups(targetId, settings.backupRoot);
+    if (targetId) return { backups };
+
+    // Keep orphaned snapshots visible, but resolve registered targets from
+    // their current and legacy backup roots before displaying or restoring.
+    const snapshot = await openVault(vaultPath);
+    const owners = new Map<string, string | null>();
+    for (const target of snapshot.targets) {
+      for (const entry of await listBackups(target.id, settings.backupRoot)) {
+        if (!owners.has(entry.path)) owners.set(entry.path, target.id);
+        else if (owners.get(entry.path) !== target.id) owners.set(entry.path, null);
+      }
+    }
+    return { backups: backups.map((entry) => ({ ...entry, targetId: owners.get(entry.path) ?? entry.targetId })) };
   },
   "target.restore": ({ vaultPath, id, backupPath, name }) => {
     const settings = readSettings();
@@ -205,8 +218,12 @@ const handlers: { [K in IpcCommand]: Handler<K> } = {
   "app.removeRecent": ({ path: vaultPath }) => removeRecent(vaultPath),
   "app.reveal": async ({ path: target }) => {
     if (fs.existsSync(target) && fs.statSync(target).isDirectory()) {
-      await shell.openPath(target);
+      const error = await shell.openPath(target);
+      if (error) throw new VaultDeskError("operation-failed", `无法打开目录 ${target}：${error}`);
     } else {
+      if (!fs.existsSync(path.dirname(target))) {
+        throw new VaultDeskError("operation-failed", `无法在 Finder 中显示：父目录不存在（${target}）`);
+      }
       shell.showItemInFolder(target);
     }
     return { revealed: target };
@@ -235,7 +252,8 @@ export async function runCommand(
   const schema = ipcCommands[command];
   const parsed = schema.safeParse(payload);
   if (!parsed.success) {
-    throw new Error(
+    throw new VaultDeskError(
+      "invalid-input",
       `Invalid payload for ${command}: ${parsed.error.issues
         .map((issue) => `${issue.path.join(".") || "(root)"}: ${issue.message}`)
         .join("; ")}`,

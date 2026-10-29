@@ -425,16 +425,14 @@ vaultdesk plugin show <name> [--json]
 
 ## 9. agent 契约
 
-随 CLI 提供的 `vaultdesk` skill 必须包含插件章节，内容必须包含：
+随 CLI 提供的 `vaultdesk` skill 负责稳定的 vault 侧契约，不把可能变化的 agent 安装命令写死。当前契约包括：
 
-1. 发现：`vaultdesk plugin list --json` 和 `vaultdesk plugin show <name> --json`。
+1. 发现：`vaultdesk plugin list --json` 和 `vaultdesk plugin show <name> --json`；查看 `manifests`、`assets`、`containedSkills` 与 `hasHooks`。
 2. 安装源：使用 `rootPath`，不要使用 `third_party`。
-3. Claude Code：按 `.claude-plugin/plugin.json` 使用 agent 自己的 plugin/marketplace 机制。
-4. Codex：按 `.codex-plugin/plugin.json` 使用 `codex plugin` 或本地 marketplace；缺少 Codex manifest 时，在 agent 自己的目录生成 adapter，不回写 vault。
-5. Qoder：按 `.qoder-plugin/plugin.json` 或 `.claude-plugin/plugin.json` 使用应用内本地插件导入；不写 `installed_plugins_v2.json`。
-6. hooks：安装前把资产清单和 hooks 风险展示给用户，得到明确确认。
-7. 更新：先 `source check`，再 `source update --yes`，然后在 agent 中重新安装。VaultDesk 不跟踪 agent 侧版本。
-8. 只读：GitHub 插件不得修改 `plugins/<name>/`；需要改动时复制到 agent 自己的目录再改。
+3. Agent 侧安装：按目标 agent 当前的插件机制处理；需要 adapter 时只在 agent 自己的目录生成，不回写 vault，也不直接改写 agent 的私有注册文件。
+4. Hooks：安装前展示资产清单和 hooks 风险，得到明确确认；VaultDesk 自身绝不执行 hooks。
+5. 更新：先 `source check`，审阅差异后 `source update --yes`，然后在 agent 中重新安装或刷新。VaultDesk 不跟踪 agent 侧版本。
+6. 只读：GitHub 插件不得修改 `plugins/<name>/`；需要改动时复制到 agent 自己的目录再改。
 
 ## 10. 安全
 
@@ -489,7 +487,7 @@ vaultdesk plugin show <name> [--json]
 
 1. 导入含 hooks 的 Claude 插件后，插件页显示资产，CLI JSON 的 `hasHooks` 为真，hooks 未执行。
 2. 导入 Codex-only 和 Qoder-only 插件后，原 manifest 原样保存，不生成 adapter。
-3. 插件内技能不出现在技能页，`target install` 返回 `plugin-skill-not-installable`。
+3. 插件内技能不出现在技能页，`target install` 返回 `plugin-not-installable`。
 4. 0 技能插件可导入、展示、更新。
 5. 插件更新能显示整根 diff，并在更新后保留 pristine 副本一致。
 6. grill-me suite 的成员引用检查通过；缺失引用产生 warning。

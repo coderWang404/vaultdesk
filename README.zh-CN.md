@@ -18,7 +18,7 @@
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-Apache--2.0-blue.svg" alt="许可证：Apache-2.0"></a>
   <img src="https://img.shields.io/badge/platform-macOS%2013%2B-lightgrey.svg" alt="平台：macOS 13+">
   <img src="https://img.shields.io/badge/node-22%2B-339933.svg" alt="Node.js 22+">
-  <img src="https://img.shields.io/badge/version-1.0.0-brightgreen.svg" alt="版本 1.0.0">
+  <img src="https://img.shields.io/badge/version-1.1.0-brightgreen.svg" alt="版本 1.1.0">
 </p>
 
 <p align="center">
@@ -26,7 +26,7 @@
 </p>
 
 > [!NOTE]
-> 1.0.0 可以从源码使用。工具卡、MCP 与外部技能这几层记录已经在 `main` 上，但还没有进入带 tag 的版本。目前没有公证构建、GitHub Release、Homebrew formula 或 npm 包。
+> VaultDesk 1.1.0 已在 [GitHub Releases](https://github.com/coderWang404/vaultdesk/releases/tag/v1.1.0) 提供 Apple Silicon DMG。构建采用 ad-hoc 签名，未公证；目前没有 Homebrew formula 或 npm 包。
 
 ## 目录
 
@@ -55,8 +55,8 @@ Agent 技能写起来很快，长期维护却很难。它们被复制到多个 a
 项目建立在四条规则上：
 
 1. **仓库是唯一事实来源。** 安装目标是产物，不是主副本。
-2. **先审阅，再写入。** 网络拉取发生在 vault 之外，每次写入都有预览。
-3. **第三方保持第三方身份。** 插件、外部工具和工具托管的技能只做存储或登记，VaultDesk 从不执行、安装或改写它们。
+2. **先审阅，再修改受管内容。** 网络拉取发生在 vault 之外；修改技能、插件或目标前会给出预览。来源检查会单独记录本机状态。
+3. **第三方保持第三方身份。** 插件由 VaultDesk 存储，并可在审阅后更新 vault 内的副本；外部工具和工具托管的技能只做登记或观察。VaultDesk 不执行或安装这些资产，也不改写工具拥有的外部路径。
 4. **一个核心，两个入口。** 桌面应用和 CLI 共用同一套 TypeScript 核心、规则与 JSON 契约。
 
 VaultDesk 面向同时使用多个编码 agent、并且维护自己技能库的人。它不做市场，不做 agent 运行时，也不做插件安装器。
@@ -89,7 +89,7 @@ VaultDesk 面向同时使用多个编码 agent、并且维护自己技能库的�
 - 本地文件夹、GitHub 仓库、技能、包与插件目录的导入流程
 - 安装预览、槽位分类、带时间戳的备份、校验与恢复
 - 只针对 VaultDesk 改动路径的显式 Git 提交与推送
-- 插件、工具卡与 MCP 服务的只读记录页
+- 插件的导入与更新审阅页，以及工具卡与 MCP 服务的只读记录页
 - 按所有者分组的外部技能，带筛选与只读检查器
 
 桌面界面目前是中文。CLI 输出与 JSON 信封使用英文。文档中英并存：本 README 有[简体中文版](README.zh-CN.md)，`docs/` 下的设计说明也是中英文都有。
@@ -110,7 +110,7 @@ VaultDesk 面向同时使用多个编码 agent、并且维护自己技能库的�
 - **构建：** Node.js 22+、pnpm 11.5.2、`PATH` 中可用的 Git
 - **CLI：** Node.js 22+；CI 也会在 Ubuntu 上构建和测试
 
-桌面应用还没有发布二进制。CLI 也不在 npm 上。两者都从本仓库构建。
+Apple Silicon 桌面版可从 [GitHub Releases](https://github.com/coderWang404/vaultdesk/releases/tag/v1.1.0) 下载。CLI 尚未发布到 npm，需要从本仓库构建；Intel 用户也可从源码构建桌面版。
 
 ### 从源码运行桌面应用
 
@@ -126,7 +126,7 @@ pnpm dev
 
 ```bash
 pnpm package:mac
-# release/VaultDesk-1.0.0-<arch>.dmg
+# release/VaultDesk-1.1.0-<arch>.dmg
 ```
 
 构建产物使用 ad-hoc 签名，没有公证。第一次启动时右键点击应用并选择 **打开**，或者在 **系统设置 → 隐私与安全性** 中放行。
@@ -169,7 +169,7 @@ vaultdesk source diff some-source --vault "$VAULT"
 vaultdesk source update some-source --vault "$VAULT" --yes
 ```
 
-`source check` 只把内容拉取到缓存，不写 vault 中被跟踪的文件。`source diff` 显示逐文件的 unified diff。`source update` 先预览，只有传入 `--yes` 才应用；桌面应用会把同样的预览放在确认对话框后面。
+`source check` 查询远端提交，并把检查结果写入被 Git 忽略的 `.vault/state.json`；它不修改 Git 跟踪的 vault 内容。`source diff` 会在 vault 外缓存上游内容，并显示逐文件的 unified diff。`source update` 先预览，只有传入 `--yes` 才应用；桌面应用会把同样的预览放在确认对话框后面。
 
 对插件来说，更新会刷新已存储的插件目录和对应的 lock 条目。它不会改动 agent 可能已经安装的副本，单纯更新插件也不会触发技能重建或目标重装。
 
@@ -192,7 +192,7 @@ vaultdesk <group> <action> [arguments] [options]
 | `agent` | `skill` |
 | `git` | `status`、`commit`、`push` |
 
-只读命令从不写入。写入命令默认打印预览，传入 `--yes` 才落盘。全局选项包括 `--vault <path>`、`--json`、`--yes`、`--help` 与 `--version`。
+纯查询命令不写盘。`source check` 虽不修改受管内容，仍会写入本机检查状态；修改受管内容的命令默认打印预览，传入 `--yes` 才落盘。全局选项包括 `--vault <path>`、`--json`、`--yes`、`--help` 与 `--version`。
 
 所有命令都支持 `--json`，在 stdout 返回一个信封：
 
@@ -286,7 +286,7 @@ description: Reverse engineering workflows bundled with the REA tool.
 notes: Owned by rea-agents; re-pin after a tool update.
 ```
 
-`path` 是绝对路径或以 `~/` 开头，并且必须位于 vault 之外。`name` 不能与受管技能重名。一个路径只有一个所有者：如果路径上已有 `.vault-managed` 标记，VaultDesk 会拒绝记录。`expected_hash` 可选，用于固定内容快照；`version` 是工具自己声明的版本，VaultDesk 不去探测。`related_tool` 指向一张工具卡的名称。
+`path` 是绝对路径或以 `~/` 开头，并且必须位于 vault 之外。`name` 不能与受管技能重名。一个路径只有一个所有者：如果路径上已有 `.vault-managed` 标记，VaultDesk 会拒绝记录。`expected_hash` 可选，用于固定内容快照；卡片中的 `version` 由用户记录，VaultDesk 只从技能 `SKILL.md` 的 `metadata.version` 读取观察版本，不查询工具的实际安装版本。`related_tool` 指向一张工具卡的名称。
 
 | 状态 | 含义 |
 | --- | --- |
@@ -408,7 +408,7 @@ VaultDesk 会在自己拥有的每个安装槽位写入 `.vault-managed` 标记�
 - **工具卡只是记录。** 不下载、不安装、不执行、不检查版本，也不向 agent 注册。
 - **外部技能属于它的工具。** VaultDesk 读取并计算路径 hash，报告漂移，从不写入。`adopt` 只删除 vault 自己的内容和本 vault 的标记。
 - **一个路径一个所有者。** 受管技能与外部技能不能共用路径；其他所有者的标记会阻止 `adopt`。
-- **未托管目录不会被覆盖。** 它们会被移动到带时间戳的备份，每个 target 保留最近十份快照。
+- **未托管目录不会被覆盖。** 它们会被移动到带时间戳的备份；安装产生备份时默认保留该目标最近十份快照。
 - **Git 暂存是显式的。** VaultDesk 只提交自己改过的路径，从不执行 `git add -A`，并拒绝 vault 之外或 `.git` 之下的路径。
 - **校验的范围是明确的。** `target verify` 证明预期文件存在且 hash 一致，不能证明某个 agent 已经加载了技能。
 - **密钥不进入 vault。** 不要在 vault、插件记录或工具卡中存放 token、密钥或私有 URL。
@@ -417,7 +417,7 @@ VaultDesk 会在自己拥有的每个安装槽位写入 `.vault-managed` 标记�
 
 ```bash
 pnpm typecheck
-pnpm test             # 15 个文件，75 个测试
+pnpm test             # 单元与集成测试
 pnpm test:e2e         # CLI + 桌面 Playwright 套件
 pnpm test:e2e:cli
 pnpm test:e2e:desktop
@@ -429,20 +429,21 @@ E2E 套件会启动真实的 Electron 应用和构建后的 CLI，面向隔离�
 CI 会运行类型检查、单元与集成测试，并在 macOS 和 Ubuntu 上构建。macOS 任务还会运行 Electron 冒烟测试、上传截图、打包 DMG 并作为构建产物上传。
 
 场景矩阵和有意的覆盖边界见 [tests/e2e/README.md](tests/e2e/README.md)。
+发布验收结果另记于 [docs/QA-CURRENT.md](docs/QA-CURRENT.md)；[docs/RELEASE.md](docs/RELEASE.md) 记录 v1.1.0 并保留早先 v1.0.0 本地 DMG 的验收快照。
 
 ## 状态
 
 | 范围 | 状态 |
 | --- | --- |
-| 桌面应用与 CLI | 1.0.0，可从源码使用 |
-| 工具卡与 MCP 页面 | 已在 `main` 实现，未进入带 tag 的版本 |
-| 外部技能记录 | 已在 `main` 实现，未进入带 tag 的版本 |
-| DMG | 可在本地构建，ad-hoc 签名，未公证 |
-| GitHub Release / Homebrew / npm | 未发布 |
+| 桌面应用与 CLI | 1.1.0；Apple Silicon DMG 已发布，CLI 可从源码使用 |
+| 工具卡与 MCP 页面 | 已包含在 v1.1.0 |
+| 外部技能记录 | 已包含在 v1.1.0 |
+| DMG | Apple Silicon 版本已发布，ad-hoc 签名，未公证 |
+| GitHub Release / Homebrew / npm | GitHub Release 已发布；Homebrew 与 npm 未发布 |
 | 自动更新 | 未实现 |
-| Windows 与 Linux 桌面端 | 1.0 没有计划 |
+| Windows 与 Linux 桌面端 | v1.1.0 未包含 |
 
-桌面应用在 1.0.0 只支持 macOS。CLI 已在 macOS 和 Ubuntu 上测试。
+桌面应用在 1.1.0 只支持 macOS。CLI 已在 macOS 和 Ubuntu 上测试。
 
 ## 参与贡献
 

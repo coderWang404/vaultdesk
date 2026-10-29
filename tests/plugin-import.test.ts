@@ -56,6 +56,16 @@ function writeComposedPlugin(
 }
 
 describe("plugin import", () => {
+  it("rejects a plugin name that escapes vault paths", async () => {
+    const base = tempDir("plugin-paths");
+    const vaultPath = path.join(base, "vault");
+    await initVault(vaultPath, { name: "plugins" });
+    const input = copyClaudeFixture(path.join(base, "input"));
+    await expect(previewPluginImport(input, vaultPath, { name: "../../escaped" })).rejects.toMatchObject({ code: "invalid-input" });
+    await expect(applyPluginImport(input, vaultPath, { name: "../../escaped" })).rejects.toMatchObject({ code: "invalid-input" });
+    expect(fs.existsSync(path.join(base, "escaped"))).toBe(false);
+  });
+
   it("imports a local plugin root and keeps it out of skill installs", async () => {
     const vaultPath = path.join(tempDir("plugin-local"), "vault");
     await initVault(vaultPath, { name: "plugins" });

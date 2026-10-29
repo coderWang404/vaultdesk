@@ -128,6 +128,11 @@ async function v1ReadOnly(suite: Suite): Promise<void> {
     await openSection(launched.page, "技能");
     await launched.page.getByLabel("搜索技能").waitFor();
     equal(await launched.page.locator(".skill-table-row").count(), 6, "v1 skill count");
+    const typeFilter = launched.page.getByRole("group", { name: "技能类型筛选" });
+    equal(await typeFilter.getByRole("button", { name: "全部" }).getAttribute("aria-pressed"), "true", "initial skill filter state");
+    await typeFilter.getByRole("button", { name: "单技能" }).click();
+    equal(await typeFilter.getByRole("button", { name: "单技能" }).getAttribute("aria-pressed"), "true", "selected skill filter state");
+    await typeFilter.getByRole("button", { name: "全部" }).click();
 
     await openSection(launched.page, "安装目标");
     await waitForText(launched.page, "fixture-agents");
@@ -162,6 +167,13 @@ async function v1ReadOnly(suite: Suite): Promise<void> {
     );
     equal(recents.vaults.length, 1, "recent count");
     equal(recents.vaults[0]?.path, fs.realpathSync(vaultPath), "recent path");
+    await launched.page.getByRole("group", { name: "外观" }).getByRole("button", { name: "深色" }).click();
+    await launched.page.waitForFunction(() => document.documentElement.dataset.theme === "dark");
+    await launched.page.reload();
+    await waitForText(launched.page, "最近打开");
+    equal(await launched.page.locator("html").getAttribute("data-theme"), "dark", "welcome theme persists after reload");
+    await launched.page.getByRole("group", { name: "外观" }).getByRole("button", { name: "跟随系统" }).click();
+    equal(await launched.page.evaluate(() => window.localStorage.getItem("vaultdesk.theme")), "system", "welcome can restore system theme");
     await launched.page.getByRole("button", { name: "移除最近记录 v1-basic" }).click();
     await waitForText(launched.page, "还没有最近仓库");
     await waitFor(async () => {
@@ -308,6 +320,7 @@ async function githubFlow(suite: Suite): Promise<void> {
     await waitForText(page, "发现 1 个来源有可用更新", 60_000);
     await sourceRow.getByText("有更新").waitFor();
 
+    await sourceRow.locator(".row-menu summary").click();
     await sourceRow.getByRole("button", { name: "查看上游差异" }).click();
     const diffModal = await dialog(page);
     await waitForText(page, "上游差异 · alpha-repo");
@@ -322,6 +335,7 @@ async function githubFlow(suite: Suite): Promise<void> {
     await page.getByRole("button", { name: "刷新" }).click();
     await waitForText(page, "dirty.tmp");
     await openSection(page, "来源");
+    await sourceRow.locator(".row-menu summary").click();
     await sourceRow.getByRole("button", { name: "应用更新" }).click();
     let updateModal = await dialog(page);
     await waitForText(page, "当前不能写入", 60_000);
@@ -335,6 +349,7 @@ async function githubFlow(suite: Suite): Promise<void> {
     await page.getByRole("button", { name: "刷新" }).click();
     await waitForText(page, "工作区干净");
     await openSection(page, "来源");
+    await sourceRow.locator(".row-menu summary").click();
     await sourceRow.getByRole("button", { name: "应用更新" }).click();
     updateModal = await dialog(page);
     await updateModal.locator(".update-diff-layout").waitFor({ state: "visible", timeout: 60_000 });
@@ -358,6 +373,7 @@ async function githubFlow(suite: Suite): Promise<void> {
     equal(git(vaultPath, ["status", "--porcelain"]).trim(), "", "update commit left worktree clean");
     equal(git(vaultPath, ["log", "-1", "--pretty=%s"]).trim(), "chore: apply upstream alpha v2", "update commit message");
 
+    await sourceRow.locator(".row-menu summary").click();
     await sourceRow.getByRole("button", { name: "查看上游差异" }).click();
     const cleanDiff = await dialog(page);
     await waitForText(page, "没有文件差异", 60_000);
@@ -366,7 +382,9 @@ async function githubFlow(suite: Suite): Promise<void> {
 
     await openSection(page, "技能");
     equal(await page.getByRole("button", { name: "编辑 alpha" }).count(), 0, "GitHub skill is not directly editable");
-    await page.getByRole("button", { name: "Fork alpha" }).click();
+    const alphaRow = page.locator(".skill-table-row").filter({ hasText: "alpha" }).first();
+    await alphaRow.locator(".row-menu summary").click();
+    await alphaRow.getByRole("button", { name: "Fork 到本地" }).click();
     const forkModal = await dialog(page);
     await forkModal.locator(".fork-body input").fill("alpha-local");
     await waitForText(page, "alpha-local");
@@ -382,9 +400,11 @@ async function githubFlow(suite: Suite): Promise<void> {
     assert(forkedSource.includes("repo: e2e/alpha-repo"), "fork records its upstream");
     assert(read(path.join(vaultPath, "sources/alpha-repo.yml")).includes("name: alpha"), "original GitHub source untouched");
 
-    await page.getByRole("button", { name: "编辑 alpha-local" }).waitFor();
-    equal(await page.getByRole("button", { name: "Fork alpha" }).count(), 1, "original GitHub skill remains read-only");
-    await page.getByRole("button", { name: "编辑 alpha-local" }).click();
+    const originalGroup = page.locator(".skill-group").filter({ has: page.locator(".skill-group-name", { hasText: "alpha-repo" }) });
+    equal(await originalGroup.locator(".row-menu button").filter({ hasText: "Fork 到本地" }).count(), 2, "original GitHub skills remain read-only");
+    const forkedRow = page.locator(".skill-table-row").filter({ hasText: "alpha-local" });
+    await forkedRow.locator(".row-menu summary").click();
+    await forkedRow.getByRole("button", { name: "编辑技能" }).click();
     const editor = await dialog(page);
     const textarea = editor.getByLabel("alpha-local 的 SKILL.md");
     await waitFor(async () => (await textarea.inputValue()).includes("name: alpha-local"), "forked editor loaded");
@@ -430,6 +450,13 @@ async function searchAndSettings(suite: Suite): Promise<void> {
   await hit.waitFor({ state: "visible", timeout: 30_000 });
   const hitMeta = await hit.locator(".palette-hit-meta").innerText();
   assert(hitMeta.includes("vault-b"), `cross-vault hit meta: ${hitMeta}`);
+  const paletteInput = palette.getByLabel("搜索技能、插件、MCP 与工具卡");
+  await paletteInput.fill("no-such-skill");
+  await page.keyboard.press("Enter");
+  equal(await palette.isVisible(), true, "Enter cannot open a hit from the previous query");
+  equal(await palette.locator(".palette-hit").count(), 0, "previous search hits disappear immediately");
+  await paletteInput.fill("beta");
+  await hit.waitFor({ state: "visible", timeout: 30_000 });
   await page.keyboard.press("Enter");
   await palette.waitFor({ state: "hidden" });
   await page.locator(".vault-tab.is-active").filter({ hasText: "vault-b" }).waitFor();
@@ -446,6 +473,9 @@ async function searchAndSettings(suite: Suite): Promise<void> {
   const checkInterval = page.getByLabel("检查间隔（小时）");
   const retention = page.getByLabel("每个目标保留备份数");
   const backupRoot = page.getByLabel("备份根目录");
+  const intervalLabel = page.locator("label.field-label").filter({ hasText: "检查间隔（小时）" });
+  await intervalLabel.click();
+  equal(await checkInterval.evaluate((input) => document.activeElement === input), true, "Field label focuses its input");
   const customBackups = path.join(workspace.root, "custom-backups");
   equal(await checkInterval.inputValue(), "0", "interval setting readback");
   equal(await retention.inputValue(), "10", "retention setting readback");
@@ -543,6 +573,7 @@ async function pluginsFlow(suite: Suite): Promise<void> {
   await waitFor(async () => (await page.locator(".plugin-row").count()) === 5, "search filter cleared");
   const originFilter = page.getByRole("group", { name: "插件来源" });
   await originFilter.getByRole("button", { name: "本地" }).click();
+  equal(await originFilter.getByRole("button", { name: "本地" }).getAttribute("aria-pressed"), "true", "plugin filter exposes selection");
   await waitFor(async () => (await page.locator(".plugin-row").count()) === 4, "local origin filter");
   const localRows = await page.locator(".plugin-row").allInnerTexts();
   assert(localRows.some((text) => text.includes("local-tools")), "local filter matches local-tools");
@@ -687,6 +718,7 @@ async function pluginsFlow(suite: Suite): Promise<void> {
   await page.getByRole("button", { name: "检查", exact: true }).click();
   await pluginSourceRow.getByText("有更新").waitFor({ timeout: 60_000 });
 
+  await pluginSourceRow.locator(".row-menu summary").click();
   await pluginSourceRow.getByRole("button", { name: "查看上游差异" }).click();
   const diffModal = await dialog(page);
   await diffModal.locator(".diff-layout").waitFor({ state: "visible", timeout: 60_000 });
@@ -697,6 +729,7 @@ async function pluginsFlow(suite: Suite): Promise<void> {
   await diffModal.getByRole("button", { name: "关闭" }).click();
   await diffModal.waitFor({ state: "hidden" });
 
+  await pluginSourceRow.locator(".row-menu summary").click();
   await pluginSourceRow.getByRole("button", { name: "应用更新" }).click();
   const updateModal = await dialog(page);
   await updateModal.locator(".update-diff-layout").waitFor({ state: "visible", timeout: 60_000 });
@@ -736,7 +769,8 @@ async function pluginsFlow(suite: Suite): Promise<void> {
   assert(updatedRow.includes("v2.1.0"), `plugin page shows the updated version: ${updatedRow}`);
 
   await openSection(page, "来源");
-  await pluginSourceRow.getByRole("button", { name: "移除来源 plugin-kit" }).click();
+  await pluginSourceRow.locator(".row-menu summary").click();
+  await pluginSourceRow.getByRole("button", { name: "移除来源" }).click();
   const removeModal = await dialog(page);
   await removeModal.locator(".toggle-row").filter({ hasText: "同时删除仓库内的工作副本与 vendor 目录" }).click();
   await removeModal.getByPlaceholder("plugin-kit").fill("plugin-kit");
@@ -892,6 +926,8 @@ async function externalFlow(suite: Suite): Promise<void> {
     content: "*, *::before, *::after { animation: none !important; transition: none !important; }",
   });
   await page.evaluate(fs.readFileSync(axeSourcePath, "utf8"));
+  await page.locator(".overview-priority").getByText("检查上游状态").waitFor();
+  equal((await page.locator(".update-panel strong").innerText()).trim(), "尚未检查上游", "unverified upstream is not reported as current");
   const scans = [await auditPage(page, "external overview")];
 
   const stat = page.locator(".stat-cell").filter({ hasText: "外部技能" });
@@ -1088,7 +1124,7 @@ async function autoCheckSessionOnce(suite: Suite): Promise<void> {
 
     const tabA = page.locator(".vault-tab").filter({ hasText: "session-a" });
     const tabB = page.locator(".vault-tab").filter({ hasText: "session-b" });
-    equal(await page.locator('[role="tab"]').count(), 2, "tablist exposes exactly the open vaults");
+    equal(await page.locator('.vault-tabs[role="group"] .vault-tab').count(), 2, "vault group exposes exactly the open vaults");
     equal(await tabA.getAttribute("tabindex"), "0", "active tab holds the roving tab stop");
     equal(await tabB.getAttribute("tabindex"), "-1", "inactive tab leaves the tab order");
     await tabA.focus();
@@ -1106,7 +1142,7 @@ async function autoCheckSessionOnce(suite: Suite): Promise<void> {
     equal(server.stats.requests.length, afterManual, "keyboard tab switching does not trigger checks");
     await page.getByRole("button", { name: "关闭 session-a" }).click();
     await page.locator(".vault-tab").filter({ hasText: "session-a" }).waitFor({ state: "detached" });
-    equal(await page.locator('[role="tab"]').count(), 1, "titlebar close removes the active tab");
+    equal(await page.locator('.vault-tabs .vault-tab').count(), 1, "titlebar close removes the active tab");
     console.log("      one automatic check per vault per session; roving tab keyboard navigation OK");
   } finally {
     await server.close();
@@ -1154,20 +1190,24 @@ async function installFlow(suite: Suite): Promise<void> {
   assert(fs.existsSync(path.join(dest, "beta", ".vault-managed")), "symlink replaced by managed directory");
   assert(!fs.lstatSync(path.join(dest, "beta")).isSymbolicLink(), "beta is no longer a symlink");
   assert(fs.existsSync(path.join(external, "SENTINEL.txt")), "symlink target untouched");
-  const backupsForTarget = path.join(workspace.backups, "agent-skills");
+  const backupRoots = fs.readdirSync(workspace.backups).filter((name) => name.startsWith("agent-skills-"));
+  equal(backupRoots.length, 1, "target backup root includes the unique hash suffix");
+  const backupsForTarget = path.join(workspace.backups, backupRoots[0] as string);
   const stamps = fs.readdirSync(backupsForTarget).sort();
   assert(stamps.length > 0, "unmanaged backup created");
   const savedAlpha = read(path.join(backupsForTarget, stamps[0] as string, "alpha", "SKILL.md"));
   assert(savedAlpha.includes("old unmanaged alpha"), "unmanaged alpha moved into backup");
   assert(read(path.join(vaultPath, "vault.yml")).includes("agent-skills"), "install target registered in vault.yml");
 
+  await card.locator(".row-menu summary").click();
   await card.getByRole("button", { name: "验证文件" }).click();
   await card.getByLabel("校验通过").waitFor({ timeout: 30_000 });
   fs.appendFileSync(path.join(dest, "alpha", "SKILL.md"), "\nLOCAL-DRIFT\n", "utf8");
+  await card.locator(".row-menu summary").click();
   await card.getByRole("button", { name: "验证文件" }).click();
   await waitForText(page, "0 缺失 · 1 修改", 30_000);
 
-  await card.getByRole("button", { name: "安装到此目标" }).click();
+  await card.getByRole("button", { name: "安装" }).click();
   const reinstall = await dialog(page);
   await reinstall.getByRole("button", { name: "预览计划" }).click();
   await waitForText(page, "受管");
@@ -1177,12 +1217,28 @@ async function installFlow(suite: Suite): Promise<void> {
   await reinstall.waitFor({ state: "hidden" });
   await waitFor(() => !read(path.join(dest, "alpha", "SKILL.md")).includes("LOCAL-DRIFT"), "managed reinstall replaced drift");
 
-  await card.getByRole("button", { name: "查看此目标的备份" }).click();
+  await card.locator(".row-menu summary").click();
+  await card.getByRole("button", { name: "查看备份" }).click();
   const backups = await dialog(page);
   await waitForText(page, "安装备份");
   await backups.locator(".backup-entry").first().waitFor({ state: "visible", timeout: 30_000 });
+  await backups.getByRole("group", { name: "按安装目标筛选" }).getByRole("button", { name: "全部目标" }).click();
+  const registeredBackups = backups.locator(".backup-group").filter({ hasText: "agent-skills" });
+  await registeredBackups.waitFor({ state: "visible", timeout: 30_000 });
+  equal((await registeredBackups.locator("h3").innerText()).trim(), "agent-skills", "all-target backup group owner");
+  equal(await registeredBackups.getByText("目标已注销").count(), 0, "registered target is not marked orphaned");
+  equal(
+    await registeredBackups.locator(".backup-skill").filter({ hasText: "alpha" }).getByRole("button", { name: "恢复" }).first().isDisabled(),
+    false,
+    "registered target backup stays restorable in all-target view",
+  );
   await backups.locator(".backup-skill").filter({ hasText: "alpha" }).getByRole("button", { name: "恢复" }).click();
-  const restoreConfirm = page.getByRole("dialog").last();
+  const restoreConfirm = page.getByRole("dialog", { name: "恢复 alpha？" });
+  await waitForText(page, "恢复 alpha？");
+  await page.keyboard.press("Escape");
+  await restoreConfirm.waitFor({ state: "hidden" });
+  equal(await page.getByRole("dialog").count(), 1, "Escape closes only the top confirmation dialog");
+  await backups.locator(".backup-skill").filter({ hasText: "alpha" }).getByRole("button", { name: "恢复" }).click();
   await waitForText(page, "恢复 alpha？");
   await restoreConfirm.getByRole("button", { name: "恢复" }).click();
   await waitForText(page, "恢复完成", 30_000);
@@ -1191,7 +1247,8 @@ async function installFlow(suite: Suite): Promise<void> {
   await backups.locator(".modal-footer").getByRole("button", { name: "关闭" }).click();
   await backups.waitFor({ state: "hidden" });
 
-  await card.getByRole("button", { name: "移除目标 agent-skills" }).click();
+  await card.locator(".row-menu summary").click();
+  await card.getByRole("button", { name: "移除目标" }).click();
   const removeConfirm = page.getByRole("dialog").last();
   await waitForText(page, "注销安装目标 agent-skills？");
   await removeConfirm.getByRole("button", { name: "注销目标" }).click();
@@ -1225,7 +1282,8 @@ async function installFlow(suite: Suite): Promise<void> {
   await reregister.waitFor({ state: "hidden" });
   await card.waitFor({ state: "visible", timeout: 30_000 });
 
-  await card.getByRole("button", { name: "查看此目标的备份" }).click();
+  await card.locator(".row-menu summary").click();
+  await card.getByRole("button", { name: "查看备份" }).click();
   const restoredBackups = await dialog(page);
   await restoredBackups.locator(".backup-entry").first().waitFor({ state: "visible", timeout: 30_000 });
   const enabledRestore = restoredBackups
@@ -1351,7 +1409,9 @@ async function writableFlow(suite: Suite): Promise<void> {
 
     await openSection(page, "技能");
     equal(await page.locator(".skill-table-row").count(), 5, "imported skill count");
-    await page.getByRole("button", { name: "编辑 alpha" }).click();
+    const editableAlpha = page.locator(".skill-table-row").filter({ hasText: "alpha" }).first();
+    await editableAlpha.locator(".row-menu summary").click();
+    await editableAlpha.getByRole("button", { name: "编辑技能" }).click();
     const editor = await dialog(page);
     const textarea = editor.getByLabel("alpha 的 SKILL.md");
     await waitFor(async () => (await textarea.inputValue()).includes("name: alpha"), "skill editor loaded");
@@ -1734,6 +1794,13 @@ async function accessibilityAndKeyboard(suite: Suite): Promise<void> {
     await openSection(page, section);
     scans.push(await auditPage(page, section));
   }
+  await page.emulateMedia({ colorScheme: "dark" });
+  await page.waitForFunction(() => document.documentElement.dataset.theme === "dark");
+  for (const section of ["总览", "来源", "技能", "插件", "MCP", "工具", "安装目标", "Git", "设置"]) {
+    await openSection(page, section);
+    scans.push(await auditPage(page, section + " 深色"));
+  }
+  await page.emulateMedia({ colorScheme: "light" });
   await openSection(page, "总览");
 
   const installButton = page.getByRole("button", { name: "安装技能" });
@@ -1741,6 +1808,7 @@ async function accessibilityAndKeyboard(suite: Suite): Promise<void> {
   await page.keyboard.press("Meta+k");
   const palette = await dialog(page);
   await palette.getByLabel("搜索技能、插件、MCP 与工具卡").waitFor();
+  scans.push(await auditPage(page, "搜索弹窗"));
   equal(
     await page.evaluate(() => document.activeElement?.getAttribute("aria-label")),
     "搜索技能、插件、MCP 与工具卡",
@@ -1761,6 +1829,7 @@ async function accessibilityAndKeyboard(suite: Suite): Promise<void> {
   await installButton.click();
   const install = await dialog(page);
   await waitForText(page, "安装技能");
+  scans.push(await auditPage(page, "安装弹窗"));
   assert(await focusInside(page, ".modal"), "install dialog receives initial focus");
   for (let index = 0; index < 6; index += 1) {
     await page.keyboard.press("Tab");
@@ -1776,6 +1845,143 @@ async function accessibilityAndKeyboard(suite: Suite): Promise<void> {
     "dialog restores focus to its trigger",
   );
   console.log(`      axe scans ${scans.join("/")} violations (none serious), palette and dialog focus trap OK`);
+}
+
+async function rendererUxRegression(suite: Suite): Promise<void> {
+  const workspace = suite.workspace("renderer-ux");
+  const vaultPath = path.join(workspace.root, "v2-basic");
+  copyFixture("v2-basic", vaultPath);
+  initGitRepo(vaultPath);
+  const checkedAt = new Date().toISOString();
+  fs.writeFileSync(
+    path.join(vaultPath, ".vault/state.json"),
+    JSON.stringify({
+      schema: 1,
+      last_checked_at: checkedAt,
+      sources: {
+        "gh-pack": { checked_at: checkedAt, status: "error", error: "SSL_ERROR_SYSCALL: connection closed" },
+        "gh-standalone": {
+          checked_at: checkedAt,
+          status: "update-available",
+          remote_commit: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        },
+      },
+      targets: {},
+    }),
+  );
+
+  const launched = await suite.launch({ workspace, initialVault: vaultPath });
+  const { app, page } = launched;
+  await waitForText(page, "1 个来源检查失败");
+  await waitForText(page, "SSL_ERROR_SYSCALL: connection closed");
+  await page.getByRole("alert").filter({ hasText: "1 个来源检查失败" }).waitFor();
+  equal(
+    (await page.locator(".source-health p").innerText()).trim(),
+    "1 个检查失败 · 1 个待更新",
+    "sidebar must show failed checks alongside updates",
+  );
+
+  const invalid = await page.evaluate(async () => {
+    return (window as unknown as { vaultdesk: { invoke: (name: string, input: unknown) => Promise<unknown> } })
+      .vaultdesk.invoke("vault.open", { path: 42 });
+  }) as { ok: boolean; error?: { code: string } };
+  equal(invalid.ok, false, "invalid IPC payload is rejected");
+  equal(invalid.error?.code, "invalid-input", "invalid IPC payload error code");
+  const missingReveal = await page.evaluate(async (target) => {
+    return (window as unknown as { vaultdesk: { invoke: (name: string, input: unknown) => Promise<unknown> } })
+      .vaultdesk.invoke("app.reveal", { path: target });
+  }, path.join(workspace.root, "missing-parent", "item")) as { ok: boolean; error?: { code: string } };
+  equal(missingReveal.ok, false, "Finder reveal does not claim success for a missing parent");
+  equal(missingReveal.error?.code, "operation-failed", "missing reveal reports an actionable error");
+
+  await openSection(page, "来源");
+  const sourceMenus = page.locator(".source-row .row-menu");
+  assert((await sourceMenus.count()) >= 2, "source rows expose multiple action menus");
+  await sourceMenus.nth(0).locator("summary").click();
+  equal(await sourceMenus.nth(0).evaluate((menu) => (menu as HTMLDetailsElement).open), true, "first action menu opens");
+  await sourceMenus.nth(1).locator("summary").click();
+  equal(await sourceMenus.nth(0).evaluate((menu) => (menu as HTMLDetailsElement).open), false, "opening another menu closes the first");
+  await page.keyboard.press("Escape");
+  equal(await sourceMenus.nth(1).evaluate((menu) => (menu as HTMLDetailsElement).open), false, "Escape closes action menu");
+  await sourceMenus.nth(0).locator("summary").click();
+  await page.locator(".section-header h1").click();
+  equal(await sourceMenus.nth(0).evaluate((menu) => (menu as HTMLDetailsElement).open), false, "outside click closes action menu");
+  const sourceDetail = page.getByRole("button", { name: "查看详情：gh-pack" });
+  await sourceDetail.focus();
+  await page.keyboard.press("Enter");
+  equal((await page.locator(".inspector h2").innerText()).trim(), "gh-pack", "source keyboard details");
+
+  await openSection(page, "技能");
+  await app.evaluate(({ BrowserWindow }) => {
+    const win = BrowserWindow.getAllWindows()[0];
+    win?.setSize(1100, 700);
+    win?.webContents.setZoomFactor(1.25);
+  });
+  const skillDetail = page.getByRole("button", { name: "查看详情：gh-pack-alpha" });
+  await skillDetail.focus();
+  await page.keyboard.press("Enter");
+  await page.locator(".inspector-close").waitFor({ state: "visible" });
+  equal((await page.locator(".inspector h2").innerText()).trim(), "gh-pack-alpha", "zoomed skill details");
+  const layout = await page.evaluate(() => {
+    const inspector = document.querySelector(".inspector");
+    const actions = document.querySelector(".titlebar-actions");
+    return {
+      inspectorVisible: Boolean(inspector && getComputedStyle(inspector).display !== "none"),
+      titlebarFits: Boolean(actions && actions.getBoundingClientRect().right <= window.innerWidth),
+      pageFits: document.documentElement.scrollWidth <= window.innerWidth,
+    };
+  });
+  assert(layout.inspectorVisible && layout.titlebarFits && layout.pageFits, `zoomed layout: ${JSON.stringify(layout)}`);
+  await page.waitForFunction(() => document.activeElement?.getAttribute("aria-label") === "关闭详情");
+  equal(
+    await page.evaluate(() => document.activeElement?.getAttribute("aria-label")),
+    "关闭详情",
+    "zoomed details receive keyboard focus",
+  );
+  await page.keyboard.press("Enter");
+  await page.waitForFunction(
+    () => document.activeElement?.getAttribute("aria-label") === "查看详情：gh-pack-alpha",
+  );
+  equal(
+    await page.evaluate(() => document.activeElement?.getAttribute("aria-label")),
+    "查看详情：gh-pack-alpha",
+    "closing details restores the row focus",
+  );
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  const transitionSeconds = await page.locator(".skill-table-row").first().evaluate(
+    (row) => Number.parseFloat(getComputedStyle(row).transitionDuration),
+  );
+  assert(transitionSeconds <= 0.001, `reduced motion disables row transitions: ${transitionSeconds}`);
+  await page.emulateMedia({ reducedMotion: "no-preference" });
+
+  await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]?.webContents.setZoomFactor(1));
+  const pluginPath = path.join(workspace.root, "v2-plugins");
+  copyFixture("v2-plugins", pluginPath);
+  initGitRepo(pluginPath);
+  setDialogChoice(workspace, pluginPath);
+  await page.locator(".tab-add").first().click();
+  await page.locator(".vault-tab").filter({ hasText: "plugins" }).waitFor();
+  await openSection(page, "插件");
+  const pluginName = (await page.locator(".plugin-row h3").first().innerText()).trim();
+  const pluginDetail = page.getByRole("button", { name: `查看详情：${pluginName}` });
+  await pluginDetail.focus();
+  await page.keyboard.press("Enter");
+  equal((await page.locator(".inspector h2").innerText()).trim(), pluginName, "plugin keyboard details");
+  await page.keyboard.press("Escape");
+  await page.locator(".inspector-close").waitFor({ state: "hidden" });
+
+  const closeInactive = page.getByRole("button", { name: "关闭 v2-basic" });
+  await closeInactive.focus();
+  await page.keyboard.press("Enter");
+  equal(await page.locator('.vault-tabs .vault-tab').count(), 1, "keyboard closes an inactive vault tab");
+  await page.waitForFunction(() => document.activeElement?.classList.contains("vault-tab"));
+  equal(
+    await page.evaluate(() => document.activeElement?.classList.contains("vault-tab")),
+    true,
+    "tab close restores focus to the active tab",
+  );
+  assert(transitionSeconds <= 0.001, "reduced-motion transition remains active: " + transitionSeconds + "s");
+  console.log("      source health, keyboard details/tab close, 125% zoom, reduced motion and invalid IPC errors OK");
 }
 
 async function main(): Promise<void> {
@@ -1800,6 +2006,7 @@ async function main(): Promise<void> {
   await run("custom tool preset installs under a sandboxed HOME", presetInstall);
   await run("120-skill vault renders and searches in the desktop UI", desktopScale);
   await run("axe accessibility audit, focus trap and focus restore", accessibilityAndKeyboard);
+  await run("renderer UX regression: source health, keyboard and zoom", rendererUxRegression);
   if (results.some((value) => !value)) process.exitCode = 1;
 }
 

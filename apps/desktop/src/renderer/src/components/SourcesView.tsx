@@ -8,7 +8,7 @@ import {
   statusTone,
 } from "../format";
 import { Icon } from "./icons";
-import { Button, Callout, EmptyState, IconButton, SectionHeader, StatusMark, StatusPill } from "./ui";
+import { ActionMenu, Button, Callout, EmptyState, SectionHeader, StatusMark, StatusPill } from "./ui";
 
 type Filter = "all" | "github" | "local";
 
@@ -97,6 +97,7 @@ export function SourcesView({
             <button
               key={value}
               className={filter === value ? "is-active" : ""}
+              aria-pressed={filter === value}
               onClick={() => setFilter(value)}
             >
               {label}
@@ -116,7 +117,9 @@ export function SourcesView({
                 添加来源
               </Button>
             }
-          />
+          >
+            从本地目录或 GitHub 仓库添加来源，技能和插件会自动整理到仓库中。
+          </EmptyState>
         ) : (
           <EmptyState
             icon="search"
@@ -133,7 +136,9 @@ export function SourcesView({
                 清除筛选
               </Button>
             }
-          />
+          >
+            换一个关键词，或清除当前筛选后查看全部来源。
+          </EmptyState>
         )
       ) : (
         <div className="source-list">
@@ -193,30 +198,24 @@ export function SourcesView({
                 </div>
               </div>
               <div className="row-actions" onClick={(event) => event.stopPropagation()}>
-                {source.origin === "github" ? (
-                  <>
-                    <IconButton
-                      icon="file"
-                      label="查看上游差异"
-                      onClick={() => onDiff(source.name)}
-                      disabled={!source.locked?.commit && source.status !== "update-available"}
-                    />
-                    <IconButton
-                      icon="download"
-                      label="应用更新"
-                      onClick={() => onUpdate(source.name)}
-                      disabled={vault.format === "v1" || source.status !== "update-available"}
-                    />
-                  </>
-                ) : null}
-                <IconButton
-                  icon="trash"
-                  label={`移除来源 ${source.name}`}
-                  className="is-danger"
-                  onClick={() => onRemove(source.name)}
-                  disabled={vault.format === "v1"}
-                />
-                <Icon name="chevron-right" size={14} className="row-chevron" />
+                <Button className="row-action-primary" size="sm" variant="quiet" onClick={() => onSelect(source)} aria-pressed={selected === source.name} aria-label={"查看详情：" + source.name}>
+                  查看详情
+                </Button>
+                <ActionMenu label={"更多来源操作：" + source.name}>
+                  {source.status === "update-available" ? (
+                    <button onClick={() => onUpdate(source.name)} disabled={vault.format === "v1"}>
+                      应用更新
+                    </button>
+                  ) : null}
+                  {source.origin === "github" ? (
+                    <button onClick={() => onDiff(source.name)} disabled={!source.locked?.commit && source.status !== "update-available"}>
+                      查看上游差异
+                    </button>
+                  ) : null}
+                  <button className="is-danger" onClick={() => onRemove(source.name)} disabled={vault.format === "v1"}>
+                    移除来源
+                  </button>
+                </ActionMenu>
               </div>
             </article>
           ))}

@@ -10,6 +10,22 @@ function writeSkill(dir: string, name: string, description: string): void {
 }
 
 describe("local import", () => {
+  it("rejects source and frontmatter names that escape vault paths", async () => {
+    const base = tempDir("import-paths");
+    const vaultPath = path.join(base, "vault");
+    await initVault(vaultPath, { name: "imports" });
+    const input = path.join(base, "input");
+    writeSkill(input, "safe-skill", "Safe skill");
+    await expect(previewImport(input, vaultPath, "../../escaped")).rejects.toMatchObject({ code: "invalid-input" });
+    await expect(applyImport(input, vaultPath, { name: "../../escaped" })).rejects.toMatchObject({ code: "invalid-input" });
+    expect(fs.existsSync(path.join(base, "escaped"))).toBe(false);
+
+    const unsafe = path.join(base, "unsafe");
+    writeSkill(unsafe, "../../escaped", "Unsafe name");
+    await expect(previewImport(unsafe, vaultPath)).rejects.toMatchObject({ code: "invalid-input" });
+    await expect(applyImport(unsafe, vaultPath)).rejects.toMatchObject({ code: "invalid-input" });
+  });
+
   it("detects a multi-skill folder as a collection and imports it", async () => {
     const vaultPath = path.join(tempDir("import-vault"), "vault");
     await initVault(vaultPath, { name: "imports" });

@@ -175,11 +175,11 @@ export function ImportModal({
         )
       }
     >
-      <div className="import-tabs" role="tablist">
-        <button className={mode === "local" ? "is-active" : ""} onClick={() => { setMode("local"); clearPreview(); }}>
+      <div className="import-tabs" role="group" aria-label="来源类型">
+        <button aria-pressed={mode === "local"} className={mode === "local" ? "is-active" : ""} onClick={() => { setMode("local"); clearPreview(); }}>
           <Icon name="folder" size={15} /> 本地目录
         </button>
-        <button className={mode === "github" ? "is-active" : ""} onClick={() => { setMode("github"); clearPreview(); }}>
+        <button aria-pressed={mode === "github"} className={mode === "github" ? "is-active" : ""} onClick={() => { setMode("github"); clearPreview(); }}>
           <Icon name="git" size={15} /> GitHub 仓库
         </button>
       </div>

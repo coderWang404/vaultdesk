@@ -219,9 +219,9 @@ function hasFlag(parsed: Parsed, name: string): boolean {
 function version(): string {
   try {
     const pkg = JSON.parse(fs.readFileSync(new URL("../package.json", import.meta.url), "utf8")) as { version?: string };
-    return pkg.version ?? "1.0.0";
+    return pkg.version ?? "1.1.0";
   } catch {
-    return "1.0.0";
+    return "1.1.0";
   }
 }
 
@@ -253,7 +253,7 @@ Commands:
   vault init [path] [--git]        Create an empty v2 vault
   source list                      List sources and their state
   source show <name>               Show one source and its skills
-  source check [names...]          Check upstream commits (read-only)
+  source check [names...]          Check upstream commits and update local check state
   source diff <name>               Show the upstream diff for one source
   source update [names...]         Preview or apply upstream updates
   source add <path> [--plugin|--no-plugin]
@@ -427,6 +427,9 @@ function printSnapshot(snapshot: VaultSnapshot): string[] {
         ]),
       ),
     );
+    for (const source of snapshot.sources) {
+      if (source.lastError) lines.push(red(`${source.name}: ${source.lastError}`));
+    }
   }
   if (snapshot.targets.length > 0) {
     lines.push("");
@@ -486,6 +489,7 @@ function printSource(source: SourceRecord, plugin?: PluginRecord): string[] {
   if (source.version) lines.push(`Version  ${source.version}`);
   if (source.lastCheckedAt) lines.push(`Checked  ${source.lastCheckedAt}`);
   if (source.lastAppliedAt) lines.push(`Applied  ${source.lastAppliedAt}`);
+  if (source.lastError) lines.push(red(`Error    ${source.lastError}`));
   if (plugin) {
     lines.push(`Files    ${plugin.workingPath}`);
     lines.push(
@@ -1052,6 +1056,7 @@ async function dispatch(parsed: Parsed): Promise<CommandResult> {
                 statusText(source.status),
               ]),
             ),
+            ...snapshot.sources.filter((source) => source.lastError).map((source) => red(`${source.name}: ${source.lastError}`)),
           ],
         };
       }

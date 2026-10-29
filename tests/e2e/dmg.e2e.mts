@@ -178,7 +178,9 @@ async function exerciseApp(appPath: string): Promise<void> {
   await validation.waitFor({ state: "hidden" });
 
   await openSection(page, "技能");
-  await page.getByRole("button", { name: "编辑 local-notes" }).click();
+  const localNotesRow = page.locator(".skill-table-row").filter({ hasText: "local-notes" });
+  await localNotesRow.locator(".row-menu summary").click();
+  await localNotesRow.getByRole("button", { name: "编辑技能" }).click();
   const editor = await dialog(page);
   const textarea = editor.getByLabel("local-notes 的 SKILL.md");
   const original = await textarea.inputValue();

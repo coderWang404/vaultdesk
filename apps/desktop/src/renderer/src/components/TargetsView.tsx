@@ -3,13 +3,14 @@ import type { InstallVerification, TargetRecord, VaultSnapshot } from "@vaultdes
 import { call, errorMessage } from "../api";
 import { Icon } from "./icons";
 import {
+  ActionMenu,
   Button,
   EmptyState,
   FlowStrip,
-  IconButton,
   SectionHeader,
   SlotStrip,
   StatusMark,
+  StatusPill,
   type SlotItem,
   type StatusTone,
 } from "./ui";
@@ -86,7 +87,9 @@ export function TargetsView({
               选择目录
             </Button>
           }
-        />
+        >
+          选择一个工具读取技能的目录，预览安装计划后再写入文件。
+        </EmptyState>
       ) : (
         <div className="target-list">
           {vault.targets.map((target) => {
@@ -118,10 +121,9 @@ export function TargetsView({
                     <div className="target-title-block">
                       <div className="target-title">
                         <h3>{target.id}</h3>
-                        <StatusMark
-                          tone={target.exists ? "ok" : "warn"}
-                          label={target.exists ? "目录存在" : "目录缺失"}
-                        />
+                        <StatusPill tone={target.exists ? "ok" : "warn"}>
+                          {target.exists ? "目录可用" : "目录缺失"}
+                        </StatusPill>
                         {target.installAfterUpdate ? (
                           <span className="target-flag" title="更新后自动安装" aria-label="更新后自动安装" role="img">
                             <Icon name="refresh" size={11} />
@@ -131,33 +133,26 @@ export function TargetsView({
                       <button
                         className="target-path mono"
                         onClick={() => onReveal(target.expandedDest)}
-                        title="在 Finder 中显示"
+                        title={"在 Finder 中显示：" + target.expandedDest}
                       >
-                        {shortPath(target.expandedDest)}
+                        <span className="target-path-text" title={target.expandedDest}>
+                          {shortPath(target.expandedDest)}
+                        </span>
                         <Icon name="external" size={11} />
                       </button>
                     </div>
                   </div>
                   <div className="row-actions">
-                    <IconButton
-                      icon="shield"
-                      label="验证文件"
-                      onClick={() => void verify(target.id)}
-                      loading={verifying === target.id}
-                      disabled={!target.exists}
-                    />
-                    <IconButton
-                      icon="download"
-                      label="安装到此目标"
-                      onClick={() => onInstall(target.id)}
-                    />
-                    <IconButton icon="backup" label="查看此目标的备份" onClick={() => onBackups(target.id)} />
-                    <IconButton
-                      icon="trash"
-                      label={`移除目标 ${target.id}`}
-                      className="is-danger"
-                      onClick={() => onRemove(target.id)}
-                    />
+                    <Button className="row-action-primary" size="sm" variant="quiet" icon="download" onClick={() => onInstall(target.id)}>
+                      安装
+                    </Button>
+                    <ActionMenu label={"更多目标操作：" + target.id}>
+                      <button onClick={() => void verify(target.id)} disabled={!target.exists || verifying === target.id}>
+                        {verifying === target.id ? "验证中…" : "验证文件"}
+                      </button>
+                      <button onClick={() => onBackups(target.id)}>查看备份</button>
+                      <button className="is-danger" onClick={() => onRemove(target.id)}>移除目标</button>
+                    </ActionMenu>
                   </div>
                 </header>
 

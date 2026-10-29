@@ -8,9 +8,13 @@ import { Icon } from "./icons";
 import { PresetVerifyModal } from "./modals/PresetVerifyModal";
 import { Button, Callout, Field, SectionHeader, StatusPill } from "./ui";
 
+type ThemePreference = "system" | "light" | "dark";
+
 export function SettingsView({
   vault,
   settings,
+  themePreference,
+  onThemePreference,
   info,
   presets,
   onSaved,
@@ -19,6 +23,8 @@ export function SettingsView({
 }: {
   vault: VaultSnapshot;
   settings: AppSettings;
+  themePreference: ThemePreference;
+  onThemePreference: (theme: ThemePreference) => void;
   info: AppInfo | null;
   presets: ToolPreset[];
   onSaved: (settings: AppSettings) => void;
@@ -92,6 +98,33 @@ export function SettingsView({
   return (
     <div className="view settings-view">
       <SectionHeader title="设置" />
+
+      <section className="panel appearance-panel" aria-labelledby="appearance-heading">
+        <div className="panel-head">
+          <div>
+            <h2 id="appearance-heading">外观</h2>
+            <p>为 VaultDesk 选择适合当前环境的界面。</p>
+          </div>
+        </div>
+        <div className="theme-options" role="group" aria-label="外观主题">
+          {([
+            ["system", "跟随系统"],
+            ["light", "浅色"],
+            ["dark", "深色"],
+          ] as const).map(([value, label]) => (
+            <button
+              key={value}
+              type="button"
+              className={themePreference === value ? "theme-option is-active" : "theme-option"}
+              aria-pressed={themePreference === value}
+              onClick={() => onThemePreference(value)}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+        <p className="appearance-hint">即时生效，仅保存在本机。</p>
+      </section>
 
       <div className="settings-columns">
         <section className="panel settings-panel">

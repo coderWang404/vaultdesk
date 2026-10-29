@@ -624,7 +624,9 @@ async function scanTargets(vaultPath: string, targets: TargetRecord[], skills: S
       if (entry.name.startsWith(".")) continue;
       const slotPath = path.join(dest, entry.name);
       const skill = skillByName.get(entry.name);
-      const owned = target.skills.includes(entry.name);
+      const marker = readMarker(slotPath);
+      const markerTarget = typeof marker?.target_id === "string" ? marker.target_id : undefined;
+      const owned = target.skills.includes(entry.name) && (!markerTarget || markerTarget === target.id);
       if (!skill && !owned) continue;
 
       let stat: fs.Stats;
@@ -635,7 +637,6 @@ async function scanTargets(vaultPath: string, targets: TargetRecord[], skills: S
       }
       const isSymlink = stat.isSymbolicLink();
       if (!isSymlink && !stat.isDirectory()) continue;
-      const marker = readMarker(slotPath);
       if (!owned && !marker) continue;
       const markerVault = typeof marker?.vault === "string" ? canonicalPath(marker.vault) : undefined;
       const installed: InstalledSkill = {

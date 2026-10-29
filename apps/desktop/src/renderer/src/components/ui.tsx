@@ -1,8 +1,30 @@
-import { useEffect, useRef, type ButtonHTMLAttributes, type ReactNode, type RefObject } from "react";
+import { useEffect, useId, useLayoutEffect, useRef, type ButtonHTMLAttributes, type ReactNode, type RefObject } from "react";
 import { Icon, type IconName } from "./icons";
 
 const FOCUSABLE =
   'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
+const dialogStack: HTMLElement[] = [];
+let activeActionMenu: HTMLDetailsElement | null = null;
+let actionMenuCount = 0;
+
+function closeActiveActionMenu(restoreFocus = false): void {
+  const menu = activeActionMenu;
+  activeActionMenu = null;
+  if (!menu) return;
+  menu.open = false;
+  if (restoreFocus) menu.querySelector<HTMLElement>("summary")?.focus();
+}
+
+function onActionMenuPointerDown(event: PointerEvent): void {
+  if (activeActionMenu && !activeActionMenu.contains(event.target as Node)) closeActiveActionMenu();
+}
+
+function onActionMenuKeyDown(event: KeyboardEvent): void {
+  if (event.key !== "Escape" || !activeActionMenu) return;
+  event.preventDefault();
+  event.stopImmediatePropagation();
+  closeActiveActionMenu(true);
+}
 
 export function useDialogFocus<T extends HTMLElement>(
   rootRef: RefObject<T | null>,
@@ -15,7 +37,8 @@ export function useDialogFocus<T extends HTMLElement>(
     const previous = document.activeElement instanceof HTMLElement ? document.activeElement : null;
     const root = rootRef.current;
     root?.focus({ preventScroll: true });
-    document.body.classList.add("modal-open");
+    if (root) dialogStack.push(root);
+    document.body.classList.toggle("modal-open", dialogStack.length > 0);
 
     const focusable = (): HTMLElement[] => {
       if (!root) return [];
@@ -25,8 +48,10 @@ export function useDialogFocus<T extends HTMLElement>(
     };
 
     const onKey = (event: KeyboardEvent): void => {
+      if (dialogStack.at(-1) !== root) return;
       if (event.key === "Escape" && stateRef.current.dismissable) {
-        event.stopPropagation();
+        event.preventDefault();
+        event.stopImmediatePropagation();
         stateRef.current.onClose();
         return;
       }
@@ -52,8 +77,11 @@ export function useDialogFocus<T extends HTMLElement>(
     document.addEventListener("keydown", onKey);
     return () => {
       document.removeEventListener("keydown", onKey);
-      document.body.classList.remove("modal-open");
-      if (previous?.isConnected) previous.focus({ preventScroll: true });
+      const wasTop = dialogStack.at(-1) === root;
+      const index = root ? dialogStack.lastIndexOf(root) : -1;
+      if (index >= 0) dialogStack.splice(index, 1);
+      document.body.classList.toggle("modal-open", dialogStack.length > 0);
+      if (wasTop && previous?.isConnected) previous.focus({ preventScroll: true });
     };
   }, [rootRef]);
 }
@@ -108,6 +136,71 @@ export function IconButton({
     >
       {loading ? <Spinner size={14} /> : <Icon name={icon} size={17} />}
     </button>
+  );
+}
+
+export function ActionMenu({ label, children }: { label: string; children: ReactNode }) {
+  const menuRef = useRef<HTMLDetailsElement>(null);
+
+  useEffect(() => {
+    actionMenuCount += 1;
+    if (actionMenuCount === 1) {
+      document.addEventListener("pointerdown", onActionMenuPointerDown, true);
+      document.addEventListener("keydown", onActionMenuKeyDown, true);
+    }
+    return () => {
+      if (activeActionMenu === menuRef.current) closeActiveActionMenu();
+      actionMenuCount -= 1;
+      if (actionMenuCount === 0) {
+        document.removeEventListener("pointerdown", onActionMenuPointerDown, true);
+        document.removeEventListener("keydown", onActionMenuKeyDown, true);
+      }
+    };
+  }, []);
+
+  return (
+    <details
+      ref={menuRef}
+      className="row-menu"
+      onToggle={(event) => {
+        const menu = event.currentTarget;
+        if (menu.open) {
+          if (activeActionMenu && activeActionMenu !== menu) closeActiveActionMenu();
+          activeActionMenu = menu;
+        } else if (activeActionMenu === menu) {
+          activeActionMenu = null;
+        }
+      }}
+    >
+      <summary
+        aria-label={label}
+        onClick={(event) => {
+          event.preventDefault();
+          const menu = menuRef.current;
+          if (!menu) return;
+          if (menu.open) {
+            if (activeActionMenu === menu) closeActiveActionMenu();
+            else menu.open = false;
+          } else {
+            closeActiveActionMenu();
+            menu.open = true;
+            activeActionMenu = menu;
+          }
+        }}
+      >
+        更多 <Icon name="chevron-down" size={13} />
+      </summary>
+      <div
+        className="row-menu-panel"
+        onClick={(event) => {
+          if ((event.target as HTMLElement).closest("button:not([disabled])")) {
+            event.currentTarget.closest("details")?.removeAttribute("open");
+          }
+        }}
+      >
+        {children}
+      </div>
+    </details>
   );
 }
 
@@ -170,10 +263,10 @@ export interface SlotItem {
   label?: string;
 }
 
-function monogram(name: string): string {
-  const parts = name.split(/[-_.\s]+/).filter(Boolean);
-  if (parts.length >= 2) return `${parts[0]?.[0] ?? ""}${parts[1]?.[0] ?? ""}`.toUpperCase();
-  return name.slice(0, 2).toUpperCase();
+function slotStatus(item: SlotItem): string {
+  if (item.label?.includes("未登记")) return "未登记";
+  if (item.label?.includes("未安装")) return "未安装";
+  return item.tone === "ok" ? "已安装" : item.tone === "warn" ? "需检查" : "待确认";
 }
 
 export function SlotStrip({ items, emptyLabel }: { items: SlotItem[]; emptyLabel?: string }) {
@@ -186,14 +279,10 @@ export function SlotStrip({ items, emptyLabel }: { items: SlotItem[]; emptyLabel
         <span
           className="slot-chip"
           key={item.key}
-          role="img"
-          aria-label={item.label ?? item.name}
           title={item.label ?? item.name}
         >
-          <span className="slot-chip-name">{monogram(item.name)}</span>
-          <span className={`slot-chip-corner tone-${item.tone ?? "ok"}`} aria-hidden="true">
-            <StatusGlyph tone={item.tone ?? "ok"} />
-          </span>
+          <span className="slot-chip-name">{item.name}</span>
+          <span className={`slot-chip-corner tone-${item.tone ?? "ok"}`}>{slotStatus(item)}</span>
         </span>
       ))}
     </span>
@@ -212,7 +301,7 @@ export function FlowStrip({ steps }: { steps: Array<{ icon: IconName; label: str
           ) : null}
           <span className="flow-step">
             <Icon name={step.icon} size={13} />
-            <span>{step.label}</span>
+            <span className="flow-step-label" title={step.label}>{step.label}</span>
             {step.detail ? <span className="flow-detail">{step.detail}</span> : null}
           </span>
         </span>
@@ -340,15 +429,28 @@ export function Field({
   children: ReactNode;
   optional?: boolean;
 }) {
+  const fieldRef = useRef<HTMLDivElement>(null);
+  const labelRef = useRef<HTMLLabelElement>(null);
+  const controlId = useId();
+
+  useLayoutEffect(() => {
+    const control = fieldRef.current?.querySelector<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>(
+      "input, select, textarea",
+    );
+    if (!control || !labelRef.current) return;
+    if (!control.id) control.id = controlId;
+    labelRef.current.htmlFor = control.id;
+  });
+
   return (
-    <label className="field">
-      <span className="field-label">
+    <div ref={fieldRef} className="field">
+      <label ref={labelRef} className="field-label">
         {label}
         {optional ? <em>可选</em> : null}
-      </span>
+      </label>
       {children}
       {hint ? <span className="field-hint">{hint}</span> : null}
-    </label>
+    </div>
   );
 }
 
@@ -395,7 +497,7 @@ export function Callout({
 }) {
   const icon: IconName = tone === "warn" || tone === "danger" ? "alert" : tone === "ok" ? "check" : "info";
   return (
-    <div className={`callout callout-${tone}`}>
+    <div className={`callout callout-${tone}`} role={tone === "danger" ? "alert" : undefined}>
       <Icon name={icon} size={17} />
       <div>
         {title ? <strong>{title}</strong> : null}

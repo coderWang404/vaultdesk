@@ -7,10 +7,11 @@ import {
   statusTone,
 } from "../format";
 import { Icon, type IconName } from "./icons";
-import { Button, Callout, EmptyState, IconButton, SectionHeader, StatusMark, StatusPill } from "./ui";
+import { Button, Callout, EmptyState, SectionHeader, StatusMark, StatusPill } from "./ui";
 
 export function Overview({
   vault,
+  selected,
   checking,
   onCheck,
   onSource,
@@ -23,6 +24,7 @@ export function Overview({
   onImport,
 }: {
   vault: VaultSnapshot;
+  selected: string | null;
   checking: boolean;
   onCheck: () => void;
   onSource: (source: SourceRecord) => void;
@@ -79,88 +81,81 @@ export function Overview({
         }
       />
 
-      <div className="stat-groups">
-        <StatGroup
-          label="仓库内容"
-          cells={[
-            {
-              icon: "source",
-              value: vault.counts.sources,
-              label: "来源",
-              title: `${github} 个 GitHub · ${local} 个本地`,
-            },
-            {
-              icon: "skill",
-              value: vault.counts.skills,
-              label: "技能",
-              title: `${vault.counts.packages} 个包`,
-            },
-            {
-              icon: "sparkle",
-              value: vault.counts.plugins,
-              label: "插件",
-              title: `${vault.counts.pluginSkills} 个插件内技能`,
-            },
-          ]}
-        />
-        <StatGroup
-          label="外部记录"
-          cells={[
-            {
-              icon: "terminal",
-              value: vault.counts.tools,
-              label: "工具",
-              title: "插件分发 · MCP · CLI · 桌面应用",
-            },
-            { icon: "server", value: mcpCount, label: "MCP", title: "独立 MCP 服务记录" },
-            {
-              icon: "shield",
-              value: vault.counts.externalSkills,
-              label: "外部技能",
-              title: "由对应工具自己管理",
-            },
-          ]}
-        />
-        <StatGroup
-          label="安装"
-          cells={[
-            { icon: "target", value: vault.counts.targets, label: "目标", title: "安装规则" },
-            {
-              icon: "download",
-              value: vault.counts.managedInstalls,
-              label: "受管",
-              title: "目标目录里的受管安装",
-            },
-            {
-              icon: "refresh",
-              value: updates.length,
-              label: "待更新",
-              title: "检查上游后可知",
-              accent: updates.length > 0,
-            },
-          ]}
-        />
-      </div>
+      <div className="overview-priority">
+        <section className="panel">
+          <div className="panel-head">
+            <h2>下一步</h2>
+          </div>
+          {vault.format === "v1" ? (
+            <div className="quiet-state">
+              <div><strong>迁移到新版仓库</strong><p>迁移后即可管理来源、安装与更新。</p></div>
+              <Button size="sm" onClick={onMigration}>查看迁移方案</Button>
+            </div>
+          ) : errors.length > 0 ? (
+            <div className="quiet-state">
+              <div><strong>处理校验错误</strong><p>先确认仓库问题，再继续管理资产。</p></div>
+              <Button size="sm" onClick={onValidate}>查看校验</Button>
+            </div>
+          ) : problems.length > 0 ? (
+            <div className="quiet-state">
+              <div><strong>重试来源检查</strong><p>部分来源未能确认上游状态。</p></div>
+              <Button size="sm" onClick={onCheck} loading={checking}>重新检查来源</Button>
+            </div>
+          ) : updates.length > 0 ? (
+            <div className="quiet-state">
+              <div><strong>预览待更新来源</strong><p>{updates.length} 个来源有新版本，确认差异后再应用。</p></div>
+              <Button size="sm" onClick={() => onUpdate()}>预览更新计划</Button>
+            </div>
+          ) : github > 0 && !vault.state?.last_checked_at ? (
+            <div className="quiet-state">
+              <div><strong>检查上游状态</strong><p>还没有检查 GitHub 来源，先确认是否有更新。</p></div>
+              <Button size="sm" onClick={onCheck} loading={checking}>检查上游</Button>
+            </div>
+          ) : vault.counts.skills === 0 ? (
+            <div className="quiet-state">
+              <div><strong>导入第一个技能</strong><p>添加本地目录或 GitHub 仓库，开始整理资产。</p></div>
+              <Button size="sm" onClick={onImport}>添加首个来源</Button>
+            </div>
+          ) : vault.counts.targets === 0 ? (
+            <div className="quiet-state">
+              <div><strong>配置安装目标</strong><p>为技能选择使用位置，完成后即可安装。</p></div>
+              <Button size="sm" onClick={onInstall}>选择安装目录</Button>
+            </div>
+          ) : (
+            <div className="quiet-state">
+              <StatusMark tone="ok" label="没有待处理项目" size={22} />
+              <div><strong>没有待处理项目</strong><p>可以检查上游，或继续导入技能。</p></div>
+            </div>
+          )}
+        </section>
 
-      {errors.length > 0 ? (
-        <Callout tone="danger" title={`${errors.length} 个校验错误`}>
-          <p>{errors[0]?.message}</p>
-          <Button size="sm" variant="ghost" onClick={onValidate}>
-            查看全部
-          </Button>
-        </Callout>
-      ) : null}
+        {errors.length > 0 ? (
+          <Callout tone="danger" title={`${errors.length} 个校验错误`}>
+            <p>{errors[0]?.message}</p>
+            <Button size="sm" variant="ghost" onClick={onValidate}>
+              查看全部
+            </Button>
+          </Callout>
+        ) : null}
 
-      {vault.operation ? (
-        <Callout tone="warn" title="上次操作未正常结束">
-          <p>
-            {vault.operation.kind} 停在「{vault.operation.steps.find((step) => step.status === "running")?.label ?? "未知步骤"}」。
-            不会自动回滚，请用 Git 状态与安装备份核对后继续。
-          </p>
-        </Callout>
-      ) : null}
+        {problems.length > 0 ? (
+          <Callout tone="danger" title={`${problems.length} 个来源检查失败`}>
+            <p>{problems[0]?.name}：{problems[0]?.lastError ?? "无法确认上游状态，请检查网络或认证后重试。"}</p>
+            <Button size="sm" variant="ghost" onClick={onCheck} loading={checking}>
+              重试检查
+            </Button>
+          </Callout>
+        ) : null}
 
-      <div className="overview-columns">
+        {vault.operation ? (
+          <Callout tone="warn" title="上次操作未正常结束">
+            <p>
+              {vault.operation.kind} 停在「{vault.operation.steps.find((step) => step.status === "running")?.label ?? "未知步骤"}」。
+              不会自动回滚，请用 Git 状态与安装备份核对后继续。
+            </p>
+          </Callout>
+        ) : null}
+
         <section className="panel update-panel">
           <div className="panel-head">
             <h2>更新</h2>
@@ -173,14 +168,26 @@ export function Overview({
 
           {updates.length === 0 && problems.length === 0 ? (
             <div className="quiet-state">
-              <StatusMark tone="ok" label="没有待更新" size={22} />
+              <StatusMark
+                tone={github === 0 || !vault.state?.last_checked_at ? "muted" : "ok"}
+                label={github === 0 ? "没有 GitHub 来源" : vault.state?.last_checked_at ? "没有待更新" : "尚未检查上游"}
+                size={22}
+              />
               <div>
-                <strong>没有待更新</strong>
-                {vault.state?.last_checked_at ? (
+                <strong>{github === 0 ? "没有 GitHub 来源" : vault.state?.last_checked_at ? "没有待更新" : "尚未检查上游"}</strong>
+                {github === 0 ? (
+                  <p>添加 GitHub 来源后，可在这里检查上游更新。</p>
+                ) : vault.state?.last_checked_at ? (
                   <p>检查于 {relativeTime(vault.state.last_checked_at)}</p>
-                ) : null}
+                ) : (
+                  <p>检查上游后才能确认是否有可用更新。</p>
+                )}
               </div>
-              <IconButton icon="refresh" label="检查上游" onClick={onCheck} loading={checking} />
+              {github > 0 && vault.state?.last_checked_at ? (
+                <Button size="sm" variant="quiet" icon="refresh" onClick={onCheck} loading={checking}>检查上游</Button>
+              ) : github === 0 ? (
+                <Button size="sm" variant="quiet" icon="plus" onClick={onImport}>添加来源</Button>
+              ) : null}
             </div>
           ) : (
             <div className="update-list">
@@ -191,6 +198,9 @@ export function Overview({
                       {source.name}
                     </button>
                     <span className="update-repo">{source.repo ?? "本地来源"}</span>
+                    {source.lastError ? (
+                      <span className="update-error" title={source.lastError}>{source.lastError}</span>
+                    ) : null}
                   </div>
                   <div className="update-row-meta">
                     <StatusPill tone={statusTone(source.status)}>{statusLabel(source.status)}</StatusPill>
@@ -199,17 +209,12 @@ export function Overview({
                   <div className="row-actions">
                     {source.origin === "github" ? (
                       <>
-                        <IconButton
-                          icon="file"
-                          label="查看上游差异"
-                          onClick={() => onDiff(source.name)}
-                        />
-                        <IconButton
-                          icon="download"
-                          label="应用更新"
-                          onClick={() => onUpdate(source.name)}
-                          disabled={source.status === "auth-failed" || source.status === "error"}
-                        />
+                        <Button size="sm" variant="quiet" onClick={() => onDiff(source.name)}>
+                          查看差异
+                        </Button>
+                        <Button size="sm" variant="quiet" onClick={() => onUpdate(source.name)} disabled={source.status === "auth-failed" || source.status === "error"}>
+                          预览更新
+                        </Button>
                       </>
                     ) : (
                       <span className="muted-small">本地</span>
@@ -220,11 +225,76 @@ export function Overview({
             </div>
           )}
         </section>
+      </div>
+
+      <div className="overview-summary">
+        <div className="stat-groups">
+          <StatGroup
+            label="仓库内容"
+            cells={[
+              {
+                icon: "source",
+                value: vault.counts.sources,
+                label: "来源",
+                title: `${github} 个 GitHub · ${local} 个本地`,
+              },
+              {
+                icon: "skill",
+                value: vault.counts.skills,
+                label: "技能",
+                title: `${vault.counts.packages} 个包`,
+              },
+              {
+                icon: "sparkle",
+                value: vault.counts.plugins,
+                label: "插件",
+                title: `${vault.counts.pluginSkills} 个插件内技能`,
+              },
+            ]}
+          />
+          <StatGroup
+            label="外部记录"
+            cells={[
+              {
+                icon: "terminal",
+                value: vault.counts.tools,
+                label: "工具",
+                title: "插件分发 · MCP · CLI · 桌面应用",
+              },
+              { icon: "server", value: mcpCount, label: "MCP", title: "独立 MCP 服务记录" },
+              {
+                icon: "shield",
+                value: vault.counts.externalSkills,
+                label: "外部技能",
+                title: "由对应工具自己管理",
+              },
+            ]}
+          />
+          <StatGroup
+            label="安装"
+            cells={[
+              { icon: "target", value: vault.counts.targets, label: "目标", title: "安装规则" },
+              {
+                icon: "download",
+                value: vault.counts.managedInstalls,
+                label: "受管",
+                title: "目标目录里的受管安装",
+              },
+              {
+                icon: "refresh",
+                value: updates.length,
+                label: "待更新",
+                title: "检查上游后可知",
+                accent: updates.length > 0,
+              },
+            ]}
+          />
+        </div>
 
         <section className="panel">
           <div className="panel-head">
             <h2>来源</h2>
-            <IconButton icon="plus" label="导入技能" onClick={onImport} />
+            <Button size="sm" variant="quiet" icon="plus" onClick={onImport}>导入技能</Button>
           </div>
           <div className="origin-bars">
             <OriginBar label="GitHub" value={github} total={vault.sources.length} tone="ink" />
@@ -236,7 +306,7 @@ export function Overview({
       <section className="panel">
         <div className="panel-head">
           <h2>技能</h2>
-          <IconButton icon="shield" label="校验仓库" onClick={onValidate} />
+          <Button size="sm" variant="quiet" icon="shield" onClick={onValidate}>校验仓库</Button>
         </div>
         {featured.length === 0 ? (
           <EmptyState
@@ -251,7 +321,12 @@ export function Overview({
         ) : (
           <div className="skill-grid">
             {featured.map((skill) => (
-              <button className="skill-card" key={`${skill.sourceName}/${skill.name}`} onClick={() => onSkill(skill)}>
+              <button
+                className={`skill-card ${selected === skill.name ? "is-selected" : ""}`}
+                key={`${skill.sourceName}/${skill.name}`}
+                aria-pressed={selected === skill.name}
+                onClick={() => onSkill(skill)}
+              >
                 <div className="skill-card-top">
                   <span className={`origin-glyph origin-${skill.origin}`}>
                     <Icon name={skill.origin === "github" ? "git" : "folder"} size={15} />

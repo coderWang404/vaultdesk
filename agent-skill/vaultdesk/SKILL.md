@@ -38,10 +38,16 @@ Omit `--vault` when the current directory is the vault.
 
 ### Update sources
 
-1. Run `source check --json`.
+1. Run `source check --json`. It updates ignored local check state in `.vault/state.json`, but not tracked vault content.
 2. For each source with updates, run `source diff <name>` and summarize the files.
 3. After approval, apply with `source update <name> --yes`; add `--commit` only when asked.
 4. For plugins, tell the user the agent-side copy was not touched and must be reinstalled through the agent.
+
+### Review plugins
+
+1. Run `plugin list --json` and `plugin show <name> --json` to inspect `rootPath`, `manifests`, `assets`, `containedSkills`, and `hasHooks`. Use `rootPath` as the agent-side installation source, never `third_party/`.
+2. Before installing through an agent, show the asset list and any hooks to the user. Follow that agent's current plugin rules; do not run hooks or write adapter files back into the vault.
+3. Keep GitHub-origin `plugins/<name>/` read-only. If customization is needed, copy the plugin to an agent-owned location first. After a VaultDesk source update, reinstall or refresh the agent-side copy; VaultDesk does not track its installed version.
 
 ### Install skills
 

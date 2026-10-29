@@ -16,6 +16,7 @@ import { VaultDeskError, serializeError } from "@vaultdesk/core";
 import { ipcRequestSchema, type IpcCommand, type IpcResponse } from "@vaultdesk/schema";
 import { knownCommands, runCommand, warningsOf } from "./commands.js";
 import { buildAppMenu } from "./menu.js";
+import { isTrustedRendererUrl } from "./trusted-url.js";
 import type { DirectoryDialogOptions } from "../shared/api.js";
 
 const dirname = __dirname;
@@ -49,15 +50,7 @@ function rendererUrl(): string {
 }
 
 function isTrustedUrl(url: string): boolean {
-  const target = rendererUrl();
-  if (process.env.ELECTRON_RENDERER_URL) return url.startsWith(target);
-  try {
-    const parsed = new URL(url);
-    const expected = new URL(target);
-    return parsed.protocol === "file:" && parsed.pathname === expected.pathname;
-  } catch {
-    return false;
-  }
+  return isTrustedRendererUrl(url, rendererUrl());
 }
 
 function assertTrustedSender(event: IpcMainInvokeEvent): void {

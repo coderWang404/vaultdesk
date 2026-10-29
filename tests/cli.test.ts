@@ -35,6 +35,19 @@ function runCli(args: string[], extraEnv: Record<string, string> = {}): CliResul
 }
 
 describe("CLI contract", () => {
+  it("shows source check errors in human status, list, and show output", () => {
+    const vaultPath = copyFixture("v2-basic");
+    fs.writeFileSync(
+      path.join(vaultPath, ".vault", "state.json"),
+      JSON.stringify({ schema: 1, sources: { "gh-standalone": { status: "error", error: "SSL_ERROR_SYSCALL: connection closed" } }, targets: {} }),
+    );
+    for (const args of [["vault", "status"], ["source", "list"], ["source", "show", "gh-standalone"]]) {
+      const result = runCli(["--vault", vaultPath, ...args]);
+      expect(result.status).toBe(0);
+      expect(result.stdout).toContain("SSL_ERROR_SYSCALL: connection closed");
+    }
+  });
+
   it("prints one JSON envelope and leaves a read-only vault unchanged", () => {
     const vaultPath = copyFixture("v1-basic");
     const before = snapshotTree(vaultPath);

@@ -65,7 +65,18 @@ export async function fetchUpstream(source: SourceRecord): Promise<FetchResult> 
   const base = cacheBaseFor(source);
   ensureDir(base);
   const commit = await gitLsRemote(remote, source.ref, base);
-  const cacheDir = path.join(base, commit);
+  // A sparse checkout is only complete for the paths requested by this source.
+  // Other sources at the same commit may need different paths.
+  const sourcePaths = [
+    ...new Set(
+      source.skills
+        .map((skill) => skill.sourcePath)
+        .filter((value): value is string => Boolean(value)),
+    ),
+  ].sort();
+  const fullTree = sourcePaths.length === 0 || sourcePaths.some((value) => value === "." || value === "./");
+  const checkoutKey = fullTree ? "full" : sha256(JSON.stringify(sourcePaths)).slice(0, 16);
+  const cacheDir = path.join(base, commit, checkoutKey);
   const repoDir = path.join(cacheDir, "repo");
   const metaFile = path.join(cacheDir, "meta.json");
 
@@ -79,14 +90,6 @@ export async function fetchUpstream(source: SourceRecord): Promise<FetchResult> 
   await cloneInto(source, remote, temp);
 
   const resolved = (await git(["rev-parse", "HEAD"], temp, { allowFailure: true, timeoutMs: 10_000 })).stdout.trim();
-  const sourcePaths = [
-    ...new Set(
-      source.skills
-        .map((skill) => skill.sourcePath)
-        .filter((value): value is string => Boolean(value)),
-    ),
-  ];
-  const fullTree = sourcePaths.length === 0 || sourcePaths.some((value) => value === "." || value === "./");
   if (fullTree) {
     await git(["sparse-checkout", "disable"], temp, { allowFailure: true });
   } else {

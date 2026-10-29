@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import path from "node:path";
 import fs from "node:fs";
-import { canonicalPath, exists, expandHome, hashDirectory, isInside, nowIso, timestampSlug, movePath, listDirectory, removePath } from "./fsx.js";
+import { canonicalPath, exists, expandHome, hashDirectory, isDirectory, isInside, nowIso, timestampSlug, movePath, listDirectory, removePath } from "./fsx.js";
 import { VaultDeskError } from "./errors.js";
 import type { VaultFile } from "@vaultdesk/schema";
 import type { InstalledSkill, InstallPlan, InstallResult, InstallSlotPlan, SkillRecord, TargetRecord, VaultSnapshot } from "./types.js";
@@ -39,7 +39,14 @@ export function defaultBackupBase(): string {
 }
 
 export function backupRootFor(targetId: string, base?: string): string {
+  const safe = targetId.replace(/[^a-zA-Z0-9._-]+/g, "_").slice(0, 80);
+  const digest = createHash("sha256").update(targetId).digest("hex").slice(0, 12);
+  return path.join(base || defaultBackupBase(), `${safe}-${digest}`);
+}
+
+function legacyBackupRootFor(targetId: string, base?: string): string | undefined {
   const safe = targetId.replace(/[^a-zA-Z0-9._-]+/g, "_");
+  if (safe === "." || safe === "..") return undefined;
   return path.join(base || defaultBackupBase(), safe);
 }
 
@@ -76,10 +83,24 @@ function resolveSkills(snapshot: VaultSnapshot, names: string[]): SkillRecord[] 
   return [...selected.values()].sort((a, b) => a.name.localeCompare(b.name));
 }
 
-function slotState(slotPath: string): { state: InstallSlotPlan["state"]; linkTarget?: string } {
+function slotState(slotPath: string, vaultPath: string, targetId: string): { state: InstallSlotPlan["state"]; linkTarget?: string } {
   if (!exists(slotPath) && !isSymlink(slotPath)) return { state: "create" };
   if (isSymlink(slotPath)) return { state: "symlink", linkTarget: fs.readlinkSync(slotPath) };
-  if (fs.statSync(slotPath).isDirectory() && fs.existsSync(path.join(slotPath, MARKER))) return { state: "managed" };
+  if (fs.statSync(slotPath).isDirectory() && fs.existsSync(path.join(slotPath, MARKER))) {
+    try {
+      const marker = JSON.parse(fs.readFileSync(path.join(slotPath, MARKER), "utf8")) as { vault?: string; target_id?: string };
+      if (typeof marker.vault === "string" && canonicalPath(marker.vault) === canonicalPath(vaultPath)) {
+        if (typeof marker.target_id === "string" && marker.target_id !== targetId) {
+          throw new VaultDeskError("conflict", `Install slot ${slotPath} belongs to another target: ${marker.target_id}`);
+        }
+        return { state: "managed" };
+      }
+    } catch (error) {
+      if (error instanceof VaultDeskError) throw error;
+      // A malformed marker is not proof of ownership.
+    }
+    throw new VaultDeskError("conflict", `Refusing to replace a slot managed by another vault: ${slotPath}`);
+  }
   return { state: "unmanaged" };
 }
 
@@ -120,7 +141,7 @@ export function planInstall(
 
   for (const skill of skills) {
     const slot = path.join(dest, skill.name);
-    const current = slotState(slot);
+    const current = slotState(slot, vaultPath, targetId);
     if (current.state === "managed") {
       slots.push({ skill: skill.name, slot, state: "managed", action: "replace-managed" });
     } else if (current.state === "symlink") {
@@ -261,7 +282,7 @@ export async function installSkills(inputPath: string, options: InstallOptions):
         const hash = buildHashes[slot.skill] ?? hashDirectory(slot.slot);
         fs.writeFileSync(
           path.join(slot.slot, MARKER),
-          JSON.stringify({ vault: vaultPath, skill: slot.skill, installed_at: installedAt, hash }, null, 2) + "\n",
+          JSON.stringify({ vault: vaultPath, target_id: freshPlan.targetId, skill: slot.skill, installed_at: installedAt, hash }, null, 2) + "\n",
           "utf8",
         );
         installed += 1;
@@ -283,7 +304,7 @@ export async function installSkills(inputPath: string, options: InstallOptions):
 
       const targetHash = `sha256:${createHash("sha256")
         .update(
-          Object.entries(buildHashes)
+          freshPlan.slots.map((slot) => [slot.skill, buildHashes[slot.skill] ?? hashDirectory(path.join(vaultPath, "build", "skills", slot.skill))] as const)
             .sort(([a], [b]) => a.localeCompare(b))
             .map(([name, hash]) => `${name}:${hash}`)
             .join("|"),
@@ -339,9 +360,9 @@ export function verifyTargetRecord(snapshot: VaultSnapshot, targetId: string): I
       continue;
     }
     try {
-      const marker = JSON.parse(fs.readFileSync(markerPath, "utf8")) as { vault?: string; hash?: string };
+      const marker = JSON.parse(fs.readFileSync(markerPath, "utf8")) as { vault?: string; target_id?: string; skill?: string; hash?: string };
       const sameVault = marker.vault ? canonicalPath(marker.vault) === canonicalPath(snapshot.path) : false;
-      if (!sameVault) {
+      if (!sameVault || (marker.target_id && marker.target_id !== targetId) || (marker.skill && marker.skill !== skillName)) {
         modified.push(skillName);
         continue;
       }
@@ -394,13 +415,18 @@ export async function removeTarget(
           if (!fs.existsSync(slot) && !isSymlink(slot)) continue;
           const markerPath = path.join(slot, MARKER);
           if (!fs.existsSync(markerPath)) continue;
-          let marker: { vault?: string };
+          let marker: { vault?: string; target_id?: string; skill?: string };
           try {
-            marker = JSON.parse(fs.readFileSync(markerPath, "utf8")) as { vault?: string };
+            marker = JSON.parse(fs.readFileSync(markerPath, "utf8")) as { vault?: string; target_id?: string; skill?: string };
           } catch {
             continue;
           }
           if (!marker.vault || canonicalPath(marker.vault) !== vaultPath) continue;
+          if (marker.target_id && marker.target_id !== targetId) continue;
+          if (marker.skill && marker.skill !== skillName) continue;
+          if (!marker.target_id && snapshot.targets.some(
+            (other) => other.id !== targetId && canonicalPath(other.expandedDest) === canonicalPath(target.expandedDest) && other.skills.includes(skillName),
+          )) continue;
           const destination = path.join(
             backupRootFor(targetId, options.backupRoot),
             `${stamp}-removed`,
@@ -442,8 +468,22 @@ export async function restoreBackup(
   if (snapshot.format !== "v2") throw new VaultDeskError("not-writable-v1", "Migrate this vault first.");
   const target = snapshot.targets.find((entry) => entry.id === options.targetId);
   if (!target) throw new VaultDeskError("unknown-target", `Unknown install target: ${options.targetId}`);
+  if (!target.skills.includes(options.name)) {
+    throw new VaultDeskError("invalid-input", `Skill ${options.name} does not belong to target ${options.targetId}`);
+  }
   const source = canonicalPath(options.backupPath);
-  if (!exists(source)) throw new VaultDeskError("source-not-found", `Backup path does not exist: ${options.backupPath}`);
+  const backupRoot = canonicalPath(backupRootFor(options.targetId, options.backupRoot));
+  const legacyRoot = legacyBackupRootFor(options.targetId, options.backupRoot);
+  const legacyCollision = snapshot.targets.some(
+    (other) => other.id !== options.targetId && legacyBackupRootFor(other.id, options.backupRoot) === legacyRoot,
+  );
+  const sourceRoot = path.dirname(path.dirname(source));
+  const fromCurrentRoot = sourceRoot === backupRoot;
+  const fromUnambiguousLegacyRoot = legacyRoot && !legacyCollision && sourceRoot === canonicalPath(legacyRoot);
+  if (path.basename(source) !== options.name || (!fromCurrentRoot && !fromUnambiguousLegacyRoot)) {
+    throw new VaultDeskError("invalid-input", `Backup path is not a ${options.name} snapshot for target ${options.targetId}`);
+  }
+  if (!isDirectory(source)) throw new VaultDeskError("source-not-found", `Backup path does not exist: ${options.backupPath}`);
 
   return withWriteLock(vaultPath, async () => {
     const slot = path.join(target.expandedDest, options.name);
@@ -452,6 +492,7 @@ export async function restoreBackup(
       if (isSymlink(slot)) {
         fs.unlinkSync(slot);
       } else if (fs.existsSync(path.join(slot, MARKER))) {
+        slotState(slot, vaultPath, options.targetId);
         previousBackup = path.join(
           backupRootFor(options.targetId, options.backupRoot),
           `${timestampSlug()}-replaced`,
@@ -467,7 +508,7 @@ export async function restoreBackup(
     fs.writeFileSync(
       path.join(slot, MARKER),
       JSON.stringify(
-        { vault: vaultPath, skill: options.name, installed_at: nowIso(), hash: hashDirectory(slot) },
+        { vault: vaultPath, target_id: options.targetId, skill: options.name, installed_at: nowIso(), hash: hashDirectory(slot) },
         null,
         2,
       ) + "\n",
@@ -480,7 +521,7 @@ export async function restoreBackup(
 
 export async function listBackups(targetId?: string, base?: string): Promise<BackupEntry[]> {
   const roots = targetId
-    ? [backupRootFor(targetId, base)]
+    ? [backupRootFor(targetId, base), legacyBackupRootFor(targetId, base)].filter((root): root is string => Boolean(root))
     : listDirectory(base || defaultBackupBase()).filter((entry) => entry.isDirectory()).map((entry) => path.join(base || defaultBackupBase(), entry.name));
   const result: BackupEntry[] = [];
   for (const root of roots) {
@@ -489,7 +530,7 @@ export async function listBackups(targetId?: string, base?: string): Promise<Bac
       const skills = listDirectory(dir)
         .filter((entry) => entry.isDirectory())
         .map((entry) => entry.name);
-      result.push({ targetId: path.basename(root), timestamp: stamp.name, path: dir, skills });
+      result.push({ targetId: targetId ?? path.basename(root), timestamp: stamp.name, path: dir, skills });
     }
   }
   return result.sort((a, b) => b.timestamp.localeCompare(a.timestamp));

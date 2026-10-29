@@ -10,23 +10,30 @@ interface RecentEntry {
   exists?: boolean;
 }
 
+type ThemePreference = "system" | "light" | "dark";
+const THEMES = [["system", "跟随系统"], ["light", "浅色"], ["dark", "深色"]] as const;
+
 export function Welcome({
   recents,
   loading,
   info,
   opening,
+  themePreference,
   onOpen,
   onBrowse,
   onNew,
+  onThemePreference,
   onRemoveRecent,
 }: {
   recents: RecentEntry[];
   loading: boolean;
   info: AppInfo | null;
   opening: string | null;
+  themePreference: ThemePreference;
   onOpen: (path: string) => void;
   onBrowse: () => void;
   onNew: () => void;
+  onThemePreference: (theme: ThemePreference) => void;
   onRemoveRecent: (path: string) => void;
 }) {
   return (
@@ -46,6 +53,22 @@ export function Welcome({
             <Button variant="quiet" size="md" icon="plus" onClick={onNew}>
               新建仓库
             </Button>
+          </div>
+          <div className="welcome-appearance">
+            <span id="welcome-appearance-label">外观</span>
+            <div className="theme-options welcome-theme-options" role="group" aria-labelledby="welcome-appearance-label">
+              {THEMES.map(([value, label]) => (
+                <button
+                  key={value}
+                  type="button"
+                  className={themePreference === value ? "theme-option is-active" : "theme-option"}
+                  aria-pressed={themePreference === value}
+                  onClick={() => onThemePreference(value)}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
           </div>
         </section>
 

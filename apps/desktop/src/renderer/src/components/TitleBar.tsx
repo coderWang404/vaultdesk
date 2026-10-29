@@ -3,6 +3,7 @@ import { Icon } from "./icons";
 import { IconButton } from "./ui";
 
 export function TitleBar({
+  drawerOpen,
   vaults,
   activePath,
   checking,
@@ -14,6 +15,7 @@ export function TitleBar({
   onCheck,
   onSettings,
 }: {
+  drawerOpen: boolean;
   vaults: VaultSnapshot[];
   activePath: string | null;
   checking: boolean;
@@ -25,9 +27,15 @@ export function TitleBar({
   onCheck: () => void;
   onSettings: () => void;
 }) {
-  const activeVault = vaults.find((vault) => vault.path === activePath);
+  const closeTab = (path: string): void => {
+    onClose(path);
+    requestAnimationFrame(() => {
+      const next = document.querySelector<HTMLElement>('.vault-tabs .vault-tab[aria-pressed="true"]');
+      (next ?? document.querySelector<HTMLElement>(".tab-add"))?.focus();
+    });
+  };
   return (
-    <header className="titlebar">
+    <header className="titlebar" inert={drawerOpen}>
       <div className="titlebar-brand">
         <span className="brand-mark">
           <Icon name="vault" size={17} strokeWidth={1.9} />
@@ -36,43 +44,44 @@ export function TitleBar({
       </div>
 
       <div className="vault-tabs-shell">
-        <div className="vault-tabs" role="tablist" aria-label="已打开的仓库">
+        <div className="vault-tabs" role="group" aria-label="已打开的仓库">
           {vaults.map((vault, index) => (
-            <button
+            <div
               key={vault.path}
-              role="tab"
-              aria-selected={vault.path === activePath}
-              tabIndex={vault.path === activePath ? 0 : -1}
-              className={`vault-tab ${vault.path === activePath ? "is-active" : ""}`}
-              onClick={() => onSelect(vault.path)}
-              onKeyDown={(event) => {
-                const delta = event.key === "ArrowRight" ? 1 : event.key === "ArrowLeft" ? -1 : undefined;
-                let next: number | undefined;
-                if (delta !== undefined) next = (index + delta + vaults.length) % vaults.length;
-                else if (event.key === "Home") next = 0;
-                else if (event.key === "End") next = vaults.length - 1;
-                const targetVault = next === undefined ? undefined : vaults[next];
-                if (next === undefined || !targetVault) return;
-                event.preventDefault();
-                const target = event.currentTarget.parentElement?.querySelectorAll<HTMLElement>('[role="tab"]')[next];
-                target?.focus();
-                onSelect(targetVault.path);
-              }}
-              title={vault.format === "v1" ? `${vault.path} · v1 只读` : vault.path}
+              className={`vault-tab-item ${vault.path === activePath ? "is-active" : ""}`}
             >
-              <span className={`tab-dot ${vault.format === "v1" ? "is-v1" : ""}`} />
-              <span className="tab-name">{vault.name}</span>
-              <span
-                className="tab-close"
-                aria-hidden="true"
-                onClick={(event) => {
-                  event.stopPropagation();
-                  onClose(vault.path);
+              <button
+                aria-pressed={vault.path === activePath}
+                tabIndex={vault.path === activePath ? 0 : -1}
+                className={`vault-tab ${vault.path === activePath ? "is-active" : ""}`}
+                onClick={() => onSelect(vault.path)}
+                onKeyDown={(event) => {
+                  const delta = event.key === "ArrowRight" ? 1 : event.key === "ArrowLeft" ? -1 : undefined;
+                  let next: number | undefined;
+                  if (delta !== undefined) next = (index + delta + vaults.length) % vaults.length;
+                  else if (event.key === "Home") next = 0;
+                  else if (event.key === "End") next = vaults.length - 1;
+                  const targetVault = next === undefined ? undefined : vaults[next];
+                  if (next === undefined || !targetVault) return;
+                  event.preventDefault();
+                  const target = event.currentTarget.closest(".vault-tabs")?.querySelectorAll<HTMLElement>(".vault-tab")[next];
+                  target?.focus();
+                  onSelect(targetVault.path);
                 }}
+                title={vault.format === "v1" ? `${vault.path} · v1 只读` : vault.path}
+              >
+                <span className={`tab-dot ${vault.format === "v1" ? "is-v1" : ""}`} />
+                <span className="tab-name">{vault.name}</span>
+              </button>
+              <button
+                className="tab-close"
+                aria-label={`关闭 ${vault.name}`}
+                title={`关闭 ${vault.name}`}
+                onClick={() => closeTab(vault.path)}
               >
                 <Icon name="x" size={12} />
-              </span>
-            </button>
+              </button>
+            </div>
           ))}
         </div>
         <div className="tab-add-group">
@@ -91,9 +100,6 @@ export function TitleBar({
           <span>搜索</span>
           <kbd>⌘K</kbd>
         </button>
-        {activeVault ? (
-          <IconButton icon="x" label={`关闭 ${activeVault.name}`} onClick={() => onClose(activeVault.path)} />
-        ) : null}
         <IconButton
           icon="refresh"
           label={checking ? "正在检查更新" : "检查上游更新"}

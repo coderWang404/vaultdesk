@@ -76,6 +76,15 @@ function modifiedSkills(snapshot: VaultSnapshot, source: VaultSnapshot["sources"
   return modified;
 }
 
+function modifiedVendors(source: VaultSnapshot["sources"][number]): string[] {
+  return source.skills
+    .filter((skill) => {
+      const locked = source.locked?.skills?.[skill.name];
+      return !locked || !skill.vendorPath || hashDirectory(skill.vendorPath) !== locked;
+    })
+    .map((skill) => skill.name);
+}
+
 function copyUpstreamSkill(
   skill: VaultSnapshot["sources"][number]["skills"][number],
   fetchedRoot: string,
@@ -170,9 +179,13 @@ export async function updateSources(inputPath: string, options: UpdateOptions = 
     if (modified.length > 0) {
       blocked.push(`${source.name}: ${modified.join(", ")} modified since the last apply (fork or revert first)`);
     }
+    const vendorModified = modifiedVendors(source);
+    if (vendorModified.length > 0) {
+      blocked.push(`${source.name}: pristine vendor copy for ${vendorModified.join(", ")} modified or missing since the last apply (revert first)`);
+    }
   }
   if (blocked.length > 0) {
-    throw new VaultDeskError("conflict", "Working copies have local changes. Use --force to overwrite.", {
+    throw new VaultDeskError("conflict", "Source copies have local changes. Use --force to overwrite.", {
       details: blocked,
     });
   }

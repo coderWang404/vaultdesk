@@ -42,7 +42,7 @@ export function SearchPalette({
   onPick: (hit: SearchHit) => void;
 }) {
   const [query, setQuery] = useState("");
-  const [report, setReport] = useState<SearchReport | null>(null);
+  const [report, setReport] = useState<{ query: string; data: SearchReport } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [active, setActive] = useState(0);
@@ -59,6 +59,7 @@ export function SearchPalette({
     if (!needle || vaults.length === 0) {
       setReport(null);
       setError(null);
+      setLoading(false);
       setActive(0);
       return;
     }
@@ -72,7 +73,7 @@ export function SearchPalette({
       })
         .then((result) => {
           if (cancelled) return;
-          setReport(result);
+          setReport({ query: needle, data: result });
           setError(null);
           setActive(0);
         })
@@ -89,8 +90,10 @@ export function SearchPalette({
     };
   }, [query, vaults]);
 
-  const hits = useMemo(() => report?.hits ?? [], [report]);
-  const empty = query.trim().length > 0 && !loading && hits.length === 0 && !error;
+  const resultIsCurrent = report?.query === query.trim();
+  const hits = useMemo(() => report && resultIsCurrent ? report.data.hits : [], [report, resultIsCurrent]);
+  const pending = query.trim().length > 0 && vaults.length > 0 && !error && (loading || !resultIsCurrent);
+  const empty = query.trim().length > 0 && !pending && hits.length === 0 && !error;
 
   function onKeyDown(event: ReactKeyboardEvent<HTMLInputElement>): void {
     if (event.key === "ArrowDown") {
@@ -101,6 +104,7 @@ export function SearchPalette({
       setActive((current) => (hits.length === 0 ? 0 : (current - 1 + hits.length) % hits.length));
     } else if (event.key === "Enter") {
       event.preventDefault();
+      if (pending || !resultIsCurrent) return;
       const hit = hits[active];
       if (hit) onPick(hit);
     }
@@ -119,10 +123,18 @@ export function SearchPalette({
           <input
             ref={inputRef}
             value={query}
-            onChange={(event) => setQuery(event.target.value)}
+            onChange={(event) => {
+              setQuery(event.target.value);
+              setError(null);
+            }}
             onKeyDown={onKeyDown}
             placeholder="搜索技能、插件、MCP、工具卡"
             aria-label="搜索技能、插件、MCP 与工具卡"
+            role="combobox"
+            aria-autocomplete="list"
+            aria-controls={hits.length > 0 ? "palette-results" : undefined}
+            aria-expanded={hits.length > 0}
+            aria-activedescendant={hits.length > 0 ? "palette-option-" + active : undefined}
             spellCheck={false}
           />
           {loading ? <Spinner size={15} /> : <kbd>esc</kbd>}
@@ -149,16 +161,21 @@ export function SearchPalette({
             </div>
           ) : error ? (
             <p className="palette-note is-danger">{error}</p>
+          ) : pending ? (
+            <p className="palette-note" role="status">正在搜索…</p>
           ) : empty ? (
             <p className="palette-note">没有匹配结果</p>
           ) : (
-            <div className="palette-results">
+            <div className="palette-results" id="palette-results" role="listbox" aria-label="搜索结果">
               {hits.map((hit, index) => (
                 <button
                   key={`${hit.vaultPath}/${hit.shape}/${hit.sourceName}/${hit.skill}`}
                   className={`palette-hit ${index === active ? "is-active" : ""}`}
                   onMouseEnter={() => setActive(index)}
                   onClick={() => onPick(hit)}
+                  id={"palette-option-" + index}
+                  role="option"
+                  aria-selected={index === active}
                 >
                   <span className={`origin-glyph origin-${hit.origin}`}>
                     <Icon
@@ -210,7 +227,7 @@ export function SearchPalette({
           <span className="palette-readonly">
             <Icon name="shield" size={11} /> 只读
           </span>
-          {report && hits.length > 0 ? <span>{hits.length} 个结果</span> : null}
+          {resultIsCurrent && hits.length > 0 ? <span role="status">{hits.length} 个结果</span> : null}
         </div>
       </div>
     </div>

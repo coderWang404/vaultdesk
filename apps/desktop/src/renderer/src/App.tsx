@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import type {
   AppSettings,
   CheckReport,
@@ -55,6 +55,29 @@ interface RemoveTargetResult {
 
 const EMPTY_SELECTION: Selection = { kind: null, name: null };
 const DEFAULT_SETTINGS: AppSettings = { checkIntervalHours: 24, backupRetention: 10 };
+type ThemePreference = "system" | "light" | "dark";
+type SidebarPreference = "auto" | "expanded" | "collapsed";
+
+function readPreference<T extends string>(key: string, values: readonly T[], fallback: T): T {
+  try {
+    const stored = window.localStorage.getItem(key);
+    return values.find((value) => value === stored) ?? fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+function useMediaQuery(query: string): boolean {
+  const [matches, setMatches] = useState(() => window.matchMedia(query).matches);
+  useEffect(() => {
+    const media = window.matchMedia(query);
+    const update = (): void => setMatches(media.matches);
+    update();
+    media.addEventListener("change", update);
+    return () => media.removeEventListener("change", update);
+  }, [query]);
+  return matches;
+}
 
 export function App() {
   const [vaults, setVaults] = useState<VaultSnapshot[]>([]);
@@ -74,8 +97,18 @@ export function App() {
   const [checking, setChecking] = useState<string | null>(null);
   const [targetToRemove, setTargetToRemove] = useState<string | null>(null);
   const [removingTarget, setRemovingTarget] = useState(false);
+  const [themePreference, setThemePreference] = useState<ThemePreference>(() =>
+    readPreference("vaultdesk.theme", ["system", "light", "dark"] as const, "system"),
+  );
+  const [sidebarPreference, setSidebarPreference] = useState<SidebarPreference>(() =>
+    readPreference("vaultdesk.sidebar", ["auto", "expanded", "collapsed"] as const, "auto"),
+  );
+  const compactWorkspace = useMediaQuery("(max-width: 1240px)");
+  const inspectorOverlay = useMediaQuery("(max-width: 1360px)");
+  const sidebarCollapsed = sidebarPreference === "auto" ? compactWorkspace : sidebarPreference === "collapsed";
 
   const toastId = useRef(0);
+  const inspectorTriggerRef = useRef<HTMLElement | null>(null);
   const vaultsRef = useRef(vaults);
   vaultsRef.current = vaults;
   const bootStarted = useRef(false);
@@ -87,6 +120,44 @@ export function App() {
   );
   const readOnly = activeVault?.format === "v1";
   const activeChecking = checking !== null && checking === activeVault?.path;
+  const showInspector = Boolean(
+    activeVault && selection.kind && selection.name &&
+    ((section === "overview" && (selection.kind === "source" || selection.kind === "skill")) ||
+      (section === "sources" && selection.kind === "source") ||
+      (section === "skills" && (selection.kind === "skill" || selection.kind === "external")) ||
+      (section === "plugins" && selection.kind === "plugin")),
+  );
+  const drawerActive = showInspector && inspectorOverlay && !modal && !targetToRemove && !searchOpen;
+
+  useLayoutEffect(() => {
+    const media = window.matchMedia("(prefers-color-scheme: dark)");
+    const apply = (): void => {
+      document.documentElement.dataset.theme = themePreference === "system"
+        ? media.matches ? "dark" : "light"
+        : themePreference;
+    };
+    apply();
+    media.addEventListener("change", apply);
+    try { window.localStorage.setItem("vaultdesk.theme", themePreference); } catch { /* Storage may be unavailable. */ }
+    return () => media.removeEventListener("change", apply);
+  }, [themePreference]);
+
+  const toggleSidebar = useCallback((): void => {
+    const next = sidebarCollapsed ? "expanded" : "collapsed";
+    setSidebarPreference(next);
+    try { window.localStorage.setItem("vaultdesk.sidebar", next); } catch { /* Storage may be unavailable. */ }
+  }, [sidebarCollapsed]);
+
+  const changeSection = useCallback((next: Section): void => {
+    inspectorTriggerRef.current = null;
+    setSection(next);
+    setSelection(EMPTY_SELECTION);
+  }, []);
+
+  const openSearch = useCallback((): void => {
+    if (modal || targetToRemove || document.querySelector('[role="dialog"][aria-modal="true"]')) return;
+    setSearchOpen(true);
+  }, [modal, targetToRemove]);
 
   const notify = useCallback((message: string, tone: ToastItem["tone"] = "info") => {
     const id = ++toastId.current;
@@ -288,20 +359,42 @@ export function App() {
     [activeVault, guardWritable],
   );
 
-  const selectSource = useCallback((source: SourceRecord): void => {
-    setSelection({ kind: "source", name: source.name });
+  const rememberInspectorTrigger = useCallback((): void => {
+    const active = document.activeElement;
+    inspectorTriggerRef.current = active instanceof HTMLButtonElement && active.closest(".content-pane") ? active : null;
   }, []);
+
+  const selectSource = useCallback((source: SourceRecord): void => {
+    rememberInspectorTrigger();
+    setSelection({ kind: "source", name: source.name });
+  }, [rememberInspectorTrigger]);
 
   const selectSkill = useCallback((skill: SkillRecord): void => {
+    rememberInspectorTrigger();
     setSelection({ kind: "skill", name: skill.name });
-  }, []);
+  }, [rememberInspectorTrigger]);
 
   const selectExternalSkill = useCallback((skill: ExternalSkillRecord): void => {
+    rememberInspectorTrigger();
     setSelection({ kind: "external", name: skill.name });
-  }, []);
+  }, [rememberInspectorTrigger]);
 
   const selectPlugin = useCallback((plugin: PluginRecord): void => {
+    rememberInspectorTrigger();
     setSelection({ kind: "plugin", name: plugin.name });
+  }, [rememberInspectorTrigger]);
+
+  const closeInspector = useCallback((): void => {
+    const preferred = inspectorTriggerRef.current;
+    inspectorTriggerRef.current = null;
+    const trigger = document.querySelector<HTMLElement>(
+      '.content-pane .skill-card[aria-pressed="true"], .content-pane .row-action-primary[aria-pressed="true"], .content-pane .row-actions .icon-btn[aria-pressed="true"], .content-pane .skill-row-actions .icon-btn[aria-pressed="true"]',
+    );
+    const fallback = document.querySelector<HTMLElement>(".content-pane");
+    setSelection(EMPTY_SELECTION);
+    requestAnimationFrame(() => {
+      (trigger?.isConnected ? trigger : preferred?.isConnected ? preferred : fallback)?.focus({ preventScroll: true });
+    });
   }, []);
 
   const copyText = useCallback(
@@ -321,12 +414,14 @@ export function App() {
   );
 
   const openRelatedSkill = useCallback((name: string): void => {
+    inspectorTriggerRef.current = null;
     setSection("skills");
     setSelection({ kind: "skill", name });
   }, []);
 
   const handleSearchHit = useCallback(
     async (hit: SearchHit): Promise<void> => {
+      inspectorTriggerRef.current = null;
       setSearchOpen(false);
       if (!vaultsRef.current.some((vault) => vault.path === hit.vaultPath)) {
         await openVault(hit.vaultPath);
@@ -447,27 +542,76 @@ export function App() {
   }, [activeVault]);
 
   useEffect(() => {
+    if (!showInspector || !inspectorOverlay || modal || targetToRemove || searchOpen) return;
+    const root = document.querySelector<HTMLElement>(".inspector");
+    if (!root) return;
+    const frame = requestAnimationFrame(() => {
+      root.querySelector<HTMLElement>(".inspector-close")?.focus({ preventScroll: true });
+    });
+    const onKey = (event: KeyboardEvent): void => {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        event.stopImmediatePropagation();
+        closeInspector();
+        return;
+      }
+      if (event.key !== "Tab") return;
+      const items = Array.from(root.querySelectorAll<HTMLElement>(
+        'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
+      )).filter((element) => element.getClientRects().length > 0);
+      if (items.length === 0) {
+        event.preventDefault();
+        root.focus();
+        return;
+      }
+      const first = items[0]!;
+      const last = items[items.length - 1]!;
+      const active = document.activeElement;
+      if (event.shiftKey && (active === first || !root.contains(active))) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && (active === last || !root.contains(active))) {
+        event.preventDefault();
+        first.focus();
+      }
+    };
+    document.addEventListener("keydown", onKey, true);
+    return () => {
+      cancelAnimationFrame(frame);
+      document.removeEventListener("keydown", onKey, true);
+    };
+  }, [showInspector, inspectorOverlay, modal, targetToRemove, searchOpen, selection.kind, selection.name, closeInspector]);
+
+  useEffect(() => {
+    if (modal || targetToRemove) setSearchOpen(false);
+  }, [modal, targetToRemove]);
+
+  useEffect(() => {
     const onKey = (event: KeyboardEvent): void => {
       if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
         event.preventDefault();
-        setSearchOpen((open) => !open);
+        if (searchOpen) {
+          setSearchOpen(false);
+        } else if (!modal && !targetToRemove && !document.querySelector('[role="dialog"][aria-modal="true"]')) {
+          setSearchOpen(true);
+        }
       }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, []);
+  }, [modal, targetToRemove, searchOpen]);
 
   const actionsRef = useRef({
     browse: browseVault,
     newVault: () => setModal({ kind: "new-vault" }),
-    search: () => setSearchOpen(true),
+    search: openSearch,
     reload: () => {
       if (activePath) void reloadVault(activePath);
     },
     check: () => {
       if (activePath) void checkVault(activePath, false);
     },
-    settings: () => setSection("settings"),
+    settings: () => changeSection("settings"),
     close: () => {
       if (activePath) closeVault(activePath);
     },
@@ -475,14 +619,14 @@ export function App() {
   actionsRef.current = {
     browse: browseVault,
     newVault: () => setModal({ kind: "new-vault" }),
-    search: () => setSearchOpen(true),
+    search: openSearch,
     reload: () => {
       if (activePath) void reloadVault(activePath);
     },
     check: () => {
       if (activePath) void checkVault(activePath, false);
     },
-    settings: () => setSection("settings"),
+    settings: () => changeSection("settings"),
     close: () => {
       if (activePath) closeVault(activePath);
     },
@@ -542,6 +686,7 @@ export function App() {
         return (
           <Overview
             vault={activeVault}
+            selected={selection.kind === "skill" ? selection.name : null}
             checking={activeChecking}
             onCheck={() => void checkVault(activeVault.path, false)}
             onSource={selectSource}
@@ -638,6 +783,8 @@ export function App() {
           <SettingsView
             vault={activeVault}
             settings={settings}
+            themePreference={themePreference}
+            onThemePreference={setThemePreference}
             info={info}
             presets={presets}
             onSaved={(saved) => {
@@ -653,28 +800,26 @@ export function App() {
     }
   }
 
-  const showInspector =
-    Boolean(activeVault) &&
-    (section === "overview" || section === "sources" || section === "skills" || section === "plugins");
-
   return (
     <div className="app-shell">
       <TitleBar
+        drawerOpen={drawerActive}
         vaults={vaults}
         activePath={activePath}
         checking={activeChecking}
         onSelect={(path) => {
           setActivePath(path);
           setSection("overview");
+          setSelection(EMPTY_SELECTION);
         }}
         onClose={closeVault}
         onOpen={() => void browseVault()}
         onNew={() => setModal({ kind: "new-vault" })}
-        onSearch={() => setSearchOpen(true)}
+        onSearch={openSearch}
         onCheck={() => {
           if (activePath) void checkVault(activePath, false);
         }}
-        onSettings={() => setSection("settings")}
+        onSettings={() => changeSection("settings")}
       />
 
       {!booted ? (
@@ -687,12 +832,15 @@ export function App() {
           <Spinner size={18} />
         </div>
       ) : activeVault ? (
-        <div className="workspace">
+        <div className={sidebarCollapsed ? "workspace is-sidebar-collapsed" : "workspace"}>
           <Sidebar
+            drawerOpen={drawerActive}
             vault={activeVault}
             section={section}
             checking={activeChecking}
-            onSection={setSection}
+            collapsed={sidebarCollapsed}
+            onToggle={toggleSidebar}
+            onSection={changeSection}
             onCheck={() => void checkVault(activeVault.path, false)}
             onReveal={() => reveal(activeVault.path)}
             onMigration={() => setModal({ kind: "migration", vaultPath: activeVault.path })}
@@ -713,23 +861,29 @@ export function App() {
                 </Button>
               </div>
             ) : null}
-            <div className={`workspace-body ${showInspector ? "with-inspector" : ""}`}>
-              <main className="content-pane">{renderView()}</main>
+            <div className={showInspector ? "workspace-body with-inspector has-selection" : "workspace-body"}>
+              <main className="content-pane" inert={drawerActive} tabIndex={-1}>
+                {renderView()}
+              </main>
               {showInspector ? (
-                <Inspector
-                  vault={activeVault}
-                  selection={selection}
-                  onClose={() => setSelection(EMPTY_SELECTION)}
-                  onReveal={reveal}
-                  onDiff={(source) => setModal({ kind: "diff", vaultPath: activeVault.path, source })}
-                  onUpdate={openUpdate}
-                  onRemoveSource={openRemoveSource}
-                  onEdit={openEditor}
-                  onFork={openFork}
-                  onInstall={openInstall}
-                  onSkill={selectSkill}
-                  onBackups={openBackups}
-                />
+                <>
+                  <button className="inspector-scrim" type="button" tabIndex={-1} aria-hidden="true" onClick={closeInspector} />
+                  <Inspector
+                    vault={activeVault}
+                    selection={selection}
+                    overlay={drawerActive}
+                    onClose={closeInspector}
+                    onReveal={reveal}
+                    onDiff={(source) => setModal({ kind: "diff", vaultPath: activeVault.path, source })}
+                    onUpdate={openUpdate}
+                    onRemoveSource={openRemoveSource}
+                    onEdit={openEditor}
+                    onFork={openFork}
+                    onInstall={openInstall}
+                    onSkill={selectSkill}
+                    onBackups={openBackups}
+                  />
+                </>
               ) : null}
             </div>
           </div>
@@ -740,9 +894,11 @@ export function App() {
           loading={recentsLoading}
           info={info}
           opening={opening}
+          themePreference={themePreference}
           onOpen={(path) => void openVault(path)}
           onBrowse={() => void browseVault()}
           onNew={() => setModal({ kind: "new-vault" })}
+          onThemePreference={setThemePreference}
           onRemoveRecent={(path) => void removeRecent(path)}
         />
       )}
@@ -908,7 +1064,7 @@ export function App() {
         />
       ) : null}
 
-      {searchOpen ? (
+      {searchOpen && !modal && !targetToRemove ? (
         <SearchPalette
           vaults={vaults.map((vault) => ({ path: vault.path, name: vault.name }))}
           onClose={() => setSearchOpen(false)}

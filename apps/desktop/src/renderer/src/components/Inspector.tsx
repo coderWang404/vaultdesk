@@ -25,9 +25,19 @@ import type { Selection } from "../types";
 import { Icon } from "./icons";
 import { Button, Callout, EmptyState, MetaRow, StatusMark, StatusPill } from "./ui";
 
+function inspectorAttributes(overlay: boolean, title: string) {
+  return {
+    role: overlay ? "dialog" as const : undefined,
+    "aria-modal": overlay ? true : undefined,
+    "aria-label": title,
+    tabIndex: -1,
+  };
+}
+
 export function Inspector({
   vault,
   selection,
+  overlay,
   onClose,
   onReveal,
   onDiff,
@@ -41,6 +51,7 @@ export function Inspector({
 }: {
   vault: VaultSnapshot;
   selection: Selection;
+  overlay: boolean;
   onClose: () => void;
   onReveal: (path: string) => void;
   onDiff: (source: string) => void;
@@ -67,6 +78,7 @@ export function Inspector({
       <SourceInspector
         vault={vault}
         source={source}
+        overlay={overlay}
         onClose={onClose}
         onReveal={onReveal}
         onDiff={onDiff}
@@ -86,6 +98,7 @@ export function Inspector({
       <PluginInspector
         vault={vault}
         plugin={plugin}
+        overlay={overlay}
         onClose={onClose}
         onReveal={onReveal}
       />
@@ -95,7 +108,7 @@ export function Inspector({
   if (selection.kind === "external") {
     const external = vault.externalSkills.find((entry) => entry.name === selection.name);
     if (!external) return <aside className="inspector" />;
-    return <ExternalInspector skill={external} onClose={onClose} onReveal={onReveal} />;
+    return <ExternalInspector skill={external} overlay={overlay} onClose={onClose} onReveal={onReveal} />;
   }
 
   const skill = vault.skills.find((entry) => entry.name === selection.name);
@@ -104,6 +117,7 @@ export function Inspector({
     <SkillInspector
       vault={vault}
       skill={skill}
+      overlay={overlay}
       onClose={onClose}
       onReveal={onReveal}
       onEdit={onEdit}
@@ -117,6 +131,7 @@ export function Inspector({
 function SourceInspector({
   vault,
   source,
+  overlay,
   onClose,
   onReveal,
   onDiff,
@@ -128,6 +143,7 @@ function SourceInspector({
 }: {
   vault: VaultSnapshot;
   source: SourceRecord;
+  overlay: boolean;
   onClose: () => void;
   onReveal: (path: string) => void;
   onDiff: (source: string) => void;
@@ -138,7 +154,7 @@ function SourceInspector({
   onBackups: (targetId?: string) => void;
 }) {
   return (
-    <aside className="inspector">
+    <aside className="inspector" {...inspectorAttributes(overlay, source.name + " 详情")}>
       <header className="inspector-head">
         <span className={`source-glyph origin-${source.origin}`}>
           <Icon name={source.origin === "github" ? "git" : "folder"} size={17} />
@@ -262,6 +278,7 @@ function SourceInspector({
 function SkillInspector({
   vault,
   skill,
+  overlay,
   onClose,
   onReveal,
   onEdit,
@@ -271,6 +288,7 @@ function SkillInspector({
 }: {
   vault: VaultSnapshot;
   skill: SkillRecord;
+  overlay: boolean;
   onClose: () => void;
   onReveal: (path: string) => void;
   onEdit: (skill: SkillRecord) => void;
@@ -283,7 +301,7 @@ function SkillInspector({
   const readOnly = skill.origin === "github" || vault.format === "v1";
 
   return (
-    <aside className="inspector">
+    <aside className="inspector" {...inspectorAttributes(overlay, skill.name + " 详情")}>
       <header className="inspector-head">
         <span className={`source-glyph origin-${skill.origin}`}>
           <Icon name="skill" size={17} />
@@ -385,10 +403,12 @@ function SkillInspector({
 
 function ExternalInspector({
   skill,
+  overlay,
   onClose,
   onReveal,
 }: {
   skill: ExternalSkillRecord;
+  overlay: boolean;
   onClose: () => void;
   onReveal: (path: string) => void;
 }) {
@@ -402,7 +422,7 @@ function ExternalInspector({
   }
 
   return (
-    <aside className="inspector">
+    <aside className="inspector" {...inspectorAttributes(overlay, skill.name + " 详情")}>
       <header className="inspector-head">
         <span className="source-glyph origin-external">
           <Icon name="shield" size={17} />
@@ -530,11 +550,13 @@ async function copyPath(text: string): Promise<boolean> {
 function PluginInspector({
   vault,
   plugin,
+  overlay,
   onClose,
   onReveal,
 }: {
   vault: VaultSnapshot;
   plugin: PluginRecord;
+  overlay: boolean;
   onClose: () => void;
   onReveal: (path: string) => void;
 }) {
@@ -553,7 +575,7 @@ function PluginInspector({
   }
 
   return (
-    <aside className="inspector">
+    <aside className="inspector" {...inspectorAttributes(overlay, plugin.name + " 详情")}>
       <header className="inspector-head">
         <span className={`source-glyph origin-${plugin.origin}`}>
           <Icon name="sparkle" size={17} />

@@ -1,8 +1,8 @@
 # VaultDesk v1.1.0 release
 
-Status: the v1.1.0 macOS arm64 artifact passed local verification and was
-installed on 2026-10-29. GitHub publication is tracked in
-[QA-CURRENT.md](QA-CURRENT.md).
+Status: published on 2026-10-29. The macOS arm64 artifact passed local
+verification, was installed in /Applications, and matched the downloaded
+GitHub Release asset. See [QA-CURRENT.md](QA-CURRENT.md) for the evidence.
 
 ## v1.1.0 artifact
 
@@ -16,13 +16,13 @@ installed on 2026-10-29. GitHub publication is tracked in
 | Bundle version | `1.1.0` |
 | Signing | Ad-hoc; strict `codesign --verify --deep --strict` passed |
 | Notarization | None |
-| GitHub release | `https://github.com/coderWang404/vaultdesk/releases/tag/v1.1.0` (verify after publication) |
+| GitHub release | `https://github.com/coderWang404/vaultdesk/releases/tag/v1.1.0` |
 
 The DMG checksum is specific to the exact uploaded file. Do not reuse either
 v1.0.0 checksum below or the earlier untagged build checksum in
 [QA-CURRENT.md](QA-CURRENT.md).
 
-## v1.1.0 release notes draft
+## v1.1.0 release notes
 
 - Refreshed the desktop interface with a warmer, clearer layout, responsive
   navigation and details, and light/dark appearance controls.

@@ -1,7 +1,7 @@
 # VaultDesk v1.2.2 release
 
-Status: locally verified and installed on 2026-10-30. CI and public release
-verification will be recorded in QA-CURRENT.md after publication.
+Status: published and installed on 2026-10-30. All three CI jobs passed;
+the public release DMG and checksum were downloaded and verified.
 
 ## v1.2.2 artifact
 

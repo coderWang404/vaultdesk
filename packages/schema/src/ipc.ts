@@ -97,6 +97,13 @@ export const ipcCommands = {
     confirm: z.literal(true),
   }),
   "target.verify": z.object({ vaultPath, id: z.string().min(1) }),
+  "tool.verify": z.object({
+    vaultPath,
+    name: slugSchema,
+    profile: slugSchema.optional(),
+    pythonPath: z.string().trim().min(1).optional(),
+    nodePath: z.string().trim().min(1).optional(),
+  }),
   "target.backups": z.object({ vaultPath, targetId: z.string().min(1).optional() }),
   "target.restore": z.object({
     vaultPath,

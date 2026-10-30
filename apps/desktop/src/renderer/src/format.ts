@@ -134,6 +134,10 @@ export function toolKindLabel(kind: ToolRecord["kind"]): string {
   }
 }
 
+export function hasMcpCapability(tool: Pick<ToolRecord, "kind" | "tags">): boolean {
+  return tool.kind === "mcp" || tool.tags.some((tag) => tag.toLowerCase() === "mcp");
+}
+
 export function hashLabel(hash: string | undefined): string {
   if (!hash) return "—";
   return hash.replace(/^sha256:/, "").slice(0, 10);

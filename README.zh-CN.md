@@ -18,7 +18,7 @@
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-Apache--2.0-blue.svg" alt="许可证：Apache-2.0"></a>
   <img src="https://img.shields.io/badge/platform-macOS%2013%2B-lightgrey.svg" alt="平台：macOS 13+">
   <img src="https://img.shields.io/badge/node-22%2B-339933.svg" alt="Node.js 22+">
-  <img src="https://img.shields.io/badge/version-1.2.0-brightgreen.svg" alt="版本 1.2.0">
+  <img src="https://img.shields.io/badge/version-1.2.3-brightgreen.svg" alt="版本 1.2.3">
 </p>
 
 <p align="center">
@@ -26,7 +26,7 @@
 </p>
 
 > [!NOTE]
-> VaultDesk 1.2.0 已在 [GitHub Releases](https://github.com/coderWang404/vaultdesk/releases/tag/v1.2.0) 提供 Apple Silicon DMG。构建采用 ad-hoc 签名，未公证；目前没有 Homebrew formula 或 npm 包。
+> VaultDesk 1.2.3 已在 [GitHub Releases](https://github.com/coderWang404/vaultdesk/releases/tag/v1.2.3) 提供 Apple Silicon DMG。构建采用 ad-hoc 签名，未公证；目前没有 Homebrew formula 或 npm 包。
 
 ## 目录
 
@@ -67,7 +67,7 @@ VaultDesk 面向同时使用多个编码 agent、并且维护自己技能库的�
 | --- | --- | --- | --- |
 | 技能 | `skills/`、`packages/` | 构建、安装、校验、恢复、编辑本地技能、fork GitHub 技能 | 在 fork 之前修改 GitHub 原文 |
 | 插件 | `plugins/`、`third_party/` | 登记整个目录、校验资产、显示差异、审阅后更新 | 安装、启用、适配或执行 hooks、脚本、MCP 服务 |
-| 工具卡 | `tools/<name>.yml` | 记录官方链接、安装方式、运行入口，展示并生成索引 | 下载、安装、运行或检查工具版本；写 agent 配置 |
+| 工具卡 | `tools/<name>.yml` | 记录官方链接、安装方式、运行入口和按场景声明的依赖；按需验证本机环境 | 下载、安装、运行工具或写 agent 配置 |
 | 外部技能 | `external-skills/<name>.yml` 与工具自己的路径 | 记录所有者和路径、可选固定 hash、只读观察状态、把技能从 vault 转出 | 安装、更新、运行或写入外部路径；写 agent 配置 |
 | 安装目标 | `vault.yml`、`.vault-managed` 标记 | 区分槽位、备份、复制、校验、恢复 | 删除未托管的内容 |
 
@@ -77,6 +77,8 @@ VaultDesk 面向同时使用多个编码 agent、并且维护自己技能库的�
 - **插件**以 `shape: plugin` 的 source 形式登记。VaultDesk 保存整个目录、校验内容并跟踪变化，插件本身由 agent 安装和适配。
 - **工具卡**记录的是 VaultDesk 完全不托管的东西：MCP 服务、CLI、桌面工具，以及 REA 这类包含多个工具的套件。Agent 读取卡片，然后从官方渠道自行安装。
 - **外部技能**由某个工具或另一个管理器负责。VaultDesk 记录路径、可选固定 hash，并报告漂移或冲突，但从不写这个路径。REA 这类会校验自带技能的工具因此可以保留所有权，不需要和 vault 争抢同一个目录。
+
+同一产品可以同时提供技能、CLI、MCP 和插件。归属、技能文件分发、运行依赖、agent 内的注册或启用是四件不同的事：关联的工具卡让前几项分别可见；MCP 或插件是否已在具体 agent 中启用仍须按该 agent 的规则核对，不能由文件存在或版本检查推断。
 
 ## 桌面应用
 
@@ -110,7 +112,7 @@ VaultDesk 面向同时使用多个编码 agent、并且维护自己技能库的�
 - **构建：** Node.js 22+、pnpm 11.5.2、`PATH` 中可用的 Git
 - **CLI：** Node.js 22+；CI 也会在 Ubuntu 上构建和测试
 
-Apple Silicon 桌面版可从 [GitHub Releases](https://github.com/coderWang404/vaultdesk/releases/tag/v1.2.0) 下载。CLI 尚未发布到 npm，需要从本仓库构建；Intel 用户也可从源码构建桌面版。
+Apple Silicon 桌面版可从 [GitHub Releases](https://github.com/coderWang404/vaultdesk/releases/tag/v1.2.3) 下载。CLI 尚未发布到 npm，需要从本仓库构建；Intel 用户也可从源码构建桌面版。
 
 ### 从源码运行桌面应用
 
@@ -126,7 +128,7 @@ pnpm dev
 
 ```bash
 pnpm package:mac
-# release/VaultDesk-1.2.0-<arch>.dmg
+# release/VaultDesk-1.2.3-<arch>.dmg
 ```
 
 构建产物使用 ad-hoc 签名，没有公证。第一次启动时右键点击应用并选择 **打开**，或者在 **系统设置 → 隐私与安全性** 中放行。
@@ -276,6 +278,29 @@ vaultdesk tool add fetch-mcp --vault "$VAULT" --kind mcp \
 
 `vaultdesk build` 会写出 `build/tools.json`，这是全部卡片的确定性索引，不含时间戳。Agent 可以读 YAML、读 JSON 索引，或者调用 `tool show --json`，然后按自己的规则完成安装与注册。
 
+### 文件分发与运行环境分别验证
+
+`target verify` 只验证 VaultDesk 受管技能文件是否齐全。关联的工具卡可声明 Python 和 Node.js 版本、Python 包版本、PATH 命令、路径、环境变量是否存在，以及 Vault 内依赖文件的 SHA-256 基线。`profiles` 将 PDF、旁白等可选工作流与通用依赖分开；不选场景只查通用项，不能据此推断所有工作流可用。没有 `checks` 的卡片显示“未配置”，而不是“就绪”。
+
+```yaml
+related_skills: [ppt-master]
+checks:
+  - id: python
+    kind: python
+    label: 支持的 Python
+    executable: python3
+    min_version: "3.10"
+    max_version_exclusive: "3.15"
+  - id: svg-package
+    kind: python-package
+    label: SVG 转 PPTX 依赖
+    interpreter: python3
+    requirement: skia-pathops>=0.9.2
+    profiles: [svg-pptx]
+```
+
+运行 `vaultdesk tool verify ppt-master-runtime --profile svg-pptx --python /absolute/path/to/venv/bin/python --json`，可用隔离环境覆盖本次检查的解释器。桌面工具页也提供相同的手动入口。Python 检查会启动选定解释器执行 VaultDesk 内置的、限时的依赖查询；不会执行卡片中的安装或运行命令，也不会读取环境变量的值。检查通过只说明该解释器中的声明依赖已满足；实际运行仍需让工具使用同一个解释器或将其 `bin` 放在 PATH 前。VaultDesk 不会替用户改动全局 Python、自动安装包或注册 MCP。
+
 VaultDesk 不检查记录的版本是否有更新，不启动或健康检查 MCP 服务，也不把 MCP 配置写入任何 agent。不要在卡片里放 token、密钥或私有 URL。
 
 ## 外部技能
@@ -413,7 +438,7 @@ VaultDesk 会在自己拥有的每个安装槽位写入 `.vault-managed` 标记�
 - **在 vault 之外拉取。** 上游数据先落到缓存，预览被接受之前不会写入 vault。
 - **GitHub 内容在 fork 前只读。** 来自 GitHub 的技能不能就地编辑。
 - **插件只存储，不执行。** 插件目录内的 hooks、脚本、命令与 MCP 服务都不会运行。VaultDesk 不生成市场清单或适配器清单。
-- **工具卡只是记录。** 不下载、不安装、不执行、不检查版本，也不向 agent 注册。
+- **工具卡记录运行条件。** 不下载、不安装、不执行工具卡命令，也不向 agent 注册；用户主动验证时，可运行内置的限时 Python 依赖查询。
 - **外部技能属于它的工具。** VaultDesk 读取并计算路径 hash，报告漂移，从不写入。`adopt` 只删除 vault 自己的内容和本 vault 的标记。
 - **一个路径一个所有者。** 受管技能与外部技能不能共用路径；其他所有者的标记会阻止 `adopt`。
 - **自动同步不覆盖未托管目录。** 手动安装可在明确确认后备份旧目录；自动同步遇到未知归属或手动修改时暂停受影响来源。自动分发备份最多保留最近 3 次或 7 天。
@@ -437,21 +462,21 @@ E2E 套件会启动真实的 Electron 应用和构建后的 CLI，面向隔离�
 CI 会运行类型检查、单元与集成测试，并在 macOS 和 Ubuntu 上构建。macOS 任务还会运行 Electron 冒烟测试、上传截图、打包 DMG 并作为构建产物上传。
 
 场景矩阵和有意的覆盖边界见 [tests/e2e/README.md](tests/e2e/README.md)。
-发布验收结果另记于 [docs/QA-CURRENT.md](docs/QA-CURRENT.md)；[docs/RELEASE.md](docs/RELEASE.md) 记录 v1.2.0 并保留早先 v1.0.0 本地 DMG 的验收快照。
+发布验收结果另记于 [docs/QA-CURRENT.md](docs/QA-CURRENT.md)；[docs/RELEASE.md](docs/RELEASE.md) 保留当前及历史版本的发布记录。
 
 ## 状态
 
 | 范围 | 状态 |
 | --- | --- |
-| 桌面应用与 CLI | 1.2.0；Apple Silicon DMG 已发布，CLI 可从源码使用 |
-| 工具卡与 MCP 页面 | 已包含在 v1.2.0 |
+| 桌面应用与 CLI | 1.2.3；Apple Silicon DMG 已发布，CLI 可从源码使用 |
+| 工具卡与 MCP 页面 | v1.2.3 加入运行环境检查和跨类别 MCP 展示 |
 | 外部技能记录 | 已包含在 v1.2.0 |
 | DMG | Apple Silicon 版本已发布，ad-hoc 签名，未公证 |
 | GitHub Release / Homebrew / npm | GitHub Release 已发布；Homebrew 与 npm 未发布 |
 | 来源自动同步 | 已在 macOS 安装版提供，支持逐来源自动/审核/暂停 |
-| Windows 与 Linux 桌面端 | v1.2.0 未包含 |
+| Windows 与 Linux 桌面端 | v1.2.3 未包含 |
 
-桌面应用在 1.2.0 只支持 macOS。CLI 已在 macOS 和 Ubuntu 上测试。
+桌面应用在 1.2.3 只支持 macOS。CLI 已在 macOS 和 Ubuntu 上测试。
 
 ## 参与贡献
 

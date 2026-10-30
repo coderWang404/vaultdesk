@@ -5,8 +5,10 @@ import type {
   PluginRecord,
   SkillRecord,
   SourceRecord,
+  ToolRecord,
   VaultSnapshot,
 } from "@vaultdesk/core";
+import { checkPresentation, readinessCheckedAt, readinessKey, readinessPresentation, type ToolReadinessState } from "../readiness";
 import {
   assetKindLabel,
   externalStatusLabel,
@@ -37,6 +39,8 @@ function inspectorAttributes(overlay: boolean, title: string) {
 export function Inspector({
   vault,
   selection,
+  readiness,
+  onVerifyTool,
   overlay,
   onClose,
   onReveal,
@@ -51,6 +55,8 @@ export function Inspector({
 }: {
   vault: VaultSnapshot;
   selection: Selection;
+  readiness: Record<string, ToolReadinessState>;
+  onVerifyTool: (name: string, profile?: string) => void;
   overlay: boolean;
   onClose: () => void;
   onReveal: (path: string) => void;
@@ -108,7 +114,7 @@ export function Inspector({
   if (selection.kind === "external") {
     const external = vault.externalSkills.find((entry) => entry.name === selection.name);
     if (!external) return <aside className="inspector" />;
-    return <ExternalInspector skill={external} overlay={overlay} onClose={onClose} onReveal={onReveal} />;
+    return <ExternalInspector vault={vault} skill={external} readiness={readiness} onVerifyTool={onVerifyTool} overlay={overlay} onClose={onClose} onReveal={onReveal} />;
   }
 
   const skill = vault.skills.find((entry) => entry.name === selection.name);
@@ -117,6 +123,8 @@ export function Inspector({
     <SkillInspector
       vault={vault}
       skill={skill}
+      readiness={readiness}
+      onVerifyTool={onVerifyTool}
       overlay={overlay}
       onClose={onClose}
       onReveal={onReveal}
@@ -278,6 +286,8 @@ function SourceInspector({
 function SkillInspector({
   vault,
   skill,
+  readiness,
+  onVerifyTool,
   overlay,
   onClose,
   onReveal,
@@ -288,6 +298,8 @@ function SkillInspector({
 }: {
   vault: VaultSnapshot;
   skill: SkillRecord;
+  readiness: Record<string, ToolReadinessState>;
+  onVerifyTool: (name: string, profile?: string) => void;
   overlay: boolean;
   onClose: () => void;
   onReveal: (path: string) => void;
@@ -299,6 +311,7 @@ function SkillInspector({
   const drift = Boolean(skill.lockedHash && skill.lockedHash !== skill.contentHash);
   const source = vault.sources.find((entry) => entry.name === skill.sourceName);
   const readOnly = skill.origin === "github" || vault.format === "v1";
+  const relatedTools = vault.tools.filter((tool) => tool.related_skills.includes(skill.name));
 
   return (
     <aside className="inspector" {...inspectorAttributes(overlay, skill.name + " 详情")}>
@@ -351,7 +364,7 @@ function SkillInspector({
 
       <div className="inspector-section">
         <span className="inspector-section-title">
-          安装 <em>{skill.installed.length}</em>
+          文件分发 <em>{skill.installed.length}</em>
         </span>
         {skill.installed.length === 0 ? (
           <p className="muted-small">—</p>
@@ -371,6 +384,19 @@ function SkillInspector({
             </div>
           ))
         )}
+      </div>
+
+      <div className="inspector-section">
+        <span className="inspector-section-title">运行环境</span>
+        <p className="muted-small">文件已分发只证明目录和哈希符合预期；Python、外部程序与凭据需要单独核对。</p>
+        {relatedTools.length > 0 ? relatedTools.map((tool) => (
+          <LinkedToolReadiness
+            key={tool.name}
+            tool={tool}
+            state={readiness[readinessKey(vault.path, tool.name)]}
+            onVerify={() => onVerifyTool(tool.name)}
+          />
+        )) : <StatusPill tone="muted">未关联运行时检查</StatusPill>}
       </div>
 
       <div className="inspector-actions">
@@ -401,18 +427,69 @@ function SkillInspector({
   );
 }
 
+function LinkedToolReadiness({
+  tool,
+  state,
+  onVerify,
+}: {
+  tool: ToolRecord;
+  state?: ToolReadinessState;
+  onVerify: () => void;
+}) {
+  const status = readinessPresentation(tool.checks.length > 0, state);
+  const attention = state?.report?.checks.filter((check) => check.status !== "ok") ?? [];
+  const scenarios = [...new Set(tool.checks.flatMap((check) => check.profiles ?? []))].sort();
+  const checkedAt = readinessCheckedAt(state?.report);
+  return (
+    <div className="linked-tool-readiness">
+      <div className="linked-tool-head">
+        <strong>{tool.title}</strong>
+        <span role="status" aria-atomic="true"><StatusPill tone={status.tone}>{status.label}</StatusPill></span>
+      </div>
+      {tool.checks.length > 0 ? (
+        <Button size="sm" variant="quiet" disabled={state?.loading} onClick={onVerify}>
+          {state?.loading ? "检查中…" : state?.report ? "重新检查运行环境" : "检查运行环境"}
+        </Button>
+      ) : <p className="muted-small">这张工具卡尚未声明检查项，不能判断工具是否可运行。</p>}
+      {scenarios.length > 0 && !state?.report?.profile ? (
+        <p className="muted-small">仅显示通用项；{scenarios.join("、")} 场景请到「工具」页单独检查。</p>
+      ) : null}
+      {checkedAt ? <p className="muted-small">上次检查：{checkedAt}</p> : null}
+      {state?.error ? <p className="linked-tool-error" role="alert">{state.error}</p> : null}
+      {attention.length > 0 ? (
+        <ul className="linked-tool-issues">
+          {attention.map((check) => (
+            <li key={check.id}>
+              <strong>{check.label}</strong>
+              <span>{checkPresentation(check.status).label}{check.optional ? "（可选）" : ""}</span>
+              {check.detail ? <small>{check.detail}</small> : null}
+            </li>
+          ))}
+        </ul>
+      ) : null}
+    </div>
+  );
+}
+
 function ExternalInspector({
+  vault,
   skill,
+  readiness,
+  onVerifyTool,
   overlay,
   onClose,
   onReveal,
 }: {
+  vault: VaultSnapshot;
   skill: ExternalSkillRecord;
+  readiness: Record<string, ToolReadinessState>;
+  onVerifyTool: (name: string, profile?: string) => void;
   overlay: boolean;
   onClose: () => void;
   onReveal: (path: string) => void;
 }) {
   const [copied, setCopied] = useState(false);
+  const relatedTool = vault.tools.find((tool) => tool.name === skill.relatedTool);
 
   async function onCopy(): Promise<void> {
     if (await copyPath(skill.skillPath)) {
@@ -509,6 +586,18 @@ function ExternalInspector({
         <MetaRow label="标记">
           {skill.markerPresent ? "存在 .vault-managed" : "无 .vault-managed"}
         </MetaRow>
+      </div>
+
+      <div className="inspector-section">
+        <span className="inspector-section-title">运行环境</span>
+        <p className="muted-small">观察状态只证明外部技能目录可读；安装与更新仍由 {skill.owner} 负责。</p>
+        {relatedTool ? (
+          <LinkedToolReadiness
+            tool={relatedTool}
+            state={readiness[readinessKey(vault.path, relatedTool.name)]}
+            onVerify={() => onVerifyTool(relatedTool.name)}
+          />
+        ) : <StatusPill tone="muted">未关联运行时检查</StatusPill>}
       </div>
 
       {skill.notes ? (

@@ -62,6 +62,7 @@ export function toolDocument(card: ToolCard): Record<string, unknown> {
     ...(card.run ? { run: card.run } : {}),
     ...(card.requirements.length > 0 ? { requirements: card.requirements } : {}),
     ...(card.related_skills.length > 0 ? { related_skills: card.related_skills } : {}),
+    ...(card.checks.length > 0 ? { checks: card.checks } : {}),
     ...(card.tags.length > 0 ? { tags: card.tags } : {}),
     ...(card.notes ? { notes: card.notes } : {}),
   };

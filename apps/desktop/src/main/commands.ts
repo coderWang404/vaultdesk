@@ -43,6 +43,7 @@ import {
   updateSources,
   validateVault,
   verifyTarget,
+  verifyToolReadiness,
   writeSkillContent,
   writeSettings,
   VaultDeskError,
@@ -162,6 +163,8 @@ const handlers: { [K in IpcCommand]: Handler<K> } = {
     });
   },
   "target.verify": ({ vaultPath, id }) => verifyTarget(vaultPath, id),
+  "tool.verify": ({ vaultPath, name, profile, pythonPath, nodePath }) =>
+    verifyToolReadiness(vaultPath, name, { profile, pythonPath, nodePath }),
   "target.backups": async ({ vaultPath, targetId }): Promise<{ backups: BackupEntry[] }> => {
     const settings = readSettings();
     const backups = await listBackups(targetId, settings.backupRoot);

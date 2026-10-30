@@ -22,8 +22,8 @@ Omit `--vault` when the current directory is the vault.
 
 - VaultDesk stores and validates plugins; it does not install, enable, or adapt them. If the user wants a plugin active, follow that agent's current plugin rules yourself. Never run plugin hooks.
 - A plugin does not need a manifest. VaultDesk also recognizes `skills/<name>/SKILL.md` plus MCP, commands, agents, hooks, rules, or workflows. When `manifests` is empty, plan the install from `assets` and `containedSkills` in the agent's own configuration.
-- Tool cards are records, not installations. VaultDesk never downloads, installs, or runs them. Follow the card's `homepage` and `docs`, then use the agent's own rules; never claim VaultDesk installed, enabled, or registered anything.
-- MCP servers are tool cards with `kind: mcp`. VaultDesk does not register, start, or health-check them and does not write agent MCP configuration; registering the server is your job when the user asks.
+- Tool cards are records, not installations. VaultDesk never downloads, installs, or runs the recorded tool. A card may declare bounded runtime checks; `tool verify` performs them only when explicitly requested and may start a Python interpreter or query a trusted Node executable for its version. Follow the card's `homepage` and `docs` for setup, and never claim a successful check installed or enabled the tool.
+- Standalone MCP servers use `kind: mcp`; a plugin or CLI that also exposes MCP keeps its distribution kind and adds the `mcp` tag. VaultDesk does not register, start, or health-check these services and does not write agent MCP configuration; registering the server is your job when the user asks.
 - External skills are owned by their tool. VaultDesk records the path and observes hash/status; it never installs, updates, runs, or writes the owning tool or that path. Never claim VaultDesk synced their content.
 - One owner per path. A path with a `.vault-managed` marker belongs to a vault install; never add it as external, and never adopt a path whose marker belongs to another vault.
 - Never put tokens, API keys, private URLs, or other secrets in a tool card, an external skill card, or any vault file.
@@ -32,7 +32,7 @@ Omit `--vault` when the current directory is the vault.
 - Do not pass `--yes` without the user's explicit approval of the preview or diff. Show them what will change.
 - Do not commit or push unless asked. Commit explicit paths only; never `git add -A`.
 - Plugin content cannot be installed with `target install`; install skills only.
-- `target verify` proves expected files exist and hashes match. It does not prove an agent loaded a skill.
+- `target verify` proves expected files exist and hashes match. It does not prove an agent loaded a skill or that its Python packages, external programs, or credentials are available. Keep file distribution and runtime readiness separate.
 
 ## Common tasks
 
@@ -62,7 +62,7 @@ Before importing anything, inspect the skill and its tool, form a default recomm
 
 Recommend:
 
-- **The tool manages itself** (it ships, installs, rewrites, or validates the skill): record an external card. REA's bundled skill is the default here.
+- **The tool manages itself** (its installer or updater owns and rewrites the skill path): record an external card. REA's bundled skill is the default here. A read-only attribution or integrity check alone does not make a skill externally owned.
 - **VaultDesk should manage it** (a normal standalone, package, or collection skill): import it as a source.
 - **Another manager owns it** (another lock file, registry, or tool owns the path): leave it there; if the user wants state tracked, record an external card with that manager as owner.
 - **The user needs a separate copy**: fork to a new path and name, and leave the original owner's copy alone.
@@ -90,9 +90,12 @@ Steps:
 ### Use a tool card
 
 1. Run `tool list --json` or `tool list --kind mcp --json`; use `tool show <name> --json` for the full card. After `build`, the same records are in `build/tools.json`.
-2. Read `homepage`, `docs`, `install`, `run`, `requirements`, and `related_skills`. Prefer the official page and the agent's current rules over the recorded command.
-3. Check requirements first. Ask before running any install or run command; do not assume the recorded version is still current.
-4. Do not write the tool's config, credentials, or installed state back into the vault.
+2. Read `homepage`, `docs`, `install`, `run`, `requirements`, `related_skills`, and declared `checks`. Prefer the official page and the agent's current rules over the recorded command.
+3. Use `tool verify <name> [--profile <workflow>] --json` when the user wants a runtime readiness check. It checks only the declared environment and does not install dependencies, configure an agent, or prove an end-to-end workflow. No `checks` means unconfigured, not ready.
+   For an isolated Python environment, pass `--python <absolute-path>` and make the actual skill commands use that same interpreter or its `bin` directory on `PATH`; a successful override does not change the agent environment.
+   For a Node tool, pass `--node <absolute-path>` only when the trusted default search does not match the agent's Node. A passing version check does not prove the tool's CLI, MCP service, or agent registration is present.
+4. Check requirements first. Ask before running any install or run command; do not assume the recorded version is still current.
+5. Do not write the tool's config, credentials, or installed state back into the vault.
 
 ### Record a tool card
 

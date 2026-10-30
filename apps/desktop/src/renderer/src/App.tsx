@@ -13,6 +13,7 @@ import type {
 } from "@vaultdesk/core";
 import type { ToolPreset } from "@vaultdesk/schema";
 import { call, errorMessage } from "./api";
+import { readinessKey, type ToolReadinessReport, type ToolReadinessState } from "./readiness";
 import { GitView } from "./components/GitView";
 import { Icon } from "./components/icons";
 import { Inspector } from "./components/Inspector";
@@ -110,6 +111,7 @@ export function App() {
   const [checking, setChecking] = useState<string | null>(null);
   const [syncing, setSyncing] = useState(false);
   const [modeChanging, setModeChanging] = useState<string | null>(null);
+  const [toolReadiness, setToolReadiness] = useState<Record<string, ToolReadinessState>>({});
   const [targetToRemove, setTargetToRemove] = useState<string | null>(null);
   const [removingTarget, setRemovingTarget] = useState(false);
   const [themePreference, setThemePreference] = useState<ThemePreference>(() =>
@@ -123,6 +125,9 @@ export function App() {
   const sidebarCollapsed = sidebarPreference === "auto" ? compactWorkspace : sidebarPreference === "collapsed";
 
   const toastId = useRef(0);
+  const readinessEpoch = useRef(0);
+  const readinessRequestId = useRef(0);
+  const latestReadinessRequest = useRef(new Map<string, number>());
   const inspectorTriggerRef = useRef<HTMLElement | null>(null);
   const vaultsRef = useRef(vaults);
   vaultsRef.current = vaults;
@@ -187,6 +192,10 @@ export function App() {
   }, []);
 
   const upsert = useCallback((snapshot: VaultSnapshot, activate = false) => {
+    // A refreshed source or tool card may change its requirements. Never show an old ready result.
+    readinessEpoch.current += 1;
+    latestReadinessRequest.current.clear();
+    setToolReadiness({});
     setVaults((current) => {
       const index = current.findIndex((entry) => entry.path === snapshot.path);
       if (index === -1) return [...current, snapshot];
@@ -459,6 +468,30 @@ export function App() {
     [notify],
   );
 
+  const verifyTool = useCallback(async (name: string, profile?: string, pythonPath?: string, nodePath?: string): Promise<void> => {
+    if (!activeVault) return;
+    const vaultPath = activeVault.path;
+    const key = readinessKey(vaultPath, name, profile, pythonPath, nodePath);
+    const epoch = readinessEpoch.current;
+    const requestId = ++readinessRequestId.current;
+    latestReadinessRequest.current.set(key, requestId);
+    setToolReadiness((current) => ({ ...current, [key]: { loading: true } }));
+    try {
+      const report = await call<ToolReadinessReport>("tool.verify", {
+        vaultPath,
+        name,
+        ...(profile ? { profile } : {}),
+        ...(pythonPath ? { pythonPath } : {}),
+        ...(nodePath ? { nodePath } : {}),
+      });
+      if (epoch !== readinessEpoch.current || latestReadinessRequest.current.get(key) !== requestId) return;
+      setToolReadiness((current) => ({ ...current, [key]: { report } }));
+    } catch (reason) {
+      if (epoch !== readinessEpoch.current || latestReadinessRequest.current.get(key) !== requestId) return;
+      setToolReadiness((current) => ({ ...current, [key]: { error: errorMessage(reason) } }));
+    }
+  }, [activeVault]);
+
   const openExternal = useCallback(
     (url: string): void => {
       void call("app.openExternal", { url }).catch((reason) => notify(errorMessage(reason), "danger"));
@@ -467,10 +500,17 @@ export function App() {
   );
 
   const openRelatedSkill = useCallback((name: string): void => {
+    const kind = activeVault?.skills.some((skill) => skill.name === name)
+      ? "skill"
+      : activeVault?.externalSkills.some((skill) => skill.name === name) ? "external" : null;
+    if (!kind) {
+      notify(`关联技能 ${name} 不在当前仓库中`, "danger");
+      return;
+    }
     inspectorTriggerRef.current = null;
     setSection("skills");
-    setSelection({ kind: "skill", name });
-  }, []);
+    setSelection({ kind, name });
+  }, [activeVault, notify]);
 
   const handleSearchHit = useCallback(
     async (hit: SearchHit): Promise<void> => {
@@ -815,6 +855,8 @@ export function App() {
           <ToolsView
             vault={activeVault}
             mode="mcp"
+            readiness={toolReadiness}
+            onVerify={(name, profile, pythonPath, nodePath) => void verifyTool(name, profile, pythonPath, nodePath)}
             onCopy={copyText}
             onOpen={openExternal}
             onSkill={openRelatedSkill}
@@ -824,6 +866,8 @@ export function App() {
         return (
           <ToolsView
             vault={activeVault}
+            readiness={toolReadiness}
+            onVerify={(name, profile, pythonPath, nodePath) => void verifyTool(name, profile, pythonPath, nodePath)}
             onCopy={copyText}
             onOpen={openExternal}
             onSkill={openRelatedSkill}
@@ -950,6 +994,8 @@ export function App() {
                   <Inspector
                     vault={activeVault}
                     selection={selection}
+                    readiness={toolReadiness}
+                    onVerifyTool={(name, profile) => void verifyTool(name, profile)}
                     overlay={drawerActive}
                     onClose={closeInspector}
                     onReveal={reveal}

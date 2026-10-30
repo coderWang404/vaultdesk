@@ -57,6 +57,7 @@ const V2_TOOL_KEYS = new Set([
   "run",
   "requirements",
   "related_skills",
+  "checks",
   "tags",
   "notes",
 ]);

@@ -1,6 +1,6 @@
 import type { VaultSnapshot } from "@vaultdesk/core";
 import type { Section } from "../types";
-import { shortSha, relativeTime } from "../format";
+import { hasMcpCapability, shortSha, relativeTime } from "../format";
 import { Icon, type IconName } from "./icons";
 import { Button, StatusMark, StatusPill } from "./ui";
 
@@ -55,7 +55,7 @@ export function Sidebar({
           ? "已检查来源无更新"
           : "尚未检查";
   const errorCount = vault.issues.filter((issue) => issue.severity === "error").length;
-  const mcpCount = vault.tools.filter((tool) => tool.kind === "mcp").length;
+  const mcpCount = vault.tools.filter(hasMcpCapability).length;
   const counts: Record<Section, number | string | undefined> = {
     overview: undefined,
     sources: vault.counts.sources,

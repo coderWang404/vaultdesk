@@ -809,20 +809,61 @@ async function toolsFlow(suite: Suite): Promise<void> {
   const workspace = suite.workspace("tools");
   const vaultPath = path.join(workspace.root, "tools-vault");
   copyFixture("v2-plugins", vaultPath);
+  fs.appendFileSync(path.join(vaultPath, "tools/kit-cli.yml"), [
+    "checks:",
+    "  - id: skill-file",
+    "    kind: path",
+    "    label: 技能文件",
+    `    path: ${JSON.stringify(path.join(vaultPath, "skills/plain-skill/SKILL.md"))}`,
+    "  - id: missing-runtime",
+    "    kind: path",
+    "    label: 缺少的运行文件",
+    `    path: ${JSON.stringify(path.join(vaultPath, "missing-runtime"))}`,
+    "    profiles:",
+    "      - full",
+    "  - id: python-runtime",
+    "    kind: python",
+    "    label: Python 解释器",
+    "    executable: python3",
+    "    profiles:",
+    "      - python",
+  ].join("\n") + "\n");
+  fs.writeFileSync(path.join(vaultPath, "tools/hybrid-plugin.yml"), [
+    "schema: 1",
+    "name: hybrid-plugin",
+    "kind: plugin",
+    "title: Hybrid Plugin",
+    "summary: A plugin that also offers MCP integration.",
+    "homepage: https://example.org/hybrid",
+    "install:",
+    "  - label: Install plugin",
+    "    command: npx hybrid setup",
+    "run: hybrid --mcp",
+    "related_skills:",
+    "  - plain-skill",
+    "tags:",
+    "  - mcp",
+    "checks:",
+    "  - id: node-runtime",
+    "    kind: node",
+    "    label: Node runtime",
+    "    ranges:",
+    "      - min_version: 0.0.0",
+  ].join("\n") + "\n");
   initGitRepo(vaultPath);
   const launched = await suite.launch({ workspace, initialVault: vaultPath });
   const page = launched.page;
 
   const toolStat = page.locator(".stat-cell").filter({ hasText: "工具" });
   await toolStat.waitFor();
-  equal(await toolStat.locator("strong").innerText(), "2", "overview tool count");
+  equal(await toolStat.locator("strong").innerText(), "3", "overview tool count");
   const mcpStat = page.locator(".stat-cell").filter({ hasText: "MCP" });
-  equal(await mcpStat.locator("strong").innerText(), "1", "overview MCP count");
+  equal(await mcpStat.locator("strong").innerText(), "2", "overview MCP capability count");
 
   await openSection(page, "工具");
   const card = page.locator(".tool-card").filter({ hasText: "Kit CLI" });
   await card.waitFor();
-  equal(await page.locator(".tool-card").count(), 2, "fixture tool card count");
+  equal(await page.locator(".tool-card").count(), 3, "fixture tool card count");
   const text = await card.innerText();
   assert(text.includes("Kit CLI"), "tool card title");
   assert(text.includes("npm install --global kit-cli"), "tool card install command");
@@ -831,6 +872,59 @@ async function toolsFlow(suite: Suite): Promise<void> {
   assert(text.toLowerCase().includes("recorded for display only"), "tool card notes");
   assert(text.includes("官方地址"), "tool card official link");
   equal(await card.locator("button[title='复制安装命令']").count(), 1, "install copy button");
+  const runtime = card.locator(".tool-readiness");
+  await runtime.getByText("待检查", { exact: true }).waitFor();
+  equal(await runtime.getByRole("button", { name: "检查运行环境" }).count(), 1, "readiness is explicit action");
+  await runtime.getByRole("button", { name: "检查运行环境" }).click();
+  await runtime.getByText("通用检查通过", { exact: true }).waitFor();
+  assert((await runtime.innerText()).includes("上次检查："), "readiness report shows its check time");
+  await runtime.getByLabel("Kit CLI检查场景").selectOption("full");
+  await runtime.getByText("待检查", { exact: true }).waitFor();
+  await runtime.getByRole("button", { name: "检查运行环境" }).click();
+  await runtime.getByText("运行环境未就绪", { exact: true }).waitFor();
+  await runtime.getByText("缺少的运行文件", { exact: true }).waitFor();
+  await page.addStyleTag({ content: "*, *::before, *::after { animation: none !important; transition: none !important; }" });
+  await page.evaluate(fs.readFileSync(axeSourcePath, "utf8"));
+  await auditPage(page, "tool checks light");
+  await page.emulateMedia({ colorScheme: "dark" });
+  await page.waitForFunction(() => document.documentElement.dataset.theme === "dark");
+  await auditPage(page, "tool checks dark");
+  await page.emulateMedia({ colorScheme: "light" });
+
+  const secondVault = path.join(workspace.root, "tools-vault-second");
+  copyFixture("v2-plugins", secondVault);
+  fs.writeFileSync(
+    path.join(secondVault, "tools/kit-cli.yml"),
+    fs.readFileSync(path.join(vaultPath, "tools/kit-cli.yml"), "utf8").replaceAll(vaultPath, secondVault),
+  );
+  fs.copyFileSync(path.join(vaultPath, "tools/hybrid-plugin.yml"), path.join(secondVault, "tools/hybrid-plugin.yml"));
+  initGitRepo(secondVault);
+  setDialogChoice(workspace, secondVault);
+  await page.locator(".tab-add").first().click();
+  await waitFor(async () => (await page.locator(".vault-tab").count()) === 2, "second tools vault opens");
+  await page.locator(".vault-tab").first().click();
+  await openSection(page, "工具");
+  const firstProfile = page.locator(".tool-card").filter({ hasText: "Kit CLI" }).getByLabel("Kit CLI检查场景");
+  const firstPython = page.locator(".tool-card").filter({ hasText: "Kit CLI" }).getByLabel("Kit CLI Python 解释器绝对路径");
+  const firstNode = page.locator(".tool-card").filter({ hasText: "Hybrid Plugin" }).getByLabel("Hybrid Plugin Node 绝对路径");
+  await firstProfile.selectOption("full");
+  await firstPython.fill("/opt/test-env/bin/python3");
+  await firstNode.fill("/opt/test-node/bin/node");
+  await page.locator(".vault-tab").nth(1).click();
+  await openSection(page, "工具");
+  equal(await page.locator(".tool-card").filter({ hasText: "Kit CLI" }).getByLabel("Kit CLI检查场景").inputValue(), "", "same-name tool profile is scoped to its vault");
+  equal(await page.locator(".tool-card").filter({ hasText: "Kit CLI" }).getByLabel("Kit CLI Python 解释器绝对路径").inputValue(), "", "same-name interpreter selection is scoped to its vault");
+  equal(await page.locator(".tool-card").filter({ hasText: "Hybrid Plugin" }).getByLabel("Hybrid Plugin Node 绝对路径").inputValue(), "", "same-name Node selection is scoped to its vault");
+  await page.locator(".vault-tab").first().click();
+  await openSection(page, "工具");
+  equal(await firstProfile.inputValue(), "full", "original vault restores its check scenario");
+  equal(await firstPython.inputValue(), "/opt/test-env/bin/python3", "original vault restores its interpreter selection");
+  equal(await firstNode.inputValue(), "/opt/test-node/bin/node", "original vault restores its Node selection");
+  await firstProfile.selectOption("");
+  await firstPython.fill("");
+  await firstNode.fill("");
+  await card.locator(".tool-readiness").getByRole("button", { name: "检查运行环境" }).click();
+  await card.locator(".tool-readiness").getByText("通用检查通过", { exact: true }).waitFor();
 
   await page.getByLabel("筛选工具卡").fill("kit-cli");
   equal(await page.locator(".tool-card").count(), 1, "tool filter keeps the card");
@@ -838,14 +932,17 @@ async function toolsFlow(suite: Suite): Promise<void> {
   await waitForText(page, "没有匹配的工具卡");
   equal(await page.locator(".tool-card").count(), 0, "tool filter empties the grid");
   await page.locator(".empty").getByRole("button", { name: "清除筛选" }).click();
-  await waitFor(async () => (await page.locator(".tool-card").count()) === 2, "tool filter cleared");
+  await waitFor(async () => (await page.locator(".tool-card").count()) === 3, "tool filter cleared");
 
   await card.getByRole("button", { name: "复制安装命令" }).click();
   await waitForText(page, "已复制到剪贴板");
 
   await card.getByRole("button", { name: "plain-skill" }).click();
   await page.locator(".nav-item.is-active").filter({ hasText: "技能" }).waitFor();
-  await page.locator(".inspector").getByRole("heading", { name: "plain-skill" }).waitFor();
+  const skillInspector = page.locator(".inspector");
+  await skillInspector.getByRole("heading", { name: "plain-skill" }).waitFor();
+  assert((await skillInspector.innerText()).includes("文件分发"), "skill file distribution is distinct from runtime");
+  assert((await skillInspector.innerText()).includes("通用检查通过"), "related tool reports default readiness separately");
 
   await page.locator(".search-trigger").click();
   const palette = await dialog(page);
@@ -864,7 +961,17 @@ async function toolsFlow(suite: Suite): Promise<void> {
   await openSection(page, "MCP");
   const mcpCard = page.locator(".tool-card").filter({ hasText: "Filesystem MCP" });
   await mcpCard.waitFor();
-  equal(await page.locator(".tool-card").count(), 1, "MCP page filters tool cards by kind");
+  equal(await page.locator(".tool-card").count(), 2, "MCP page includes tagged plugin capability");
+  const hybrid = page.locator(".tool-card").filter({ hasText: "Hybrid Plugin" });
+  const hybridText = await hybrid.innerText();
+  assert(hybridText.includes("插件分发形态安装"), "MCP page explains plugin distribution form");
+  assert(hybridText.includes("需在对应 agent 验证"), "MCP integration is not reported as enabled");
+  assert(hybridText.includes("Vault 受管") && hybridText.includes("未分发"), "related skill shows target distribution gap");
+  equal(await hybrid.getByLabel("Hybrid Plugin Node 绝对路径").count(), 1, "node check offers interpreter path");
+  equal(await hybrid.getByRole("button", { name: "复制连接命令" }).count(), 1, "MCP capability shows connection command");
+  await hybrid.getByRole("button", { name: "检查运行环境" }).click();
+  await hybrid.getByText("通用检查通过", { exact: true }).waitFor();
+  assert((await hybrid.innerText()).includes("Node："), "Node report shows the checked executable");
   const mcpText = await mcpCard.innerText();
   assert(mcpText.includes("MCP 服务"), "MCP card kind label");
   assert(mcpText.includes("npm install --global @modelcontextprotocol/server-filesystem"), "MCP install command");
@@ -872,6 +979,7 @@ async function toolsFlow(suite: Suite): Promise<void> {
   assert(mcpText.includes("连接 / 启动"), "MCP connection section");
   assert(mcpText.includes("Node.js 22+"), "MCP requirement");
   assert(mcpText.includes("plain-skill"), "MCP related skill");
+  assert(mcpText.includes("未配置运行时检查"), "tool without checks is not reported ready");
   const mcpBoundary = await page.locator(".tool-boundary").innerText();
   assert(mcpBoundary.includes("仅记录，不安装"), "MCP boundary copy");
   equal(await mcpCard.locator("button[title='复制连接命令']").count(), 1, "MCP connect copy button");
@@ -880,7 +988,7 @@ async function toolsFlow(suite: Suite): Promise<void> {
   await waitForText(page, "没有匹配的 MCP 卡");
   equal(await page.locator(".tool-card").count(), 0, "MCP filter empties the grid");
   await page.locator(".empty").getByRole("button", { name: "清除筛选" }).click();
-  await waitFor(async () => (await page.locator(".tool-card").count()) === 1, "MCP filter cleared");
+  await waitFor(async () => (await page.locator(".tool-card").count()) === 2, "MCP filter cleared");
 
   await mcpCard.getByRole("button", { name: "复制连接命令" }).click();
   await waitForText(page, "已复制到剪贴板");
@@ -937,6 +1045,22 @@ async function externalFlow(suite: Suite): Promise<void> {
   equal(artifact.skills.length, 1, "external artifact count");
   equal(artifact.skills[0]?.status, "ok", "external artifact status");
   assert(!fs.existsSync(path.join(externalPath, ".vault-managed")), "external path has no marker");
+  fs.writeFileSync(path.join(vaultPath, "tools/rea-demo.yml"), [
+    "schema: 1",
+    "name: rea-demo",
+    "kind: plugin",
+    "title: REA Demo",
+    "summary: External skill plugin with MCP integration.",
+    "homepage: https://example.org/rea-demo",
+    "install:",
+    "  - label: Setup",
+    "    command: npx rea-agents setup",
+    "run: rea --mcp",
+    "related_skills:",
+    "  - rea-demo",
+    "tags:",
+    "  - mcp",
+  ].join("\n") + "\n");
   commitAll(vaultPath, "record external skill");
 
   const launched = await suite.launch({ workspace, initialVault: vaultPath });
@@ -983,7 +1107,7 @@ async function externalFlow(suite: Suite): Promise<void> {
   await page.locator(".search-trigger").click();
   const palette = await dialog(page);
   await palette.getByLabel("搜索技能、插件、MCP 与工具卡").fill("rea-demo");
-  const hit = palette.locator(".palette-hit").filter({ hasText: "rea-demo" }).first();
+  const hit = palette.locator(".palette-hit").filter({ hasText: "rea-agents" }).first();
   await hit.waitFor({ state: "visible", timeout: 30_000 });
   const hitText = await hit.innerText();
   assert(hitText.includes("外部"), "external search shape label");
@@ -991,6 +1115,16 @@ async function externalFlow(suite: Suite): Promise<void> {
   await hit.click();
   await palette.waitFor({ state: "hidden" });
   await page.locator(".inspector").getByRole("heading", { name: "rea-demo" }).waitFor();
+
+  await openSection(page, "MCP");
+  const externalTool = page.locator(".tool-card").filter({ hasText: "REA Demo" });
+  await externalTool.waitFor();
+  assert((await externalTool.innerText()).includes("rea-agents 外部工具托管"), "tool shows external ownership");
+  await externalTool.getByRole("button", { name: "rea-demo" }).click();
+  await page.locator(".nav-item.is-active").filter({ hasText: "技能" }).waitFor();
+  const routedExternal = page.locator(".inspector");
+  await routedExternal.getByRole("heading", { name: "rea-demo" }).waitFor();
+  assert((await routedExternal.innerText()).includes("rea-agents 管理 · VaultDesk 只读"), "related external skill opens its actual inspector");
 
   assert(read(skillFile) === before, "external SKILL.md untouched by the app");
   assert(!fs.existsSync(path.join(externalPath, ".vault-managed")), "no marker after UI inspection");

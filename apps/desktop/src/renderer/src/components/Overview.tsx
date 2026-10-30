@@ -1,6 +1,7 @@
 import type { SkillRecord, SourceRecord, VaultSnapshot } from "@vaultdesk/core";
 import {
   installedFor,
+  hasMcpCapability,
   relativeTime,
   shortSha,
   statusLabel,
@@ -44,7 +45,7 @@ export function Overview({
   const warnings = vault.issues.filter((issue) => issue.severity === "warning");
   const github = vault.sources.filter((source) => source.origin === "github").length;
   const local = vault.sources.length - github;
-  const mcpCount = vault.tools.filter((tool) => tool.kind === "mcp").length;
+  const mcpCount = vault.tools.filter(hasMcpCapability).length;
   const featured = [...vault.skills]
     .sort((a, b) => {
       const aInstalled = a.installed.length > 0 ? 1 : 0;
@@ -261,7 +262,7 @@ export function Overview({
                 label: "工具",
                 title: "插件分发 · MCP · CLI · 桌面应用",
               },
-              { icon: "server", value: mcpCount, label: "MCP", title: "独立 MCP 服务记录" },
+              { icon: "server", value: mcpCount, label: "MCP", title: "具备 MCP 能力的工具卡（含插件形态）" },
               {
                 icon: "shield",
                 value: vault.counts.externalSkills,
@@ -340,8 +341,8 @@ export function Overview({
                 <div className="skill-card-meta">
                   <span>{skill.sourceName}</span>
                   {skill.installed.length > 0 ? (
-                    <span title={`已安装：${installedFor(skill)}`}>
-                      <StatusMark tone="ok" label="已安装" size={11} />
+                    <span title={`文件已分发：${installedFor(skill)}`}>
+                      <StatusMark tone="ok" label="文件已分发" size={11} />
                     </span>
                   ) : null}
                 </div>

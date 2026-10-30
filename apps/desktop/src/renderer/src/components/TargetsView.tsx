@@ -22,14 +22,14 @@ function shortPath(path: string): string {
 }
 
 function slotFor(name: string, entry: InstalledEntry | undefined): { tone: StatusTone; label: string } {
-  if (!entry) return { tone: "muted", label: `${name} · 未安装` };
+  if (!entry) return { tone: "muted", label: `${name} · 未分发` };
   if (entry.managedByThisVault === false) return { tone: "warn", label: `${name} · 属于其他仓库` };
   if (!entry.managed) return { tone: "warn", label: `${name} · 未受管目录` };
   if (entry.matches === false) return { tone: "warn", label: `${name} · 内容已变化` };
   if (entry.isSymlink) {
     return { tone: "ok", label: `${name} · 符号链接${entry.linkTarget ? ` → ${entry.linkTarget}` : ""}` };
   }
-  return { tone: "ok", label: `${name} · ${entry.matches === true ? "哈希一致" : "已安装"}` };
+  return { tone: "ok", label: `${name} · ${entry.matches === true ? "哈希一致" : "文件已分发"}` };
 }
 
 export function TargetsView({

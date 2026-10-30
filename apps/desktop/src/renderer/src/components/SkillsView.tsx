@@ -10,7 +10,7 @@ const TYPE_LABELS: Record<Exclude<TypeFilter, "all">, string> = {
   standalone: "单技能",
   suite: "套件",
   collection: "合集",
-  external: "外部托管",
+  external: "外部只读",
 };
 
 function skillType(skill: SkillRecord): Exclude<TypeFilter, "all"> {
@@ -115,6 +115,7 @@ export function SkillsView({
     <div className="view skills-view">
       <SectionHeader
         title="技能"
+        description="受管技能由 VaultDesk 分发；外部技能只读观察。文件已分发不代表运行依赖就绪。"
         actions={
           <Button variant="primary" icon="plus" onClick={onImport}>
             导入技能
@@ -252,7 +253,7 @@ function ExternalGroup({
           <Icon name="shield" size={13} />
         </span>
         <strong className="skill-group-name">{group.owner}</strong>
-        <span className="type-chip">外部</span>
+        <span className="type-chip">外部只读</span>
         <span className="skill-group-meta">{group.skills.length} 个</span>
         {attention > 0 ? (
           <span className="skill-group-warning" title={`${attention} 个外部技能需要确认`}>
@@ -283,7 +284,7 @@ function ExternalGroup({
               </div>
             </div>
             <div className="skill-cell-role">
-              <span className="type-chip">外部</span>
+              <span className="type-chip">外部只读</span>
             </div>
             <div className="skill-cell-installed">
               {skill.status === "ok" || skill.status === "observed" ? (
@@ -348,7 +349,7 @@ function SourceGroup({
         <div className="skill-table-head">
           <span>技能</span>
           <span>角色</span>
-          <span>安装</span>
+          <span>文件分发</span>
           <span />
         </div>
         {group.skills.map((skill) => (
@@ -370,11 +371,11 @@ function SourceGroup({
             </div>
             <div
               className="skill-cell-installed"
-              title={skill.installed.length > 0 ? skill.installed.map((entry) => entry.targetId).join("、") : "未安装"}
+              title={skill.installed.length > 0 ? skill.installed.map((entry) => entry.targetId).join("、") : "尚未分发文件"}
             >
               {skill.installed.length > 0 ? (
                 <span className="installed-label">
-                  <StatusMark tone="ok" label="已安装" size={12} />
+                  <StatusMark tone={skill.installed.some((entry) => entry.matches === false) ? "warn" : "ok"} label={skill.installed.some((entry) => entry.matches === false) ? "文件已变化" : "文件已分发"} size={12} />
                   {skill.installed[0]?.targetId}
                   {skill.installed.length > 1 ? ` +${skill.installed.length - 1}` : ""}
                 </span>

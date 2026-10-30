@@ -243,6 +243,78 @@ export const toolInstallSchema = z.object({
   command: z.string().trim().min(1),
 });
 
+const toolCheckBaseSchema = z.object({
+  id: slugSchema,
+  label: z.string().trim().min(1),
+  optional: z.boolean().default(false),
+  profiles: z.array(slugSchema).default([]),
+});
+
+const pythonVersionSchema = z.string().regex(/^\d+\.\d+(?:\.\d+)?$/, "must be major.minor or major.minor.patch");
+const nodeVersionSchema = z.string().regex(/^\d+\.\d+\.\d+$/, "must be major.minor.patch");
+function compareTriplets(left: string, right: string): number {
+  const a = left.split(".").map(Number);
+  const b = right.split(".").map(Number);
+  for (let index = 0; index < 3; index += 1) {
+    if (a[index]! !== b[index]!) return a[index]! - b[index]!;
+  }
+  return 0;
+}
+const nodeRangeSchema = z.object({
+  min_version: nodeVersionSchema,
+  max_version_exclusive: nodeVersionSchema.optional(),
+}).refine((range) => !range.max_version_exclusive ||
+  compareTriplets(range.min_version, range.max_version_exclusive) < 0,
+{ message: "max_version_exclusive must exceed min_version" });
+const interpreterSchema = z.string().regex(/^python(?:3(?:\.\d+)?)?$/,
+  "tool cards may name a Python command, but only an explicit user override may supply a path");
+const absoluteUserPathSchema = z.string().trim().min(1).refine((value) =>
+  value.startsWith("/") || value.startsWith("~/"), { message: "path must be absolute or start with ~/" });
+const vaultRelativePathSchema = z.string().trim().min(1).refine((value) =>
+  !value.startsWith("/") && !value.includes("\\") && value.split("/").every((part) => part !== "" && part !== "." && part !== ".."), {
+  message: "path must stay inside the vault",
+});
+
+/** Declarative checks only: cards never supply code or commands to execute. */
+export const toolCheckSchema = z.discriminatedUnion("kind", [
+  toolCheckBaseSchema.extend({
+    kind: z.literal("python"),
+    executable: interpreterSchema,
+    min_version: pythonVersionSchema.optional(),
+    max_version_exclusive: pythonVersionSchema.optional(),
+  }),
+  toolCheckBaseSchema.extend({
+    kind: z.literal("python-package"),
+    interpreter: interpreterSchema,
+    requirement: z.string().trim().min(1).max(200).refine((value) =>
+      /^[A-Za-z0-9][A-Za-z0-9._+<>=!~,\s-]*$/.test(value), {
+      message: "requirement must be a package name and optional version specifier",
+    }),
+  }),
+  toolCheckBaseSchema.extend({
+    kind: z.literal("node"),
+    ranges: z.array(nodeRangeSchema).min(1).max(8),
+  }).strict(),
+  toolCheckBaseSchema.extend({
+    kind: z.literal("executable"),
+    name: z.string().regex(/^[A-Za-z0-9][A-Za-z0-9._+-]*$/, "must be a PATH executable name"),
+  }),
+  toolCheckBaseSchema.extend({
+    kind: z.literal("path"),
+    path: absoluteUserPathSchema,
+    entry: z.enum(["any", "file", "directory"]).default("any"),
+  }),
+  toolCheckBaseSchema.extend({
+    kind: z.literal("env"),
+    name: z.string().regex(/^[A-Za-z_][A-Za-z0-9_]*$/, "must be an environment variable name"),
+  }),
+  toolCheckBaseSchema.extend({
+    kind: z.literal("file-hash"),
+    path: vaultRelativePathSchema,
+    expected_hash: z.string().regex(/^sha256:[a-f0-9]{64}$/, "must be a sha256 hash"),
+  }),
+]);
+
 export const toolCardSchema = z.object({
   schema: z.literal(1).default(1),
   name: slugSchema,
@@ -256,8 +328,17 @@ export const toolCardSchema = z.object({
   run: z.string().trim().min(1).optional(),
   requirements: z.array(z.string().trim().min(1)).default([]),
   related_skills: z.array(slugSchema).default([]),
+  checks: z.array(toolCheckSchema).max(64).default([]),
   tags: z.array(z.string().regex(/^[a-z0-9][a-z0-9-]*$/, "must be lowercase tags")).default([]),
   notes: z.string().trim().min(1).optional(),
+}).superRefine((card, ctx) => {
+  const seen = new Set<string>();
+  for (const [index, check] of card.checks.entries()) {
+    if (seen.has(check.id)) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["checks", index, "id"], message: "duplicate check id" });
+    }
+    seen.add(check.id);
+  }
 });
 
 export const externalSkillCardSchema = z.object({
@@ -293,5 +374,6 @@ export type OperationStep = z.infer<typeof operationStepSchema>;
 export type ToolPreset = z.infer<typeof presetSchema>;
 export type ToolKind = z.infer<typeof toolKindSchema>;
 export type ToolInstall = z.infer<typeof toolInstallSchema>;
+export type ToolCheck = z.infer<typeof toolCheckSchema>;
 export type ToolCard = z.infer<typeof toolCardSchema>;
 export type ExternalSkillCard = z.infer<typeof externalSkillCardSchema>;

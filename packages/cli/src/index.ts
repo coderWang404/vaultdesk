@@ -56,6 +56,7 @@ import {
   toolCardPath,
   updateSources,
   validateVault,
+  verifyToolReadiness,
   verifyTarget,
   withWriteLock,
   writeExternalSkillCard,
@@ -106,6 +107,10 @@ const VALUE_FLAGS = new Set([
   "related-skill",
   "tag",
   "notes",
+  "profile",
+  "python",
+  "node",
+  "check",
   "owner",
   "owner-version",
   "related-tool",
@@ -228,9 +233,9 @@ function hasFlag(parsed: Parsed, name: string): boolean {
 function version(): string {
   try {
     const pkg = JSON.parse(fs.readFileSync(new URL("../package.json", import.meta.url), "utf8")) as { version?: string };
-    return pkg.version ?? "1.2.2";
+    return pkg.version ?? "1.2.3";
   } catch {
-    return "1.2.2";
+    return "1.2.3";
   }
 }
 
@@ -296,6 +301,7 @@ Commands:
   presets verify <id> [--yes]      Preview or run an optional preset verify_command
   tool list [--kind <kind>]        List recorded external tool cards
   tool show <name>                 Show one tool card, install methods, and links
+  tool verify <name> [--profile p] [--python /path/to/python] [--node /path/to/node] Check runtime prerequisites
   tool add <name> [options]        Record an external tool card (preview by default)
   external list                    List tool-managed skills and observed state
   external show <name>             Show one external skill record
@@ -307,6 +313,7 @@ Tool card options (tool add):
   --kind plugin|mcp|cli|app  --title <text>  --summary <text>  --homepage <url>
   --install-command <label=command> (repeat)  --docs <url>  --recorded-version <v>
   --run <command>  --requirement <text> (repeat)  --related-skill <name> (repeat)
+  --check <json> (repeat; declarative readiness check, no install command execution)
   --tag <tag> (repeat)  --notes <text>  --force
 
 External skill options (external add / adopt):
@@ -894,6 +901,14 @@ function printTool(tool: ToolRecord): string[] {
     lines.push("");
     lines.push(`Related skills ${tool.related_skills.join(", ")}`);
   }
+  if (tool.checks.length > 0) {
+    lines.push("");
+    lines.push(bold("Readiness checks"));
+    for (const check of tool.checks) {
+      const scope = check.profiles.length > 0 ? " [" + check.profiles.join(", ") + "]" : "";
+      lines.push("  " + check.label + scope + (check.optional ? " (optional)" : ""));
+    }
+  }
   if (tool.notes) {
     lines.push("");
     lines.push(tool.notes);
@@ -980,6 +995,14 @@ function parseInstallFlag(value: string): { label: string; command: string } {
     throw new VaultDeskError("invalid-input", `--install-command expects label=command, got: ${value}`);
   }
   return { label: value.slice(0, equals).trim(), command: value.slice(equals + 1).trim() };
+}
+
+function parseCheckFlag(value: string): unknown {
+  try {
+    return JSON.parse(value) as unknown;
+  } catch {
+    throw new VaultDeskError("invalid-input", "--check expects one JSON check object.");
+  }
 }
 
 async function dispatch(parsed: Parsed): Promise<CommandResult> {
@@ -1991,6 +2014,29 @@ async function dispatch(parsed: Parsed): Promise<CommandResult> {
         if (!tool) throw new VaultDeskError("unknown-tool", `Unknown tool card: ${name}`);
         return { data: tool, warnings: [], human: printTool(tool) };
       }
+      if (action === "verify") {
+        const name = rest[0];
+        if (!name) throw new VaultDeskError("invalid-input", "tool verify requires a tool name.");
+        if (rest.length > 1) throw new VaultDeskError("invalid-input", "tool verify takes one tool name.");
+        const report = await verifyToolReadiness(vaultPath, name, {
+          profile: valueOf(options, "profile"),
+          pythonPath: valueOf(options, "python"),
+          nodePath: valueOf(options, "node"),
+        });
+        const lines = [
+          bold("Runtime readiness for " + report.name) + " · " + report.status,
+          ...(report.profile ? ["Profile " + report.profile] : []),
+          ...(report.pythonPath ? ["Python " + report.pythonPath] : []),
+          ...(report.nodePath ? ["Node " + report.nodePath] : []),
+          ...(report.checks.length > 0
+            ? table(["CHECK", "STATUS", "DETAIL"], report.checks.map((check) => [
+              check.label + (check.optional ? " (optional)" : ""), check.status, check.detail,
+            ]))
+            : [dim("No runtime checks declared. File distribution and runtime readiness are separate.")]),
+          dim("Read-only check; no install or run command was executed."),
+        ];
+        return { data: report, warnings: [], human: lines };
+      }
       if (action === "add") {
         const name = rest[0];
         if (!name) throw new VaultDeskError("invalid-input", "tool add requires a tool name.");
@@ -2018,6 +2064,8 @@ async function dispatch(parsed: Parsed): Promise<CommandResult> {
         const docs = valueOf(options, "docs");
         const run = valueOf(options, "run");
         const notes = valueOf(options, "notes");
+        const checkValues = valuesOf(options, "check");
+        const previous = snapshot.tools.find((entry) => entry.name === name);
         const card = parseToolCard({
           name,
           kind,
@@ -2030,6 +2078,7 @@ async function dispatch(parsed: Parsed): Promise<CommandResult> {
           ...(run ? { run } : {}),
           requirements: valuesOf(options, "requirement"),
           related_skills: valuesOf(options, "related-skill"),
+          checks: checkValues.length > 0 ? checkValues.map(parseCheckFlag) : previous?.checks ?? [],
           tags: valuesOf(options, "tag"),
           ...(notes ? { notes } : {}),
         });

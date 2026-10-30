@@ -265,8 +265,8 @@ export interface SlotItem {
 
 function slotStatus(item: SlotItem): string {
   if (item.label?.includes("未登记")) return "未登记";
-  if (item.label?.includes("未安装")) return "未安装";
-  return item.tone === "ok" ? "已安装" : item.tone === "warn" ? "需检查" : "待确认";
+  if (item.label?.includes("未分发")) return "未分发";
+  return item.tone === "ok" ? "已分发" : item.tone === "warn" ? "需检查" : "待确认";
 }
 
 export function SlotStrip({ items, emptyLabel }: { items: SlotItem[]; emptyLabel?: string }) {

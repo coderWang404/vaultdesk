@@ -18,7 +18,7 @@
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-Apache--2.0-blue.svg" alt="License: Apache-2.0"></a>
   <img src="https://img.shields.io/badge/platform-macOS%2013%2B-lightgrey.svg" alt="Platform: macOS 13+">
   <img src="https://img.shields.io/badge/node-22%2B-339933.svg" alt="Node.js 22+">
-  <img src="https://img.shields.io/badge/version-1.2.0-brightgreen.svg" alt="Version 1.2.0">
+  <img src="https://img.shields.io/badge/version-1.2.3-brightgreen.svg" alt="Version 1.2.3">
 </p>
 
 <p align="center">
@@ -26,7 +26,7 @@
 </p>
 
 > [!NOTE]
-> VaultDesk 1.2.0 is available as an Apple Silicon DMG from [GitHub Releases](https://github.com/coderWang404/vaultdesk/releases/tag/v1.2.0). The build is ad-hoc signed and is not notarized. There is no Homebrew formula or npm package yet.
+> VaultDesk 1.2.3 is available as an Apple Silicon DMG from [GitHub Releases](https://github.com/coderWang404/vaultdesk/releases/tag/v1.2.3). The build is ad-hoc signed and is not notarized. There is no Homebrew formula or npm package yet.
 
 ## Contents
 
@@ -67,7 +67,7 @@ VaultDesk is for people who run more than one coding agent and maintain their ow
 | --- | --- | --- | --- |
 | Skills | `skills/`, `packages/` | Build, install, verify, restore, edit local skills, fork GitHub skills | Edit GitHub originals before a fork |
 | Plugins | `plugins/`, `third_party/` | Register whole roots, validate assets, show diffs, update with review | Install, enable, adapt, or execute hooks, scripts, or MCP servers |
-| Tool cards | `tools/<name>.yml` | Record official links, install methods, run entry points; display them and build an index | Download, install, run, or version-check the tool; write agent configuration |
+| Tool cards | `tools/<name>.yml` | Record official links, install methods, run entry points, and optional runtime readiness checks | Download, install, or run the recorded tool commands; write agent configuration |
 | External skills | `external-skills/<name>.yml`, the tool's own path | Record the owning tool and path, pin an optional hash, observe status read-only, adopt a skill out of the vault | Install, update, run, or write the external path; write agent configuration |
 | Install targets | `vault.yml`, `.vault-managed` markers | Classify slots, back up, copy, verify, restore | Delete unmanaged content |
 
@@ -110,7 +110,7 @@ Both screenshots use a demo vault built from the public fixtures. No personal sk
 - **Build:** Node.js 22+, pnpm 11.5.2, Git on `PATH`
 - **CLI:** Node.js 22+; CI also builds and tests on Ubuntu
 
-Download the Apple Silicon desktop DMG from [GitHub Releases](https://github.com/coderWang404/vaultdesk/releases/tag/v1.2.0). The CLI is not on npm; build it from this repository. Intel users can build the desktop app from source.
+Download the Apple Silicon desktop DMG from [GitHub Releases](https://github.com/coderWang404/vaultdesk/releases/tag/v1.2.3). The CLI is not on npm; build it from this repository. Intel users can build the desktop app from source.
 
 ### Desktop from source
 
@@ -126,7 +126,7 @@ To package an ad-hoc signed DMG:
 
 ```bash
 pnpm package:mac
-# release/VaultDesk-1.2.0-<arch>.dmg
+# release/VaultDesk-1.2.3-<arch>.dmg
 ```
 
 The build is ad-hoc signed and not notarized. On first launch, right-click the app and choose **Open**, or allow it in **System Settings → Privacy & Security**.
@@ -276,7 +276,39 @@ vaultdesk tool add fetch-mcp --vault "$VAULT" --kind mcp \
 
 `vaultdesk build` writes `build/tools.json`, a deterministic index of all cards without timestamps. Agents read either the YAML, the JSON index, or `tool show --json`, then use their own installation and registration rules.
 
-VaultDesk does not check the recorded version for updates, does not start or health-check an MCP server, and does not write MCP configuration into any agent. Never put tokens, keys, or private URLs in a card.
+### Runtime readiness is separate from file distribution
+
+`target verify` only checks the managed skill files. A related tool card can declare read-only prerequisite checks, including a Python interpreter/version, an installed Python distribution with a PEP 440 version specifier, Node.js version intervals, a PATH executable, a path, an environment-variable presence, or a SHA-256 baseline for a file inside the vault. Put a check under `profiles` when it is needed only for a particular workflow; `optional: true` makes a missing check visible without blocking readiness.
+
+`tool verify <name> [--profile <name>] [--python /absolute/path/to/python] [--node /absolute/path/to/node] --json` runs these checks only when requested. Python and Node overrides apply only to that verification, so a card can use portable defaults while a user explicitly selects an isolated runtime; the report includes the path actually used. A card without checks is `unconfigured`, not `ready`. A `file-hash` check on a skill's requirements file becomes `drift` after an upstream change, so previously reviewed package checks cannot falsely report that an updated skill is ready. The CLI accepts repeated `--check '<JSON object>'` arguments when creating a card; the same declarations may be written in `tools/<name>.yml`. For example:
+
+```yaml
+related_skills: [ppt-master]
+checks:
+  - id: python
+    kind: python
+    label: Supported Python
+    executable: python3
+    min_version: "3.10"
+    max_version_exclusive: "3.15"
+  - id: svg-package
+    kind: python-package
+    label: SVG shape package
+    interpreter: python3
+    requirement: skia-pathops>=0.9.2
+    profiles: [svg]
+  - id: node-runtime
+    kind: node
+    label: REA Node.js compatibility
+    ranges:
+      - { min_version: "22.23.4", max_version_exclusive: "23.0.0" }
+      - { min_version: "24.22.1", max_version_exclusive: "25.0.0" }
+      - { min_version: "26.12.1" }
+```
+
+Verification never executes `install` or `run` entries. A tool card can name `python3` or a versioned Python command; it cannot supply an executable path. Those names follow PATH priority only among approved system, Homebrew, Conda, and versioned pyenv directories; arbitrary project directories are ignored. Only an explicit `--python` or app selection accepts an absolute native Python path. A Node.js check supplies version intervals, not a command; it checks a native `node` from system/Homebrew or scans installed standard nvm versions for the highest compatible one, even when Finder launches the app without an nvm PATH. An explicit `--node` override covers other installations. Python and Node checks use fixed arguments, a minimal environment without preload variables, asynchronous subprocesses, a three-check concurrency limit, a whole-verification timeout, and bounded output; scripts and arbitrary interpreter commands are rejected. Path checks require an absolute path or `~/`, while file-hash checks reject symlinks and stay inside the vault. Environment-variable checks report existence only, never the value. VaultDesk still does not install dependencies, register MCP servers, or prove that an agent can complete a workflow; run an end-to-end task for that final claim.
+
+VaultDesk does not check the recorded upstream version for updates, does not start or health-check an MCP server, and does not write MCP configuration into any agent. Never put tokens, keys, or private URLs in a card.
 
 ## External skills
 
@@ -413,7 +445,7 @@ The renderer has no Node access. The main process owns all filesystem, Git, and 
 - **Fetch outside the vault.** Upstream content lands in the cache first. `source check` may update ignored local state; tracked vault content is written only after the preview is accepted.
 - **GitHub content is read-only until forked.** GitHub-origin skills cannot be edited in place.
 - **Plugins are stored, not executed.** Hooks, scripts, commands, and MCP servers inside a plugin root are never run. VaultDesk does not generate marketplace or adapter manifests.
-- **Tool cards are records.** No download, installation, execution, version check, or agent registration.
+- **Tool cards are records.** No download, installation, tool-command execution, upstream version check, or agent registration; explicit runtime checks are limited to declared read-only probes.
 - **External skills belong to their tool.** VaultDesk reads and hashes the path, reports drift, and never writes it. `adopt` removes only vault-owned content and a marker owned by this vault.
 - **One owner per path.** A managed skill and an external skill cannot share a path; a marker from another owner blocks `adopt`.
 - **Automatic sync protects unmanaged directories.** Explicit manual installs can back up an old directory; automatic sync pauses the affected source on unknown ownership or local edits. Automatic distribution keeps at most three completed backups or seven days of history.
@@ -437,21 +469,21 @@ The E2E suites launch the real Electron app and the built CLI against isolated t
 CI runs typecheck, unit and integration tests, and builds on macOS and Ubuntu. The macOS job also runs the Electron smoke test, uploads a screenshot, packages the DMG, and uploads it as a build artifact.
 
 See [tests/e2e/README.md](tests/e2e/README.md) for the scenario matrix and deliberate coverage limits.
-Release QA results are recorded in [docs/QA-CURRENT.md](docs/QA-CURRENT.md); [docs/RELEASE.md](docs/RELEASE.md) covers v1.2.0 and preserves the earlier v1.0.0 local DMG verification snapshot.
+Release QA results are recorded in [docs/QA-CURRENT.md](docs/QA-CURRENT.md); [docs/RELEASE.md](docs/RELEASE.md) keeps the current and historical release records.
 
 ## Status
 
 | Area | State |
 | --- | --- |
-| Desktop app and CLI | 1.2.0; Apple Silicon DMG published, CLI available from source |
-| Tool cards and MCP view | Included in v1.2.0 |
+| Desktop app and CLI | 1.2.3; Apple Silicon DMG published, CLI available from source |
+| Tool cards and MCP view | Runtime checks and cross-category MCP discovery in v1.2.3 |
 | External skill records | Included in v1.2.0 |
 | DMG | Apple Silicon release; ad-hoc signed, not notarized |
 | GitHub Release / Homebrew / npm | GitHub Release published; Homebrew and npm not published |
 | Automatic source sync | Available in the installed macOS app; per-source auto/review/pause controls |
-| Windows and Linux desktop | Not included in v1.2.0 |
+| Windows and Linux desktop | Not included in v1.2.3 |
 
-The desktop app is macOS-only at 1.2.0. The CLI is tested on macOS and Ubuntu.
+The desktop app is macOS-only at 1.2.3. The CLI is tested on macOS and Ubuntu.
 
 ## Contributing
 

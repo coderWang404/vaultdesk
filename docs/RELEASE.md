@@ -1,3 +1,32 @@
+# VaultDesk v1.2.3 release
+
+Status: published and installed on 2026-10-30. GitHub CI run 41077448416 passed all three jobs; the downloaded public DMG and checksum matched the locally tested artifact.
+
+## v1.2.3 artifact
+
+| Field | Value |
+| --- | --- |
+| File | release/VaultDesk-1.2.3-arm64.dmg |
+| Platform | macOS, Apple Silicon (arm64) |
+| Size | 124,621,883 bytes (118.8 MiB) |
+| SHA-256 | a590e36fe4b4303041316999d345b1a250086ec4b39a304686077826839ebda9 |
+| Bundle ID | com.coderwang404.vaultdesk |
+| Bundle version | 1.2.3 |
+| Signing | Ad-hoc; strict signature verification passed |
+| Notarization | None |
+
+## v1.2.3 changes
+
+- Tool cards gain explicit, profile-aware checks for Python, Python packages, Node.js, PATH executables, paths, environment presence, and reviewed file hashes. Runtime checks do not install or execute recorded tool commands.
+- The desktop separates managed skill distribution from declared runtime readiness and agent-side integration. It now discovers MCP-capable plugin cards, opens external skill details correctly, and stores interpreter choices locally per vault.
+- Fixed-argument, bounded asynchronous probes prevent tool cards from supplying arbitrary executable paths. Symlink-safe hash checks and regression tests cover the verification boundary.
+
+## v1.2.3 local verification
+
+Type checking and 154 unit tests in 26 files passed. CLI and all 19 desktop end-to-end scenarios passed, including both themes and accessibility. The mounted-DMG test passed signature, launch, edit, and persistence checks. The installed app has matching app.asar SHA-256 of 572efa81414b15f9fe882f9fbd07ddc3529fab3bd3544da6471ea8ed560e8248 and bundled agent skill SHA-256 of 43530813cd54b63d24897bd53624897171bc78120539adcfdddbc38b90f5a475. The LaunchAgent reports 1.2.3, with one GUI and one headless worker after repeated opens.
+
+The release tag points to f58ebc47d87236f069c4eeb7bed51ad647c0455d. The published DMG was downloaded again and matched SHA-256 a590e36fe4b4303041316999d345b1a250086ec4b39a304686077826839ebda9. The Personal Skills Vault auto-sync then imported the new bundled VaultDesk skill, distributed it to the registered shared target, committed and pushed 7f4c459, and verified the target.
+
 # VaultDesk v1.2.2 release
 
 Status: published and installed on 2026-10-30. All three CI jobs passed;

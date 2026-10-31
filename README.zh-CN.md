@@ -121,9 +121,9 @@ VaultDesk 面向同时使用多个编码 agent、并且维护自己技能库的�
 
 - **桌面应用：** macOS 13 或更新版本，Apple Silicon 或 Intel
 - **构建：** Node.js 22+、pnpm 11.5.2、`PATH` 中可用的 Git
-- **CLI：** Node.js 22+；CI 也会在 Ubuntu 上构建和测试
+- **源码 CLI：** Node.js 22+；CI 也会在 Ubuntu 上构建和测试
 
-Apple Silicon 桌面版可从 [GitHub Releases](https://github.com/coderWang404/vaultdesk/releases/tag/v1.2.7) 下载。首次打开后，在“设置 → 命令行与 MCP”点击“安装命令行工具”；它会把随应用提供的 CLI 安全安装到 `~/.local/bin/vaultdesk`。Intel 用户也可从源码构建桌面版。
+Apple Silicon 桌面版可从 [GitHub Releases](https://github.com/coderWang404/vaultdesk/releases/tag/v1.2.7) 下载。先把 **VaultDesk.app** 拖入 **Applications**，再打开安装后的应用；在“设置 → 命令行与 MCP”点击“安装命令行工具”，未打开 Vault 时也可安装。它会把随应用提供的 CLI 安全安装到 `~/.local/bin/vaultdesk`，无需源码或额外 Node.js。若终端找不到 `vaultdesk`，可使用 `~/.local/bin/vaultdesk` 完整路径，或将 `~/.local/bin` 加入 PATH。MCP 客户端可在选定 Vault 后复制设置中的绝对路径配置。Intel 用户也可从源码构建桌面版。
 
 ### 从源码运行桌面应用
 

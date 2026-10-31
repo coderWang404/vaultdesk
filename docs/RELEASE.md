@@ -1,15 +1,22 @@
 # VaultDesk v1.2.7 release
 
-Status: release verification in progress on 2026-10-31. This patch adds a standalone CLI/MCP bundle to the DMG and a guarded Settings installer for `~/.local/bin/vaultdesk`; it does not change Vault ownership or agent activation boundaries.
+Status: published and installed on 2026-10-31. Tag v1.2.7 points to cff404d81f6cf6875df9e56bb998cc70fb6b260a. CI 41183040004 passed all three jobs, and the public DMG download matched the locally tested artifact byte for byte. This patch adds a standalone CLI/MCP bundle to the DMG and a guarded Settings installer for `~/.local/bin/vaultdesk`; it does not change Vault ownership or agent activation boundaries.
 
 The packaged `Resources/cli/vaultdesk.cjs` contains the CLI's workspace dependencies and runs through Electron's bundled Node runtime with `ELECTRON_RUN_AS_NODE=1`. The installer refuses unknown, symlinked, or edited launchers and clears common Node/dynamic-library injection variables. Settings can copy an absolute-path MCP configuration for the selected Vault; the agent still registers and verifies that configuration itself.
 
-Local validation: typecheck, 179 tests, launcher/MCP regression tests, CLI E2E, and the mounted-DMG CLI/MCP smoke passed. The desktop and DMG suites are being repeated after fixing first-launch access to Settings without an open Vault. The DMG test runs without the source checkout, `node_modules`, or a system Node path. The release-specific artifact, CI run, installed app version, and hashes will be recorded below after publication.
+Local validation: typecheck, 179 tests in 29 files, CLI E2E, 20 desktop scenarios with 20 zero-violation axe scans, and the final mounted-DMG CLI/MCP smoke passed. The DMG test runs without the source checkout, `node_modules`, or a system Node path. First-launch Settings works without a Vault, while MCP configuration copying requires a selected Vault.
+
+The installed app's Settings button created the launcher and copied the selected Vault's MCP configuration. The actual launcher reports 1.2.7 and exposes all five read-only MCP tools with only `/usr/bin:/bin` on PATH. The installed app and LaunchAgent both report 1.2.7, with one GUI and one headless worker. Startup synchronization updated the VaultDesk source and pushed 475a2d8 in the private Vault, leaving a clean worktree. Its 38 master skills and 20 registered target-skill entries are current. The previous installed app was moved to Trash and the source-dependent CLI wrapper was preserved in a local backup.
 
 | Field | Value |
 | --- | --- |
-| Planned tag | v1.2.7 |
+| Tag | v1.2.7 |
 | Platform | macOS Apple Silicon |
+| File | release/VaultDesk-1.2.7-arm64.dmg |
+| Size | 124,915,789 bytes |
+| SHA-256 | 9e1622bbac902d36bde9720092024526806a5065118fc3f55c537b9597235acd |
+| app.asar SHA-256 | e5eaf0e7bf930b66b101fc390dfcf0ecc1abeafb51de48aa222f4024f8311b29 |
+| CLI SHA-256 | 708cab69ee4309d8b66ab5183cd2ede573d714298a931535915204f8ac1266b6 |
 | Signing | Ad-hoc, not notarized |
 
 # VaultDesk v1.2.6 release

@@ -1,6 +1,6 @@
 # v1.2.7 发布 QA 记录
 
-> 日期：2026-10-31。v1.2.7 在 v1.2.6 的管理与同步修复之上，补齐正式应用的独立 CLI/MCP 交付链。
+> 日期：2026-10-31。v1.2.7 在 v1.2.6 的管理与同步修复之上，补齐正式应用的独立 CLI/MCP 交付链；已发布并完成正式安装，公开下载校验记录见下表。
 
 | 检查 | 状态 | 证据 |
 | --- | --- | --- |
@@ -10,8 +10,20 @@
 | CLI 与桌面 E2E | 通过 | CLI 全场景、桌面 20 个场景；20 次 axe 扫描零违规；覆盖未打开 Vault 时进入设置 |
 | DMG CLI/MCP 验收 | 通过 | 实际挂载 DMG 后使用 Electron binary + `ELECTRON_RUN_AS_NODE=1`，仅 `/usr/bin:/bin` 完成版本、技能读取和 MCP `initialize/tools/list` |
 | 真实 Vault 与后台同步 | 通过 | 38 个主库技能、20 个登记目标条目 current；REA 外部归属正常；后台自更新无错误 |
-| GitHub CI | 验收中 | 等待最终 v1.2.7 提交的三个 job 结果 |
-| 正式安装 | 待完成 | 发布后关闭旧 worker，安装 v1.2.7 并核对单 GUI/worker |
+| GitHub CI | 通过 | 41183040004，cff404d 的三个 job 全部通过 |
+| 正式安装 | 通过 | /Applications/VaultDesk.app 1.2.7；app.asar 与最终 DMG 一致；LaunchAgent 1.2.7，单 GUI/worker |
+| 实机 CLI 设置 | 通过 | 无 Vault 时通过设置按钮安装；选定 Personal Skills 后复制 MCP JSON；实际 launcher 在系统 PATH 下握手并列出 5 个 MCP tools |
+| 后台启动批次 | 通过 | 1 updated / 7 current / 9 skipped，无错误；私有 Vault 提交 475a2d8 已推送，工作树干净 |
+| 旧应用与命令 | 通过 | /Applications 只保留最新版；1.2.6 移至废纸篓；原源码 wrapper 已备份后通过应用设置迁移 |
+
+| 产物 | 值 |
+| --- | --- |
+| 版本 / 发布提交 | v1.2.7 / cff404d81f6cf6875df9e56bb998cc70fb6b260a |
+| DMG | release/VaultDesk-1.2.7-arm64.dmg，124,915,789 bytes |
+| DMG SHA-256 | 9e1622bbac902d36bde9720092024526806a5065118fc3f55c537b9597235acd |
+| app.asar SHA-256 | e5eaf0e7bf930b66b101fc390dfcf0ecc1abeafb51de48aa222f4024f8311b29 |
+| CLI SHA-256 | 708cab69ee4309d8b66ab5183cd2ede573d714298a931535915204f8ac1266b6 |
+| 公开回下载 | SHA-256 一致，逐字节 cmp 一致 |
 
 新增 CLI 交付不会替代 Vault 的 owner 边界：技能仍通过 Vault source/target 分发，插件/MCP 启用仍由具体 agent 完成；应用只提供目录发现、只读 MCP 查询、官方安装说明和受控的 CLI 启动器安装。
 

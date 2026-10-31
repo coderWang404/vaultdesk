@@ -121,9 +121,9 @@ Both screenshots use a demo vault built from the public fixtures. No personal sk
 
 - **Desktop:** macOS 13 or newer, Apple Silicon or Intel
 - **Build:** Node.js 22+, pnpm 11.5.2, Git on `PATH`
-- **CLI:** Node.js 22+; CI also builds and tests on Ubuntu
+- **Source-built CLI:** Node.js 22+; CI also builds and tests on Ubuntu
 
-Download the Apple Silicon desktop DMG from [GitHub Releases](https://github.com/coderWang404/vaultdesk/releases/tag/v1.2.7). After opening it, use **Settings → Command line and MCP → Install command-line tool**. The bundled CLI is installed safely at `~/.local/bin/vaultdesk`; it does not require the source repository or a separate Node.js runtime. Intel users can build the desktop app from source.
+Download the Apple Silicon desktop DMG from [GitHub Releases](https://github.com/coderWang404/vaultdesk/releases/tag/v1.2.7), drag **VaultDesk.app** to **Applications**, and open that installed copy. Use **Settings → Command line and MCP → Install command-line tool**, even before opening a Vault. The bundled CLI is installed safely at `~/.local/bin/vaultdesk`; it does not require the source repository or a separate Node.js runtime. If your terminal cannot find `vaultdesk`, use `~/.local/bin/vaultdesk` or add `~/.local/bin` to PATH. For MCP clients, copy the absolute-path configuration from Settings after selecting a Vault. Intel users can build the desktop app from source.
 
 ### Desktop from source
 

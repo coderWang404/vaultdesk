@@ -1,3 +1,9 @@
+# VaultDesk v1.2.9 release
+
+Status: local verification in progress on 2026-10-31.
+
+Installation targets are grouped by their canonical destination directory. Group headers show agent/preset names, one shared path, unique skill counts and rule status; compact rows preserve independent target identity and installation actions. Other managed directory entries appear once per group. Search covers agents, skills, sources, rule IDs and paths, with separate attention/paused filters and keyboard-accessible group collapse. Search and filter changes reveal matching rules. File verification results are bound to the snapshot checked so they cannot survive a stale refresh or vault switch.
+
 # VaultDesk v1.2.8 release
 
 Status: published and installed on 2026-10-31. Tag v1.2.8 points to 5454d03ed510bb85460b5b81acf36db1a888410e. CI 41185992856 passed all three jobs, and the public DMG download matched the locally tested artifact byte for byte.

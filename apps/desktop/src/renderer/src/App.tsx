@@ -898,7 +898,9 @@ export function App() {
       case "targets":
         return (
           <TargetsView
+            key={activeVault.path}
             vault={activeVault}
+            presets={presets}
             onInstall={openInstall}
             onBackups={openBackups}
             onRemove={(id) => {

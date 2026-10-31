@@ -1476,6 +1476,7 @@ async function installFlow(suite: Suite): Promise<void> {
   await reinstall.locator(".modal-footer").getByRole("button", { name: "完成" }).click();
   await reinstall.waitFor({ state: "hidden" });
   await waitFor(() => !read(path.join(dest, "alpha", "SKILL.md")).includes("LOCAL-DRIFT"), "managed reinstall replaced drift");
+  await waitFor(async () => (await card.locator(".target-check").count()) === 0, "reinstall refresh clears the previous snapshot's file verification");
 
   await card.locator(".row-menu summary").click();
   await card.getByRole("button", { name: "查看备份" }).click();
@@ -1663,6 +1664,133 @@ async function contextualInstall(suite: Suite): Promise<void> {
   equal(targets().find((t) => t.id === "detail")?.skills.join(","), "alpha", "exact mapping survives reload");
   assert(!fs.existsSync(path.join(detailDest, "beta")), "unselected sibling never installed");
   console.log("      contextual reinstall, separate add, pause preservation and exact skill installation OK");
+}
+
+async function groupedTargets(suite: Suite): Promise<void> {
+  const workspace = suite.workspace("grouped-targets");
+  const vaultPath = path.join(workspace.root, "vault");
+  const cli = (...args: string[]) => {
+    const result = runCli([...args, "--vault", vaultPath, "--yes"], { workspace });
+    equal(result.status, 0, result.stderr || result.stdout);
+  };
+  equal(runCli(["vault", "init", vaultPath, "--git", "--yes"], { workspace }).status, 0, "grouped targets vault init");
+  const bundle = path.join(workspace.root, "imports", "suite-tools");
+  writeSkill(path.join(bundle, "alpha"), "alpha", "Shared destination alpha.");
+  writeSkill(path.join(bundle, "beta"), "beta", "Paused beta in a shared destination.");
+  cli("source", "add", bundle, "--name", "suite-tools");
+  for (const name of ["gamma", "delta"]) {
+    const source = path.join(workspace.root, "imports", name);
+    writeSkill(source, name, `Separate ${name} destination.`);
+    cli("source", "add", source);
+  }
+  const qoderDest = path.join(workspace.root, "home", ".qoder", "skills");
+  const customDest = path.join(workspace.root, "desktop-agent-skills");
+  const missingDest = path.join(workspace.root, "offline-agent-skills");
+  const rules = [
+    { id: "qoder:alpha", dest: qoderDest, names: ["alpha"], skills_only: true, install_after_update: true },
+    { id: "qoder:beta", dest: qoderDest, names: ["beta"], skills_only: true, install_after_update: false },
+    { id: "qoder:alpha-copy", dest: qoderDest, names: ["alpha"], skills_only: true, install_after_update: true },
+    { id: "desktop:gamma", dest: customDest, names: ["gamma"], skills_only: true, install_after_update: true },
+    { id: "offline:delta", dest: missingDest, names: ["delta"], skills_only: true, install_after_update: true },
+  ];
+  for (const rule of rules.filter((rule) => rule.id !== "qoder:alpha-copy")) {
+    cli("target", "install", ...rule.names, "--skills-only", "--dest", rule.dest, "--id", rule.id);
+  }
+  fs.writeFileSync(path.join(vaultPath, "vault.yml"), JSON.stringify({
+    schema: 1,
+    name: "grouped-targets",
+    defaults: { ref: "main", update_mode: "auto" },
+    targets: rules,
+  }, null, 2) + "\n");
+  fs.appendFileSync(path.join(qoderDest, "alpha", "SKILL.md"), "\nLOCAL-DRIFT\n", "utf8");
+  fs.rmSync(missingDest, { recursive: true });
+  const presetsFile = path.join(workspace.root, "presets.yml");
+  fs.writeFileSync(presetsFile, JSON.stringify({ schema: 1, tools: [{
+    id: "qoder", label: "Qoder", dest: fs.realpathSync(qoderDest),
+    verified_at: null, verified_version: null, docs_url: null,
+  }] }, null, 2) + "\n");
+
+  const launched = await suite.launch({ workspace, initialVault: vaultPath, extraEnv: { VAULTDESK_PRESETS_FILE: presetsFile } });
+  const page = launched.page;
+  await openSection(page, "安装目标");
+  const view = page.locator(".targets-view");
+  const groups = view.locator(".target-group");
+  const cards = view.locator(".target-card");
+  const search = page.getByLabel("搜索安装目标", { exact: true });
+  const qoder = groups.filter({ has: page.locator(".target-group-path").filter({ hasText: "/.qoder/skills" }) });
+  equal(await groups.count(), 3, "targets sharing a canonical destination form one group");
+  equal(await cards.count(), 5, "grouping preserves every target rule");
+  const overview = (await view.locator(".targets-overview p").first().innerText()).replace(/\s+/g, " ");
+  equal(overview, "3 个目录 · 5 条安装规则 · 4 个技能", "overview counts unique skills across destinations and overlapping rules");
+  equal(await qoder.count(), 1, "one Qoder destination group");
+  equal(await qoder.locator(".target-group-path").count(), 1, "shared destination path appears once in its group");
+  equal(await qoder.locator(".target-card").count(), 3, "three independent rules remain in the shared group");
+  const qoderText = await qoder.innerText();
+  assert(/3\s*(?:条|个)\s*(?:安装)?(?:规则|目标)/.test(qoderText), "group shows three installation rules");
+  assert(/2\s*个技能/.test(qoderText), "overlapping rule skills count once in the destination total");
+  for (let index = 0; index < await groups.count(); index += 1) {
+    assert(await groups.nth(index).locator(".target-other").count() <= 1, "other managed entries are not repeated per rule");
+  }
+
+  const qoderToggle = qoder.getByRole("button", { name: "收起分组 Qoder", exact: true });
+  await qoderToggle.focus();
+  await page.keyboard.press("Enter");
+  equal(await qoder.getByRole("button", { name: "展开分组 Qoder", exact: true }).getAttribute("aria-expanded"), "false", "keyboard collapse announces state");
+  equal(await qoder.locator(".target-card:visible").count(), 0, "collapsed group hides its rules");
+  await search.fill("alpha");
+  equal(await cards.count(), 2, "skill search finds both overlapping rules");
+  equal(await cards.filter({ visible: true }).count(), 2, "search expands a collapsed matching group");
+  await search.fill("suite-tools");
+  equal(await cards.count(), 3, "source search finds all rules for that source");
+  await search.fill("qoder:beta");
+  equal(await cards.count(), 1, "target ID search stays exact to its matching rule");
+  equal((await cards.locator("h3").innerText()).trim(), "qoder:beta", "target search displays the intended rule");
+  await search.fill(customDest);
+  equal(await groups.count(), 1, "destination search filters groups");
+  equal((await cards.locator("h3").innerText()).trim(), "desktop:gamma", "destination search retains its rule");
+  await search.fill("");
+
+  const statusFilter = view.getByRole("group", { name: "安装目标状态筛选", exact: true });
+  const paused = statusFilter.getByRole("button", { name: /^已暂停/ });
+  await paused.click();
+  equal(await paused.getAttribute("aria-pressed"), "true", "pause filter announces selection");
+  equal(await cards.count(), 1, "pause filter excludes active targets");
+  equal((await cards.locator("h3").innerText()).trim(), "qoder:beta", "pause filter preserves rule identity");
+  const attention = statusFilter.getByRole("button", { name: /^需要处理/ });
+  await attention.click();
+  equal(await attention.getAttribute("aria-pressed"), "true", "attention filter announces selection");
+  const attentionNames = (await cards.locator("h3").allTextContents()).map((value) => value.trim()).sort();
+  equal(attentionNames.join(","), "offline:delta,qoder:alpha,qoder:alpha-copy", "attention includes missing, modified and unowned slots while excluding healthy paused targets");
+  equal(await cards.filter({ visible: true }).count(), 3, "filter exposes matching rows despite previous collapse");
+  await statusFilter.getByRole("button", { name: /^全部/ }).click();
+  await page.getByRole("button", { name: "收起全部分组", exact: true }).click();
+  equal(await view.locator(".target-card:visible").count(), 0, "collapse all hides all rules");
+  await page.getByRole("button", { name: "展开全部分组", exact: true }).click();
+  equal(await view.locator(".target-card:visible").count(), 5, "expand all restores all rules");
+  await search.fill("no-matching-target-7791");
+  equal(await cards.count(), 0, "empty search hides unrelated rules");
+  await view.getByRole("button", { name: "清除筛选", exact: true }).click();
+  equal(await search.inputValue(), "", "empty-state reset clears search");
+  equal(await cards.count(), 5, "empty-state reset restores all targets");
+
+  await page.setViewportSize({ width: 1000, height: 760 });
+  await page.evaluate(fs.readFileSync(axeSourcePath, "utf8"));
+  const artifacts = path.join(repoRoot, "tests/e2e/artifacts");
+  fs.mkdirSync(artifacts, { recursive: true });
+  for (const colorScheme of ["light", "dark"] as const) {
+    await page.emulateMedia({ colorScheme, reducedMotion: "reduce" });
+    await page.waitForFunction((theme) => document.documentElement.dataset.theme === theme, colorScheme);
+    equal(await auditPage(page, `grouped targets ${colorScheme}`), 0, "grouped targets accessibility");
+    equal(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth), true, "narrow target groups do not overflow horizontally");
+    await search.fill("suite-tools");
+    await page.screenshot({ path: path.join(artifacts, `target-groups-${colorScheme}.png`) });
+    await search.fill("");
+  }
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  await page.emulateMedia({ colorScheme: "light", reducedMotion: "reduce" });
+  await page.waitForFunction(() => document.documentElement.dataset.theme === "light");
+  await page.screenshot({ path: path.join(artifacts, "target-groups-wide.png") });
+  console.log("      destination grouping, deduplicated counts, source/skill/ID/path search, status filters, keyboard collapse and narrow dual-theme accessibility OK");
 }
 
 async function openImportModal(page: LaunchedApp["page"]) {
@@ -2395,6 +2523,7 @@ async function main(): Promise<void> {
   await run("GitHub import, check, diff, guarded update, fork", githubFlow);
   await run("install, backup, verify, restore, remove and re-register target", installFlow);
   await run("contextual target reinstall, add and skill detail install", contextualInstall);
+  await run("grouped installation targets, search, filters and keyboard", groupedTargets);
   await run("cross-vault search, settings validation and persistence", searchAndSettings);
   await run("plugin page, filters, search and imports", pluginsFlow);
   await run("tool page, filters, copy and search routing", toolsFlow);

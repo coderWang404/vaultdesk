@@ -1,3 +1,27 @@
+# VaultDesk v1.2.5 release
+
+Status: local verification passed on 2026-10-31. GitHub publication and replacement of the installed app are pending.
+
+## v1.2.5 artifact
+
+| Field | Value |
+| --- | --- |
+| File | release/VaultDesk-1.2.5-arm64.dmg |
+| Platform | macOS, Apple Silicon (arm64) |
+| Size | 128 MiB (displayed by `du -h`) |
+| SHA-256 | 7744a3ef79a30bb79a969cbfbed3eb3923b0155177c4afa916922c47eb5d25df |
+| app.asar SHA-256 | a973d5d8520c0c8efe9885834d2ca13c1328832a6391d1066b2db7a0b86df202 |
+| Bundle ID | com.coderwang404.vaultdesk |
+| Bundle version | 1.2.5 |
+| Signing | Ad-hoc; strict signature verification passed |
+| Notarization | None |
+
+## v1.2.5 changes and verification
+
+Agents gain a structured catalog of registered Vaults, ownership and update policies, skill master/target state, plugin targets, tool cards, and external skill ownership. A read-only MCP server exposes list/search/catalog/tool queries to agents that explicitly register it. Unknown runtime states remain unknown without agent-specific probes. Automatic updates now report plugin target drift even when the upstream is unchanged; sensitive paths and credential-like content are blocked from automatic commits.
+
+`pnpm typecheck`, all 169 tests in 28 files, CLI and desktop E2E, and the mounted-DMG launch/edit/persistence test passed. The desktop suite covered 20 scenarios with zero axe violations. The installed app was still 1.2.4 at the time of local verification; publication and installation will be recorded after those steps complete.
+
 # VaultDesk v1.2.4 release
 
 Status: published and installed on 2026-10-31. GitHub CI run 41156645007 passed all three jobs; the downloaded public DMG matches the locally tested artifact.

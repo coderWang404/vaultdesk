@@ -35,6 +35,25 @@ function runCli(args: string[], extraEnv: Record<string, string> = {}): CliResul
 }
 
 describe("CLI contract", () => {
+  it("lets an agent discover registered Vaults and a complete catalog without claiming activation", () => {
+    const vaultPath = copyFixture("v2-basic");
+    const registryRoot = tempDir("cli-catalog-registry");
+    fs.writeFileSync(path.join(registryRoot, "recent-vaults.json"), JSON.stringify({
+      vaults: [{ path: vaultPath, name: "Fixture" }],
+    }), "utf8");
+    const listed = runCli(["--json", "vault", "list"], { VAULTDESK_SETTINGS_FILE: path.join(registryRoot, "settings.json") });
+    expect(listed.status).toBe(0);
+    expect(listed.json?.data).toEqual([expect.objectContaining({ path: fs.realpathSync(vaultPath), status: "ready" })]);
+
+    const catalog = runCli(["--json", "--vault", vaultPath, "agent", "catalog"]);
+    expect(catalog.status).toBe(0);
+    expect(catalog.json?.data).toMatchObject({
+      schema: 1,
+      vault: { path: fs.realpathSync(vaultPath), format: "v2" },
+      agent: { loaded: "unknown", connected: "unknown" },
+    });
+  });
+
   it("shows source check errors in human status, list, and show output", () => {
     const vaultPath = copyFixture("v2-basic");
     fs.writeFileSync(

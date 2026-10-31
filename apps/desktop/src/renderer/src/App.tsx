@@ -1007,6 +1007,7 @@ export function App() {
                     onInstall={openInstall}
                     onSkill={selectSkill}
                     onBackups={openBackups}
+                    onRefresh={() => reloadVault(activeVault.path)}
                   />
                 </>
               ) : null}

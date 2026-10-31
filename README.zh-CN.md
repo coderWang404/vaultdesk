@@ -18,7 +18,7 @@
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-Apache--2.0-blue.svg" alt="许可证：Apache-2.0"></a>
   <img src="https://img.shields.io/badge/platform-macOS%2013%2B-lightgrey.svg" alt="平台：macOS 13+">
   <img src="https://img.shields.io/badge/node-22%2B-339933.svg" alt="Node.js 22+">
-  <img src="https://img.shields.io/badge/version-1.2.4-brightgreen.svg" alt="版本 1.2.4">
+  <img src="https://img.shields.io/badge/version-1.2.5-brightgreen.svg" alt="版本 1.2.5">
 </p>
 
 <p align="center">
@@ -26,7 +26,7 @@
 </p>
 
 > [!NOTE]
-> VaultDesk 1.2.4 已在 [GitHub Releases](https://github.com/coderWang404/vaultdesk/releases/tag/v1.2.4) 提供 Apple Silicon DMG。构建采用 ad-hoc 签名，未公证；目前没有 Homebrew formula 或 npm 包。
+> VaultDesk 1.2.5 已在 [GitHub Releases](https://github.com/coderWang404/vaultdesk/releases/tag/v1.2.5) 提供 Apple Silicon DMG。构建采用 ad-hoc 签名，未公证；目前没有 Homebrew formula 或 npm 包。
 
 ## 目录
 
@@ -112,7 +112,7 @@ VaultDesk 面向同时使用多个编码 agent、并且维护自己技能库的�
 - **构建：** Node.js 22+、pnpm 11.5.2、`PATH` 中可用的 Git
 - **CLI：** Node.js 22+；CI 也会在 Ubuntu 上构建和测试
 
-Apple Silicon 桌面版可从 [GitHub Releases](https://github.com/coderWang404/vaultdesk/releases/tag/v1.2.4) 下载。CLI 尚未发布到 npm，需要从本仓库构建；Intel 用户也可从源码构建桌面版。
+Apple Silicon 桌面版可从 [GitHub Releases](https://github.com/coderWang404/vaultdesk/releases/tag/v1.2.5) 下载。CLI 尚未发布到 npm，需要从本仓库构建；Intel 用户也可从源码构建桌面版。
 
 ### 从源码运行桌面应用
 
@@ -128,7 +128,7 @@ pnpm dev
 
 ```bash
 pnpm package:mac
-# release/VaultDesk-1.2.4-<arch>.dmg
+# release/VaultDesk-1.2.5-<arch>.dmg
 ```
 
 构建产物使用 ad-hoc 签名，没有公证。第一次启动时右键点击应用并选择 **打开**，或者在 **系统设置 → 隐私与安全性** 中放行。
@@ -301,7 +301,7 @@ checks:
 
 未填写覆盖路径时，VaultDesk 优先使用 `~/miniconda3/bin` 中的 Miniconda base Python，再查找其他受信任的 Conda、系统、Homebrew 和 pyenv 解释器；报告会显示实际使用的路径和版本。CLT 的 Python 由 Apple 随整套工具链维护，没有受支持的单独升级入口。运行 `vaultdesk tool verify ppt-master-runtime --profile svg-pptx --python /absolute/path/to/venv/bin/python --json`，可用隔离环境覆盖本次检查的解释器。桌面工具页也提供相同的手动入口。Python 检查会启动选定解释器执行 VaultDesk 内置的、限时的依赖查询；不会执行卡片中的安装或运行命令，也不会读取环境变量的值。检查通过只说明该解释器中的声明依赖已满足；实际运行仍需让工具使用同一个解释器或将其 `bin` 放在 PATH 前。VaultDesk 不会替用户改动全局 Python、自动安装包或注册 MCP。
 
-VaultDesk 不检查记录的版本是否有更新，不启动或健康检查 MCP 服务，也不把 MCP 配置写入任何 agent。不要在卡片里放 token、密钥或私有 URL。
+VaultDesk 提供只读 MCP server，让支持 MCP 的 agent 直接查询已登记 Vault。用 `vaultdesk mcp serve` 注册到 agent 客户端；存在多个 Vault 时加 `--vault <path>`。服务包含 Vault 列表、资产目录、搜索和单项工具卡查询，会脱敏常见凭据样式；它不执行卡片命令、不检查记录的工具版本、不启动或健康检查第三方 MCP，也不自动写 agent 配置。仍不要在卡片里放 token、密钥或私有 URL。
 
 ## 外部技能
 
@@ -367,6 +367,8 @@ vaultdesk external adopt reverse-engineer-anything --vault "$VAULT" \
 把依据和推荐用一句话说清楚：「REA 的 setup 会重写这个技能，建议按外部托管记录，owner 为 rea-agents。确认？」用户已经说明归属时，照办并跳过提问。路径特征和标记是证据，不能代替确认。一个路径只有一个所有者。
 
 `vaultdesk build` 会写出 `build/external-skills.json`，为每张卡片记录 `observed_hash`、`observed_version` 与 `status`。Agent 读取卡片、索引或 `external show --json`，再自行安装和更新工具。
+
+Agent 发现入口：`vaultdesk vault list --json` 只列出 VaultDesk 桌面端明确登记过的 Vault，不扫描用户目录；`vaultdesk agent catalog --json` 与只读 MCP server 会汇总来源归属、远程更新策略、技能主库与登记目标的 marker/hash、插件目标、工具卡安装/运行说明以及外部技能 owner。工具的 `installState`、`enabledState`、`connectedState` 和技能的 `agentLoaded` 在没有对应 agent 探针时保持 `unknown`，文件已分发不等于 agent 已加载或 MCP 已连接。MCP server 由用户在具体 agent 客户端显式登记，VaultDesk 不代写客户端配置。
 
 ## Vault 布局
 
@@ -442,6 +444,7 @@ VaultDesk 会在自己拥有的每个安装槽位写入 `.vault-managed` 标记�
 - **外部技能属于它的工具。** VaultDesk 读取并计算路径 hash，报告漂移，从不写入。`adopt` 只删除 vault 自己的内容和本 vault 的标记。
 - **一个路径一个所有者。** 受管技能与外部技能不能共用路径；其他所有者的标记会阻止 `adopt`。
 - **自动同步不覆盖未托管目录。** 手动安装可在明确确认后备份旧目录；自动同步遇到未知归属或手动修改时暂停受影响来源。自动分发备份最多保留最近 3 次或 7 天。
+- **自动提交先做敏感内容拦截。** 自动更新会阻止 `.env`、`.secrets`、凭据目录、私钥、Python 缓存和高置信度 token 形态进入本轮提交，只报告文件路径和风险类型，不输出内容；已明确授权的 `ccswitch-provider` 恢复文件例外保留。
 - **Git 暂存是显式的。** VaultDesk 只提交自己改过的路径，从不执行 `git add -A`，并拒绝 vault 之外或 `.git` 之下的路径。
 - **校验的范围是明确的。** `target verify` 证明预期文件存在且 hash 一致，不能证明某个 agent 已经加载了技能。
 - **密钥不进入 vault。** 不要在 vault、插件记录或工具卡中存放 token、密钥或私有 URL。
@@ -468,15 +471,15 @@ CI 会运行类型检查、单元与集成测试，并在 macOS 和 Ubuntu 上�
 
 | 范围 | 状态 |
 | --- | --- |
-| 桌面应用与 CLI | 1.2.4；Apple Silicon DMG 已发布，CLI 可从源码使用 |
-| 工具卡与 MCP 页面 | v1.2.3 加入运行环境检查和跨类别 MCP 展示；v1.2.4 默认优先使用 Miniconda base 检查 Python 环境 |
+| 桌面应用与 CLI | 1.2.5；Apple Silicon DMG 已发布，CLI 可从源码使用 |
+| 工具卡与 MCP 页面 | v1.2.3 加入运行环境检查和跨类别 MCP 展示；v1.2.4 默认优先使用 Miniconda base；v1.2.5 增加 agent catalog 与只读 MCP 发现入口 |
 | 外部技能记录 | 已包含在 v1.2.0 |
 | DMG | Apple Silicon 版本已发布，ad-hoc 签名，未公证 |
 | GitHub Release / Homebrew / npm | GitHub Release 已发布；Homebrew 与 npm 未发布 |
 | 来源自动同步 | 已在 macOS 安装版提供，支持逐来源自动/审核/暂停 |
-| Windows 与 Linux 桌面端 | v1.2.4 未包含 |
+| Windows 与 Linux 桌面端 | v1.2.5 未包含 |
 
-桌面应用在 1.2.4 只支持 macOS。CLI 已在 macOS 和 Ubuntu 上测试。
+桌面应用在 1.2.5 只支持 macOS。CLI 已在 macOS 和 Ubuntu 上测试。
 
 ## 参与贡献
 

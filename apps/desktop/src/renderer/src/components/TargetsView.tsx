@@ -124,11 +124,16 @@ export function TargetsView({
                         <StatusPill tone={target.exists ? "ok" : "warn"}>
                           {target.exists ? "目录可用" : "目录缺失"}
                         </StatusPill>
-                        {target.installAfterUpdate ? (
-                          <span className="target-flag" title="更新后自动安装" aria-label="更新后自动安装" role="img">
-                            <Icon name="refresh" size={11} />
-                          </span>
-                        ) : null}
+                        <StatusPill
+                          tone={target.installAfterUpdate ? "accent" : "muted"}
+                          title={
+                            target.installAfterUpdate
+                              ? "来源更新后自动同步到此目标；符号链接会跟随主库"
+                              : "已暂停自动同步；保留当前受管副本，来源更新不会覆盖此目标"
+                          }
+                        >
+                          {target.installAfterUpdate ? "自动跟随主库" : "已暂停·保留当前副本"}
+                        </StatusPill>
                       </div>
                       <button
                         className="target-path mono"
@@ -164,6 +169,12 @@ export function TargetsView({
                       { icon: "folder", label: shortPath(target.expandedDest) },
                     ]}
                   />
+                  <p className="muted-small target-sync-hint">
+                    {target.installAfterUpdate
+                      ? "来源更新后会同步此目标；这只表示文件分发，不代表对应 agent 已加载或启用技能。"
+                      : "此目标不会随来源自动更新；恢复同步前，当前副本会保持不变。"
+                    }
+                  </p>
                   <div className="target-slots">
                     <SlotStrip items={ownSlots} emptyLabel="未登记技能" />
                     {otherSlots.length > 0 ? (

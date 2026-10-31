@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { adoptMasterSkills, beginManagedDistribution, inspectManagedMaster, installSkills, registerPluginTarget, removePluginTarget, removeTarget, verifyTarget } from "@vaultdesk/core";
+import { adoptMasterSkills, beginManagedDistribution, inspectManagedMaster, inspectManagedPluginTarget, installSkills, registerPluginTarget, removePluginTarget, removeTarget, verifyTarget } from "@vaultdesk/core";
 import { copyFixture, setTargetDest, tempDir } from "./helpers.js";
 
 function setup() {
@@ -321,6 +321,22 @@ describe("managed distribution", () => {
     const removed = await removePluginTarget(vault, "claude-plugins");
     expect(removed).toEqual({ removed: "claude-plugins", filesMoved: [] });
     expect(fs.readFileSync(path.join(slot, "LICENSE"), "utf8")).toBe("my edit\n");
+  });
+
+  it("reports plugin target drift even when the upstream is unchanged", async () => {
+    const vault = copyFixture("v2-plugins");
+    const root = fs.realpathSync(tempDir("plugin-drift"));
+    const options = { agentsSkillsDir: path.join(root, "master"), backupRoot: path.join(root, "backups") };
+    const dest = path.join(root, "plugin-target");
+    await registerPluginTarget(vault, { id: "claude-plugins", dest, names: ["claude-kit"] });
+    const transaction = await beginManagedDistribution(vault, "claude-kit", options);
+    transaction.finalize();
+    const slot = path.join(dest, "claude-kit");
+    expect(inspectManagedPluginTarget(vault, "claude-kit", "claude-plugins", slot)).toBe("current");
+    fs.writeFileSync(path.join(slot, "LICENSE"), "manual edit\n");
+    expect(inspectManagedPluginTarget(vault, "claude-kit", "claude-plugins", slot)).toBe("modified");
+    fs.rmSync(slot, { recursive: true, force: true });
+    expect(inspectManagedPluginTarget(vault, "claude-kit", "claude-plugins", slot)).toBe("missing");
   });
 
   it("backs up an owned plugin target when explicitly removed", async () => {

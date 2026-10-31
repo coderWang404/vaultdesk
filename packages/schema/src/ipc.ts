@@ -41,6 +41,11 @@ export const ipcCommands = {
     message: z.string().trim().min(1).optional(),
     confirm: z.literal(true),
   }),
+  "source.distribute": z.object({
+    vaultPath,
+    name: slugSchema,
+    confirm: z.literal(true),
+  }),
   "source.forkPreview": z.object({
     vaultPath,
     skill: slugSchema,
@@ -97,6 +102,21 @@ export const ipcCommands = {
     confirm: z.literal(true),
   }),
   "target.verify": z.object({ vaultPath, id: z.string().min(1) }),
+  "pluginTarget.list": z.object({ vaultPath }),
+  "pluginTarget.add": z.object({
+    vaultPath,
+    id: z.string().trim().min(1),
+    dest: vaultPath,
+    names: z.array(slugSchema).min(1),
+    installAfterUpdate: z.boolean().default(true),
+    confirm: z.literal(true),
+  }),
+  "pluginTarget.remove": z.object({
+    vaultPath,
+    id: z.string().trim().min(1),
+    deleteFiles: z.boolean().default(false),
+    confirm: z.literal(true),
+  }),
   "tool.verify": z.object({
     vaultPath,
     name: slugSchema,

@@ -470,6 +470,7 @@ async function searchAndSettings(suite: Suite): Promise<void> {
   await emptySearch.waitFor({ state: "hidden" });
 
   await openSection(page, "设置");
+  await waitForText(page, "本地来源不会自动拉取，也不会自动分发本地编辑");
   const checkInterval = page.getByLabel("检查间隔（小时）");
   const retention = page.getByLabel("每个目标最多保留备份数");
   const retentionDays = page.getByLabel("备份保留天数");
@@ -537,8 +538,13 @@ async function pluginsFlow(suite: Suite): Promise<void> {
   const workspace = suite.workspace("plugins");
   const vaultPath = path.join(workspace.root, "plugins-vault");
   const targetDest = path.join(workspace.root, "agents-target");
+  const pluginTargetDest = path.join(workspace.root, "plugin-target");
   copyFixture("v2-plugins", vaultPath);
   rewriteTargetDest(vaultPath, targetDest);
+  fs.writeFileSync(
+    path.join(vaultPath, "vault.yml"),
+    read(path.join(vaultPath, "vault.yml")).replace("install_after_update: true", "install_after_update: false"),
+  );
   initGitRepo(vaultPath);
 
   const demoDir = path.join(workspace.root, "demo-plugin-src");
@@ -577,6 +583,10 @@ async function pluginsFlow(suite: Suite): Promise<void> {
   await openSection(page, "插件");
   await page.locator(".plugin-row").first().waitFor();
   equal(await page.locator(".plugin-row").count(), 5, "fixture plugin rows");
+  await openSection(page, "安装目标");
+  await waitForText(page, "已暂停·保留当前副本");
+  await waitForText(page, "恢复同步前，当前副本会保持不变。");
+  await openSection(page, "插件");
 
   await page.getByLabel("筛选插件").fill("security");
   await waitFor(async () => (await page.locator(".plugin-row").count()) === 1, "security filter narrows to one plugin");
@@ -614,6 +624,26 @@ async function pluginsFlow(suite: Suite): Promise<void> {
     !fs.existsSync(path.join(vaultPath, "plugins/claude-kit/hooks/on-start.sh.ran")),
     "plugin hooks are never executed",
   );
+
+  await page.locator(".plugin-row").filter({ hasText: "local-tools" }).click();
+  await inspector.getByRole("heading", { name: "local-tools" }).waitFor();
+  await inspector.getByRole("button", { name: "登记目标" }).click();
+  const targetForm = inspector.locator(".plugin-target-form");
+  await targetForm.locator("input").nth(0).fill("local-agent-plugin");
+  await targetForm.locator("input").nth(1).fill(pluginTargetDest);
+  await targetForm.getByRole("button", { name: "登记目标" }).click();
+  await waitForText(page, "已登记目标 local-agent-plugin");
+  assert(
+    (await inspector.innerText()).includes("不代表对应 agent 已安装或启用插件"),
+    "plugin target explains agent activation boundary",
+  );
+  await inspector.getByRole("button", { name: "立即同步" }).click();
+  await waitForText(page, "已同步");
+  assert(fs.existsSync(path.join(pluginTargetDest, "local-tools")), "plugin target copy created");
+  page.once("dialog", (dialog) => void dialog.accept());
+  await inspector.getByRole("button", { name: "移除登记" }).click();
+  await waitForText(page, "已移除目标 local-agent-plugin");
+  assert(fs.existsSync(path.join(pluginTargetDest, "local-tools")), "removing registration keeps plugin copy");
 
   await openSection(page, "技能");
   equal(await page.locator(".skill-table-row").count(), 1, "plugin skills stay out of the installable skills list");

@@ -9,6 +9,10 @@ VaultDesk stores skills, plugin roots, external tool records, and tool-managed s
 
 ## Inspect first
 
+- `vaultdesk vault list --json` (when the current directory is not a Vault)
+- `vaultdesk agent catalog --json` (all explicitly registered Vaults)
+- `vaultdesk --vault <path> agent catalog --json` (one Vault, with source ownership, tool cards, target file state, and explicit integration unknowns)
+- `vaultdesk mcp serve` (read-only MCP tools for an MCP-capable agent; the client must register this command)
 - `vaultdesk --vault <path> vault status --json`
 - `vaultdesk --vault <path> source list --json`
 - `vaultdesk --vault <path> plugin list --json`
@@ -18,12 +22,28 @@ VaultDesk stores skills, plugin roots, external tool records, and tool-managed s
 
 Omit `--vault` when the current directory is the vault.
 
+`agent catalog` is the agent-facing discovery contract. It reports the Vault path,
+skill/source ownership, remote update mode, tool kind/capabilities and install
+instructions, external owners, plugin targets, and fresh marker/hash state for
+managed files. `agentLoaded`, `enabledState`, and `connectedState` stay
+`unknown` unless an agent-specific probe supplies evidence; file presence is not
+the same as an agent loading or enabling an asset. The command reads only Vaults
+explicitly registered by VaultDesk when no `--vault` is supplied; it does not
+scan the home directory.
+
+For direct MCP discovery, register `vaultdesk mcp serve` in the agent client's
+MCP settings. If multiple Vaults are registered, pass one explicitly with
+`vaultdesk mcp serve --vault <path>`. The server exposes catalog/list/search/tool
+guidance tools only; it never installs or launches the recorded commands and
+does not edit the client's MCP settings. MCP responses redact common credential
+patterns, but Vault contents should still never be used as secret storage.
+
 ## Boundaries
 
 - VaultDesk stores and validates plugins; it does not install, enable, or adapt them. If the user wants a plugin active, follow that agent's current plugin rules yourself. Never run plugin hooks.
 - A plugin does not need a manifest. VaultDesk also recognizes `skills/<name>/SKILL.md` plus MCP, commands, agents, hooks, rules, or workflows. When `manifests` is empty, plan the install from `assets` and `containedSkills` in the agent's own configuration.
 - Tool cards are records, not installations. VaultDesk never downloads, installs, or runs the recorded tool. A card may declare bounded runtime checks; `tool verify` performs them only when explicitly requested and may start a Python interpreter or query a trusted Node executable for its version. Follow the card's `homepage` and `docs` for setup, and never claim a successful check installed or enabled the tool.
-- Standalone MCP servers use `kind: mcp`; a plugin or CLI that also exposes MCP keeps its distribution kind and adds the `mcp` tag. VaultDesk does not register, start, or health-check these services and does not write agent MCP configuration; registering the server is your job when the user asks.
+- Standalone MCP servers use `kind: mcp`; a plugin or CLI that also exposes MCP keeps its distribution kind and adds the `mcp` tag. VaultDesk's own read-only MCP server exposes the catalog, but it does not register third-party services, start them, health-check them, or edit agent MCP configuration.
 - External skills are owned by their tool. VaultDesk records the path and observes hash/status; it never installs, updates, runs, or writes the owning tool or that path. Never claim VaultDesk synced their content.
 - One owner per path. A path with a `.vault-managed` marker belongs to a vault install; never add it as external, and never adopt a path whose marker belongs to another vault.
 - Never put tokens, API keys, private URLs, or other secrets in a tool card, an external skill card, or any vault file.
@@ -33,6 +53,7 @@ Omit `--vault` when the current directory is the vault.
 - Do not commit or push unless asked. Commit explicit paths only; never `git add -A`.
 - Plugin content cannot be installed with `target install`; install skills only.
 - `target verify` proves expected files exist and hashes match. It does not prove an agent loaded a skill or that its Python packages, external programs, or credentials are available. Keep file distribution and runtime readiness separate.
+- Automatic source updates scan only this update's commit paths before commit/push. Credential-like files, private keys, Python caches, and high-confidence token patterns pause the source with a path-only warning; the explicitly authorized `ccswitch-provider` recovery file is the sole built-in exception.
 
 ## Common tasks
 

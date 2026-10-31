@@ -12,6 +12,7 @@ import {
   applyMigration,
   applyPluginImport,
   buildVault,
+  buildAgentCatalog,
   checkSources,
   commitPaths,
   detectLocalPlugin,
@@ -26,6 +27,7 @@ import {
   isFile,
   isInside,
   listPresets,
+  listRegisteredVaults,
   listPendingSkills,
   openVault,
   parseExternalSkillCard,
@@ -81,6 +83,7 @@ import {
   type VaultSnapshot,
 } from "@vaultdesk/core";
 import { toolKindSchema } from "@vaultdesk/schema";
+import { serveVaultDeskMcp } from "./mcp-server.js";
 
 const VALUE_FLAGS = new Set([
   "vault",
@@ -233,9 +236,9 @@ function hasFlag(parsed: Parsed, name: string): boolean {
 function version(): string {
   try {
     const pkg = JSON.parse(fs.readFileSync(new URL("../package.json", import.meta.url), "utf8")) as { version?: string };
-    return pkg.version ?? "1.2.4";
+    return pkg.version ?? "1.2.5";
   } catch {
-    return "1.2.4";
+    return "1.2.5";
   }
 }
 
@@ -262,6 +265,7 @@ Usage:
 
 Commands:
   vault status                     Inspect the vault, validation, and recovery state
+  vault list                       List explicitly registered Vaults for agents
   vault validate                   Validate metadata and working copies
   vault migrate [--yes] [--full]   Preview or apply the v1 -> v2 migration
   vault init [path] [--git]        Create an empty v2 vault
@@ -294,6 +298,8 @@ Commands:
   target verify <id>               Verify files in place (no tool discovery claim)
   target restore <id> --backup <path> --name <skill>
   agent skill                      Print the agent skill bundled with VaultDesk
+  agent catalog [--vault <path>]  Print tools, sources, targets, and integration states
+  mcp serve [--vault <path>]       Serve the read-only agent catalog over MCP stdio
   git status                       Show branch, HEAD, and changes
   git commit --path <path>... --message <text>
   git push                         Push the current branch
@@ -336,6 +342,7 @@ Safety:
   Auto sources update registered destinations in the background; review and frozen modes do not.
   Automatic sync never overwrites unknown or manually edited directories.
   External skills are owned by their tools; VaultDesk records the path and only observes it.
+  MCP stdio exposes read-only catalog queries; it never installs, starts, or edits agent configuration.
 `;
 
 interface CommandResult {
@@ -1013,6 +1020,19 @@ async function dispatch(parsed: Parsed): Promise<CommandResult> {
 
   switch (group) {
     case "vault": {
+      if (action === "list") {
+        const registered = listRegisteredVaults();
+        return {
+          data: registered,
+          warnings: [],
+          human: registered.length === 0
+            ? [dim("No registered Vaults. Open a Vault in the desktop app or pass --vault <path>.")]
+            : table(
+              ["NAME", "PATH", "STATUS", "FORMAT"],
+              registered.map((entry) => [entry.name ?? "-", entry.path, entry.status, entry.format ?? "-"]),
+            ),
+        };
+      }
       const vaultPath = vaultPathOf(parsed);
       if (action === "init") {
         const target = rest[0] ? path.resolve(expandHome(rest[0])) : vaultPath;
@@ -1658,8 +1678,35 @@ async function dispatch(parsed: Parsed): Promise<CommandResult> {
     }
 
     case "agent": {
+      if (action === "catalog" && rest.length === 0) {
+        const requested = parsed.vaultArg ? [path.resolve(expandHome(parsed.vaultArg))] :
+          listRegisteredVaults().filter((entry) => entry.status === "ready").map((entry) => entry.path);
+        if (requested.length === 0) {
+          throw new VaultDeskError("not-a-vault", "No registered Vault is available. Open one in VaultDesk or pass --vault <path>.");
+        }
+        const catalogs = [];
+        const warnings: string[] = [];
+        for (const vaultPath of [...new Set(requested)]) {
+          const snapshot = await openVault(vaultPath);
+          warnings.push(...snapshot.warnings);
+          catalogs.push(buildAgentCatalog(snapshot));
+        }
+        const data = catalogs.length === 1 ? catalogs[0] : { schema: 1, catalogs };
+        return {
+          data,
+          warnings,
+          human: catalogs.flatMap((catalog) => [
+            bold(`Agent catalog · ${catalog.vault.name}`),
+            `Vault    ${catalog.vault.path}`,
+            `Sources  ${catalog.sources.length} · Skills ${catalog.skills.length} · Tools ${catalog.tools.length} · Plugins ${catalog.plugins.length}`,
+            `Targets  ${catalog.targets.length} · External skills ${catalog.externalSkills.length}`,
+            dim("File distribution and declared readiness are reported separately; agent loaded/connected states remain unknown without an agent-specific probe."),
+            "",
+          ]),
+        };
+      }
       if (action !== "skill" || rest.length > 0) {
-        throw new VaultDeskError("invalid-input", "Usage: vaultdesk agent skill");
+        throw new VaultDeskError("invalid-input", "Usage: vaultdesk agent skill | vaultdesk agent catalog [--vault <path>]");
       }
       const skill = readBundledAgentSkill(bundledAgentSkillDir());
       return {
@@ -2160,6 +2207,16 @@ async function main(): Promise<void> {
   }
 
   const command = [parsed.positionals[0], parsed.positionals[1]].filter(Boolean).join(".");
+  if (command === "mcp.serve") {
+    try {
+      await serveVaultDeskMcp({ fixedVault: parsed.vaultArg, version: version() });
+    } catch (error) {
+      const serialized = serializeError(error);
+      process.stderr.write(`error [${serialized.code}]: ${serialized.message}\n`);
+      process.exitCode = error instanceof VaultDeskError ? error.exitCode : 1;
+    }
+    return;
+  }
   try {
     const result = await dispatch(parsed);
     const warnings = result.warnings.length > 0 ? result.warnings : warningOf(result.data);

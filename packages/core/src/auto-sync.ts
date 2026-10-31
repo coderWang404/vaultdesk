@@ -6,7 +6,7 @@ import { sourceFileSchema } from "@vaultdesk/schema";
 import { VaultDeskError } from "./errors.js";
 import { canonicalPath, copyDirectory, expandHome, hashDirectory, hashText, isInside, readText, sha256, writeTextAtomic } from "./fsx.js";
 import { commitPaths, currentCommit, getGitSummary, git, push } from "./git.js";
-import { beginManagedDistribution, inspectManagedMaster, managedAgentsSkillsRoot } from "./distribution.js";
+import { beginManagedDistribution, inspectManagedMaster, inspectManagedPluginTarget, managedAgentsSkillsRoot } from "./distribution.js";
 import { withWriteLock } from "./vault/lockfile.js";
 import { openVault, validateVault } from "./vault/validate.js";
 import { readVaultFile } from "./vault/config.js";
@@ -21,6 +21,14 @@ import { parseFrontmatter } from "./frontmatter.js";
 import { slugSchema } from "@vaultdesk/schema";
 import { settingsPath } from "./settings.js";
 import type { SourceRecord, VaultSnapshot } from "./types.js";
+
+interface DistributionMarker {
+  vault?: string;
+  target_id?: string;
+  skill?: string;
+  hash?: string;
+  targets?: Array<{ id?: string; path?: string; mode?: "symlink" | "copy" }>;
+}
 
 export interface AutoSyncOptions {
   agentsSkillsDir?: string;
@@ -418,6 +426,103 @@ function githubWorkingDrift(source: SourceRecord): string | undefined {
   return undefined;
 }
 
+function readDistributionMarker(slot: string): DistributionMarker | undefined {
+  try {
+    const parsed: unknown = JSON.parse(fs.readFileSync(path.join(slot, ".vault-managed"), "utf8"));
+    return parsed && typeof parsed === "object" ? parsed as DistributionMarker : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function hasPath(slot: string): boolean {
+  try { fs.lstatSync(slot); return true; } catch { return false; }
+}
+
+function managedDistributionDrift(
+  snapshot: VaultSnapshot,
+  source: SourceRecord,
+  options: AutoSyncOptions,
+): string[] {
+  if (source.shape === "plugin") {
+    const vault = canonicalPath(snapshot.path);
+    const config = readVaultFile(vault);
+    const drift: string[] = [];
+    for (const target of (config.plugin_targets ?? []).filter((entry) =>
+      entry.install_after_update && entry.names.includes(source.name))) {
+      const slot = path.join(canonicalPath(expandHome(target.dest)), source.name);
+      const state = inspectManagedPluginTarget(vault, source.name, target.id, slot);
+      if (state === "unmanaged") {
+        drift.push(`source ${source.name}, plugin target ${target.id} (${slot}): unknown ownership or invalid target`);
+      } else if (state === "modified") {
+        drift.push(`source ${source.name}, plugin target ${target.id} (${slot}): managed copy was modified`);
+      }
+    }
+    return drift;
+  }
+  const vault = canonicalPath(snapshot.path);
+  const root = canonicalPath(options.agentsSkillsDir ?? managedAgentsSkillsRoot());
+  const drift: string[] = [];
+
+  for (const skill of source.skills) {
+    const master = path.join(root, skill.name);
+    const masterState = inspectManagedMaster(vault, skill.name, options.agentsSkillsDir);
+    if (masterState === "unmanaged") {
+      drift.push(`source ${source.name}, skill ${skill.name}, master ${master}: unknown ownership`);
+    } else if (masterState === "modified") {
+      drift.push(`source ${source.name}, skill ${skill.name}, master ${master}: manually modified`);
+    }
+
+    for (const target of snapshot.targets.filter((entry) => entry.skills.includes(skill.name))) {
+      const targetRoot = canonicalPath(target.expandedDest);
+      if (targetRoot === root) continue;
+      const slot = path.join(targetRoot, skill.name);
+      if (!hasPath(slot)) {
+        // Missing active targets are handled by the existing initial distribution path.
+        continue;
+      }
+
+      const linked = isSymlink(slot);
+      if (!target.installAfterUpdate && !linked) {
+        // An explicit frozen copy is allowed to diverge and must not block active targets.
+        continue;
+      }
+
+      if (linked) {
+        let resolved: string | undefined;
+        try { resolved = fs.realpathSync(slot); } catch { /* report below */ }
+        let expectedMaster = canonicalPath(master);
+        try { if (hasPath(master)) expectedMaster = fs.realpathSync(master); } catch { /* report below */ }
+        const marker = hasPath(master) ? readDistributionMarker(master) : undefined;
+        const normalizedSlot = path.join(canonicalPath(path.dirname(slot)), skill.name);
+        const linkedRecord = marker?.targets?.some((entry) =>
+          entry.id === target.id && entry.path === normalizedSlot && entry.mode === "symlink");
+        if (!resolved || resolved !== expectedMaster || !linkedRecord) {
+          drift.push(`source ${source.name}, skill ${skill.name}, target ${target.id} (${slot}): unmanaged or incorrect symlink`);
+        }
+        continue;
+      }
+
+      if (!target.installAfterUpdate) continue;
+      let stat: fs.Stats;
+      try { stat = fs.statSync(slot); } catch { continue; }
+      if (!stat.isDirectory()) {
+        drift.push(`source ${source.name}, skill ${skill.name}, target ${target.id} (${slot}): target is not a directory`);
+        continue;
+      }
+      const marker = readDistributionMarker(slot);
+      const sameVault = Boolean(marker?.vault && canonicalPath(marker.vault) === vault);
+      const sameSkill = marker?.skill === skill.name;
+      const sameTarget = marker?.target_id === target.id;
+      const hashMatches = Boolean(marker?.hash && marker.hash === hashDirectory(slot));
+      if (!sameVault || !sameSkill || !sameTarget || !hashMatches) {
+        drift.push(`source ${source.name}, skill ${skill.name}, target ${target.id} (${slot}): managed copy was modified or ownership is invalid`);
+      }
+    }
+  }
+  return drift;
+}
+
 function changedOwnedPaths(
   vaultPath: string,
   paths: string[],
@@ -431,6 +536,74 @@ function changedOwnedPaths(
     if (change.from) result.add(change.from);
   }
   return [...result].sort();
+}
+
+interface SensitivePathFinding {
+  path: string;
+  reason: string;
+}
+
+const GENERATED_SENSITIVE_SUFFIXES = [
+  "/__pycache__",
+  ".pyc",
+  ".pyo",
+  ".pem",
+  ".key",
+  ".p12",
+  ".pfx",
+  ".mobileprovision",
+];
+
+function isExplicitlyAuthorizedSensitivePath(sourceName: string, relative: string): boolean {
+  return sourceName === "ccswitch-provider" &&
+    relative === "skills/ccswitch-provider/_恢复工作/.secrets/opencode.env";
+}
+
+function sensitivePathReason(relative: string): string | undefined {
+  const lower = relative.toLocaleLowerCase();
+  if (lower.split("/").some((part) => part === ".env" || (part.startsWith(".env.") && ![".env.example", ".env.sample", ".env.template"].includes(part)) || part === ".secrets" || part === "credentials" || part === "secrets")) {
+    return "credential-like filename";
+  }
+  if (GENERATED_SENSITIVE_SUFFIXES.some((suffix) => lower.endsWith(suffix))) return "private key or generated cache file";
+  if (lower.includes("__pycache__")) return "generated Python cache";
+  return undefined;
+}
+
+function sensitiveContentReason(content: string): string | undefined {
+  if (/-----BEGIN (?:[A-Z0-9 ]+ )?PRIVATE KEY-----/.test(content)) return "private key material";
+  if (/\b(?:AKIA|ASIA)[A-Z0-9]{16}\b/.test(content)) return "AWS access key pattern";
+  if (/\b(?:gh[pousr]_[A-Za-z0-9_]{20,}|github_pat_[A-Za-z0-9_]{20,})\b/.test(content)) return "GitHub token pattern";
+  if (/\bBearer\s+[A-Za-z0-9._~+/-]{20,}=*/i.test(content)) return "bearer token pattern";
+  if (/\b(?:api[_-]?key|access[_-]?key|client[_-]?secret|password|token)\s*[:=]\s*["']?[A-Za-z0-9_./+=-]{20,}/i.test(content)) return "credential assignment pattern";
+  return undefined;
+}
+
+function scanCommitFiles(vaultPath: string, sourceName: string, files: string[]): void {
+  const findings: SensitivePathFinding[] = [];
+  for (const relative of files.map((entry) => entry.replaceAll("\\", "/"))) {
+    if (isExplicitlyAuthorizedSensitivePath(sourceName, relative)) continue;
+    const pathReason = sensitivePathReason(relative);
+    if (pathReason) {
+      findings.push({ path: relative, reason: pathReason });
+      continue;
+    }
+    const absolute = path.join(vaultPath, relative);
+    let content: string;
+    try {
+      const stat = fs.statSync(absolute);
+      if (!stat.isFile() || stat.size > 2 * 1024 * 1024) continue;
+      content = fs.readFileSync(absolute, "utf8");
+    } catch {
+      continue;
+    }
+    const contentReason = sensitiveContentReason(content);
+    if (contentReason) findings.push({ path: relative, reason: contentReason });
+  }
+  if (findings.length > 0) {
+    throw new VaultDeskError("conflict", "Automatic commit blocked by sensitive or generated files: " +
+      findings.map((finding) => `${finding.path} (${finding.reason})`).join(", ") +
+      ". Review or explicitly remove the files before retrying.");
+  }
 }
 
 async function updateOneSource(
@@ -497,6 +670,7 @@ async function updateOneSource(
       if (commitFiles.length === 0) {
         throw new VaultDeskError("git-failed", "Update changed no commit-eligible Vault files.");
       }
+      scanCommitFiles(vaultPath, name, commitFiles);
       commit = await commitPaths(vaultPath, commitFiles, control.commitMessage ?? "chore: auto-update " + name);
     } catch (error) {
       const newHead = await currentCommit(vaultPath);
@@ -619,6 +793,15 @@ export async function autoSyncVault(inputPath: string, options: AutoSyncOptions 
       const drift = githubWorkingDrift(source);
       if (drift) {
         results.push({ name: source.name, status: "error", message: drift });
+        continue;
+      }
+      const distributionDrift = managedDistributionDrift(snapshot, source, options);
+      if (distributionDrift.length > 0) {
+        results.push({
+          name: source.name,
+          status: "error",
+          message: `Managed distribution drift detected: ${distributionDrift.join("; ")}`,
+        });
         continue;
       }
       let pendingSkills: string[] = [];

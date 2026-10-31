@@ -24,6 +24,7 @@ import {
   statusTone,
 } from "../format";
 import type { Selection } from "../types";
+import { call, errorMessage } from "../api";
 import { Icon } from "./icons";
 import { Button, Callout, EmptyState, MetaRow, StatusMark, StatusPill } from "./ui";
 
@@ -52,6 +53,7 @@ export function Inspector({
   onInstall,
   onSkill,
   onBackups,
+  onRefresh,
 }: {
   vault: VaultSnapshot;
   selection: Selection;
@@ -68,6 +70,7 @@ export function Inspector({
   onInstall: (targetId?: string) => void;
   onSkill: (skill: SkillRecord) => void;
   onBackups: (targetId?: string) => void;
+  onRefresh: () => Promise<unknown>;
 }) {
   if (!selection.kind || !selection.name) {
     return (
@@ -107,6 +110,7 @@ export function Inspector({
         overlay={overlay}
         onClose={onClose}
         onReveal={onReveal}
+        onRefresh={() => onRefresh()}
       />
     );
   }
@@ -642,15 +646,25 @@ function PluginInspector({
   overlay,
   onClose,
   onReveal,
+  onRefresh,
 }: {
   vault: VaultSnapshot;
   plugin: PluginRecord;
   overlay: boolean;
   onClose: () => void;
   onReveal: (path: string) => void;
+  onRefresh: () => Promise<unknown>;
 }) {
   const [copied, setCopied] = useState(false);
+  const [targetId, setTargetId] = useState("");
+  const [targetDest, setTargetDest] = useState("");
+  const [targetAutoSync, setTargetAutoSync] = useState(true);
+  const [targetFormOpen, setTargetFormOpen] = useState(false);
+  const [targetBusy, setTargetBusy] = useState<string | null>(null);
+  const [targetMessage, setTargetMessage] = useState<string | null>(null);
+  const [targetError, setTargetError] = useState<string | null>(null);
   const issues = issuesForPlugin(vault, plugin);
+  const pluginTargets = (vault.metadata.plugin_targets ?? []).filter((target) => target.names.includes(plugin.name));
   const assetCounts = new Map<PluginAssetKind, number>();
   for (const asset of plugin.assets) {
     assetCounts.set(asset.kind, (assetCounts.get(asset.kind) ?? 0) + 1);
@@ -660,6 +674,79 @@ function PluginInspector({
     if (await copyPath(plugin.workingPath)) {
       setCopied(true);
       window.setTimeout(() => setCopied(false), 1600);
+    }
+  }
+
+  async function addTarget(event: React.FormEvent<HTMLFormElement>): Promise<void> {
+    event.preventDefault();
+    const id = targetId.trim();
+    const dest = targetDest.trim();
+    if (!id || !dest) {
+      setTargetError("请填写目标 ID 和绝对路径（可使用 ~/ 开头）。");
+      return;
+    }
+    setTargetBusy("add");
+    setTargetError(null);
+    setTargetMessage(null);
+    try {
+      await call("pluginTarget.add", {
+        vaultPath: vault.path,
+        id,
+        dest,
+        names: [plugin.name],
+        installAfterUpdate: targetAutoSync,
+        confirm: true,
+      });
+      await onRefresh();
+      setTargetId("");
+      setTargetDest("");
+      setTargetAutoSync(true);
+      setTargetFormOpen(false);
+      setTargetMessage(`已登记目标 ${id}。点击“立即同步”才会复制当前插件内容。`);
+    } catch (reason) {
+      setTargetError(errorMessage(reason));
+    } finally {
+      setTargetBusy(null);
+    }
+  }
+
+  async function distributeTarget(): Promise<void> {
+    setTargetBusy("sync");
+    setTargetError(null);
+    setTargetMessage(null);
+    try {
+      const result = await call<{ name: string; changedPaths: string[] }>("source.distribute", {
+        vaultPath: vault.path,
+        name: plugin.name,
+        confirm: true,
+      });
+      await onRefresh();
+      setTargetMessage(result.changedPaths.length > 0 ? `已同步 ${result.changedPaths.length} 个受管路径。` : "目标内容已是最新。");
+    } catch (reason) {
+      setTargetError(errorMessage(reason));
+    } finally {
+      setTargetBusy(null);
+    }
+  }
+
+  async function removeTarget(id: string): Promise<void> {
+    if (!window.confirm(`移除目标“${id}”？登记会被删除，目标目录中的插件副本会保留。`)) return;
+    setTargetBusy(`remove:${id}`);
+    setTargetError(null);
+    setTargetMessage(null);
+    try {
+      await call("pluginTarget.remove", {
+        vaultPath: vault.path,
+        id,
+        deleteFiles: false,
+        confirm: true,
+      });
+      await onRefresh();
+      setTargetMessage(`已移除目标 ${id}；目标目录中的副本未删除。`);
+    } catch (reason) {
+      setTargetError(errorMessage(reason));
+    } finally {
+      setTargetBusy(null);
     }
   }
 
@@ -746,6 +833,80 @@ function PluginInspector({
             </button>
           </div>
         ) : null}
+      </div>
+
+      <div className="inspector-section">
+        <div className="plugin-target-head">
+          <span className="inspector-section-title">受管插件目标 <em>{pluginTargets.length}</em></span>
+          <Button size="sm" variant="quiet" icon="plus" onClick={() => { setTargetFormOpen((open) => !open); setTargetError(null); }}>
+            {targetFormOpen ? "取消" : "登记目标"}
+          </Button>
+        </div>
+        <p className="muted-small">这里登记的是 VaultDesk 要复制插件目录的位置，不代表对应 agent 已安装或启用插件。</p>
+        {pluginTargets.length === 0 ? <p className="muted-small">尚未登记目标。agent 自行安装的插件不会被 VaultDesk 接管。</p> : (
+          <div className="plugin-target-list">
+            {pluginTargets.map((target) => (
+              <div className="plugin-target" key={target.id}>
+                <div className="plugin-target-main">
+                  <div className="plugin-target-title">
+                    <strong>{target.id}</strong>
+                    <StatusPill tone={target.install_after_update ? "accent" : "muted"}>
+                      {target.install_after_update ? "更新后自动同步" : "已暂停同步"}
+                    </StatusPill>
+                  </div>
+                  <span className="mono plugin-target-path">{target.dest}</span>
+                  <span className="muted-small">插件：{target.names.join("、")}</span>
+                </div>
+                <div className="plugin-target-actions">
+                  <Button
+                    size="sm"
+                    variant="quiet"
+                    icon="refresh"
+                    onClick={() => void distributeTarget()}
+                    disabled={targetBusy !== null || !target.install_after_update}
+                    title={target.install_after_update ? "同步所有启用自动同步的插件目标" : "此目标已暂停同步；恢复开关后才会同步"}
+                  >
+                    {target.install_after_update ? "立即同步" : "已暂停"}
+                  </Button>
+                  <Button size="sm" variant="ghost" onClick={() => void removeTarget(target.id)} disabled={targetBusy !== null}>
+                    移除登记
+                  </Button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+        {targetFormOpen ? (
+          <form className="plugin-target-form" onSubmit={(event) => void addTarget(event)}>
+            <label className="field">
+              <span className="field-label">目标 ID</span>
+              <input className="input" value={targetId} onChange={(event) => setTargetId(event.target.value)} placeholder="例如 claude-plugin" spellCheck={false} />
+            </label>
+            <label className="field">
+              <span className="field-label">复制到目录</span>
+              <input className="input mono" value={targetDest} onChange={(event) => setTargetDest(event.target.value)} placeholder="/absolute/path 或 ~/..." spellCheck={false} />
+            </label>
+            <label className="toggle-row plugin-target-toggle">
+              <span className="toggle-copy">
+                <span className="toggle-label">上游更新后自动同步</span>
+                <span className="toggle-hint">关闭后保留当前插件副本，后续更新不会覆盖。</span>
+              </span>
+              <input type="checkbox" checked={targetAutoSync} onChange={(event) => setTargetAutoSync(event.target.checked)} />
+              <span className="toggle-track" aria-hidden="true"><span className="toggle-thumb" /></span>
+            </label>
+            <div className="plugin-target-preview">
+              <span className="eyebrow">登记预览</span>
+              <strong>{targetId.trim() || "未填写目标 ID"}</strong>
+              <span className="mono">{targetDest.trim() || "未填写复制目录"}</span>
+              <span>将登记插件：{plugin.name}</span>
+            </div>
+            <Button type="submit" size="sm" variant="primary" loading={targetBusy === "add"} disabled={targetBusy !== null}>
+              登记目标
+            </Button>
+          </form>
+        ) : null}
+        {targetMessage ? <p className="form-success" role="status">{targetMessage}</p> : null}
+        {targetError ? <Callout tone="danger" title="插件目标操作失败"><p>{targetError}</p></Callout> : null}
       </div>
 
       <div className="inspector-section">

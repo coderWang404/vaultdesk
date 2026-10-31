@@ -2,7 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
 import { describe, expect, it } from "vitest";
-import { addGithubPlugin, adoptPendingSkills, autoSyncVault, distributeCurrentSource, initVault, listPendingSkills, setSourceUpdateMode } from "@vaultdesk/core";
+import { addGithubPlugin, adoptPendingSkills, autoSyncVault, distributeCurrentSource, hashDirectory, initVault, listPendingSkills, setSourceUpdateMode } from "@vaultdesk/core";
 import { copyFixture, git, initGitRepo, repoRoot, tempDir } from "./helpers.js";
 
 function runCli(vaultPath: string, args: string[], env: Record<string, string> = {}) {
@@ -81,6 +81,20 @@ describe("automatic source sync", () => {
     expect(report.sources.find((source) => source.name === "gh-standalone")?.status).toBe("error");
     expect(fs.readFileSync(ctx.workingFile, "utf8")).toBe(before);
     expect(git(ctx.vaultPath, ["rev-parse", "HEAD"]).trim()).toBe(head);
+  });
+
+  it("blocks automatic commit when the upstream update introduces credential-like files", async () => {
+    const ctx = setup();
+    fs.writeFileSync(path.join(ctx.upstreamSkill, ".env"), "API_KEY=should-not-be-committed\n");
+    git(ctx.upstream, ["add", "."]);
+    git(ctx.upstream, ["commit", "-m", "add credential-like file"]);
+    const before = git(ctx.vaultPath, ["rev-parse", "HEAD"]).trim();
+    const report = await autoSyncVault(ctx.vaultPath, ctx);
+    const result = report.sources.find((source) => source.name === "gh-standalone");
+    expect(result?.status).toBe("error");
+    expect(result?.message).toContain("credential-like filename");
+    expect(git(ctx.vaultPath, ["rev-parse", "HEAD"]).trim()).toBe(before);
+    expect(fs.existsSync(path.join(ctx.vaultPath, "packages", "gh-standalone", ".env"))).toBe(false);
   });
 
   it("rolls back Vault files when the managed master has unknown ownership", async () => {
@@ -224,6 +238,80 @@ describe("automatic source sync", () => {
     expect(fs.existsSync(master)).toBe(false);
     expect(() => fs.lstatSync(installed)).toThrow();
     await expect(distributeCurrentSource(ctx.vaultPath, "gh-standalone", ctx)).rejects.toMatchObject({ code: "conflict" });
+  });
+
+  it("reports a manually modified master while the remote source remains current", async () => {
+    const ctx = setup();
+    expect((await autoSyncVault(ctx.vaultPath, ctx)).sources.find((source) => source.name === "gh-standalone")?.status).toBe("updated");
+    const masterFile = path.join(ctx.agentsSkillsDir, "gh-standalone", "SKILL.md");
+    fs.appendFileSync(masterFile, "\nLocal master edit.\n");
+    const before = fs.readFileSync(masterFile, "utf8");
+    const report = await autoSyncVault(ctx.vaultPath, ctx);
+    const result = report.sources.find((source) => source.name === "gh-standalone");
+    expect(result?.status).toBe("error");
+    expect(result?.message).toMatch(/source gh-standalone.*skill gh-standalone.*master/);
+    expect(result?.message).toContain("manually modified");
+    expect(fs.readFileSync(masterFile, "utf8")).toBe(before);
+  });
+
+  it("reports a manually modified active target copy while preserving it", async () => {
+    const ctx = setup();
+    expect((await autoSyncVault(ctx.vaultPath, ctx)).sources.find((source) => source.name === "gh-standalone")?.status).toBe("updated");
+    const master = path.join(ctx.agentsSkillsDir, "gh-standalone");
+    const targetSlot = path.join(ctx.target, "gh-standalone");
+    fs.rmSync(targetSlot, { recursive: true, force: true });
+    fs.cpSync(master, targetSlot, { recursive: true, dereference: true });
+    const markerFile = path.join(targetSlot, ".vault-managed");
+    const marker = JSON.parse(fs.readFileSync(markerFile, "utf8")) as Record<string, unknown>;
+    marker.target_id = "fixture-agents";
+    fs.writeFileSync(markerFile, JSON.stringify(marker, null, 2) + "\n");
+    fs.appendFileSync(path.join(targetSlot, "SKILL.md"), "\nLocal target edit.\n");
+    const before = fs.readFileSync(path.join(targetSlot, "SKILL.md"), "utf8");
+    const report = await autoSyncVault(ctx.vaultPath, ctx);
+    const result = report.sources.find((source) => source.name === "gh-standalone");
+    expect(result?.status).toBe("error");
+    expect(result?.message).toMatch(/source gh-standalone.*skill gh-standalone.*target fixture-agents/);
+    expect(fs.readFileSync(path.join(targetSlot, "SKILL.md"), "utf8")).toBe(before);
+  });
+
+  it("reports an active target symlink that no longer points to the managed master", async () => {
+    const ctx = setup();
+    expect((await autoSyncVault(ctx.vaultPath, ctx)).sources.find((source) => source.name === "gh-standalone")?.status).toBe("updated");
+    const targetSlot = path.join(ctx.target, "gh-standalone");
+    const foreign = tempDir("auto-foreign-target");
+    fs.writeFileSync(path.join(foreign, "SKILL.md"), "Foreign target\n");
+    fs.rmSync(targetSlot, { recursive: true, force: true });
+    fs.symlinkSync(foreign, targetSlot);
+    const report = await autoSyncVault(ctx.vaultPath, ctx);
+    const result = report.sources.find((source) => source.name === "gh-standalone");
+    expect(result?.status).toBe("error");
+    expect(result?.message).toMatch(/source gh-standalone.*skill gh-standalone.*target fixture-agents/);
+    expect(fs.realpathSync(targetSlot)).toBe(fs.realpathSync(foreign));
+  });
+
+  it("does not block on a manually changed frozen copy or a retained frozen link", async () => {
+    const ctx = setup();
+    expect((await autoSyncVault(ctx.vaultPath, ctx)).sources.find((source) => source.name === "gh-standalone")?.status).toBe("updated");
+    const vaultFile = path.join(ctx.vaultPath, "vault.yml");
+    fs.writeFileSync(vaultFile, fs.readFileSync(vaultFile, "utf8").replace("install_after_update: true", "install_after_update: false"));
+    const targetSlot = path.join(ctx.target, "gh-standalone");
+    const first = await autoSyncVault(ctx.vaultPath, ctx);
+    expect(first.sources.find((source) => source.name === "gh-standalone")?.status).toBe("current");
+    expect(fs.lstatSync(targetSlot).isSymbolicLink()).toBe(true);
+
+    const master = path.join(ctx.agentsSkillsDir, "gh-standalone");
+    fs.rmSync(targetSlot, { recursive: true, force: true });
+    fs.cpSync(master, targetSlot, { recursive: true, dereference: true });
+    const markerFile = path.join(targetSlot, ".vault-managed");
+    const marker = JSON.parse(fs.readFileSync(markerFile, "utf8")) as Record<string, unknown>;
+    marker.target_id = "fixture-agents";
+    fs.writeFileSync(markerFile, JSON.stringify(marker, null, 2) + "\n");
+    fs.appendFileSync(path.join(targetSlot, "SKILL.md"), "\nFrozen local edit.\n");
+    const before = fs.readFileSync(path.join(targetSlot, "SKILL.md"), "utf8");
+    const second = await autoSyncVault(ctx.vaultPath, ctx);
+    expect(second.sources.find((source) => source.name === "gh-standalone")).toMatchObject({ status: "current" });
+    expect(fs.readFileSync(path.join(targetSlot, "SKILL.md"), "utf8")).toBe(before);
+    expect(hashDirectory(targetSlot)).not.toBe(marker.hash);
   });
 
   it.each(["review-before-apply", "frozen"] as const)("does not apply a %s source", async (mode) => {

@@ -1,3 +1,25 @@
+# v1.2.5 发布 QA 记录
+
+> 日期：2026-10-31。本地完整回归与 DMG 验收通过；GitHub 发布、CI、回下载及 `/Applications` 替换仍待完成。
+
+| 检查 | 状态 | 证据或备注 |
+| --- | --- | --- |
+| 类型检查 | 通过 | `pnpm typecheck`，4 个 workspace |
+| 单元与集成测试 | 通过 | 28 个文件，169/169 项测试 |
+| CLI 与桌面 E2E | 通过 | CLI 全场景；桌面 20 个场景，axe 扫描零违规 |
+| DMG 安装验证 | 通过 | `hdiutil verify`、签名检查、启动、编辑和持久化 |
+| Agent 发现 | 通过 | catalog / MCP tools/list 及真实 stdio 子进程工具调用测试通过；未知 agent 激活状态显式保留为 unknown |
+| 自动更新安全 | 通过 | Git 只提交本轮路径、敏感文件拦截、插件目标漂移与手改保护回归通过 |
+| DMG 哈希 | 通过 | `release/VaultDesk-1.2.5-arm64.dmg` SHA-256 `7744a3ef79a30bb79a969cbfbed3eb3923b0155177c4afa916922c47eb5d25df` |
+| GitHub CI、公开 Release、正式安装 | 待完成 | 发布流程尚未运行 |
+
+| v1.2.5 DMG 字段 | 值 |
+| --- | --- |
+| 文件 | release/VaultDesk-1.2.5-arm64.dmg |
+| 大小 | 约 128 MiB |
+| app.asar SHA-256 | a973d5d8520c0c8efe9885834d2ca13c1328832a6391d1066b2db7a0b86df202 |
+| 签名与公证 | Ad-hoc 签名，严格校验通过；未公证 |
+
 # v1.2.4 发布 QA 记录
 
 > 日期：2026-10-31。v1.2.4 已完成本地测试、DMG 验收、正式应用替换、GitHub CI、公开发布和回下载核对。

@@ -31,11 +31,14 @@ import {
   push,
   readBundledAgentSkill,
   readSettings,
+  readVaultFile,
   readSkillContent,
   removeSource,
+  removePluginTarget,
   resolveCommitPaths,
   removeTarget,
   restoreBackup,
+  registerPluginTarget,
   runPresetVerifyCommand,
   searchVaults,
   setSourceUpdateMode,
@@ -44,6 +47,7 @@ import {
   validateVault,
   verifyTarget,
   verifyToolReadiness,
+  distributeCurrentSource,
   writeSkillContent,
   writeSettings,
   VaultDeskError,
@@ -111,6 +115,15 @@ const handlers: { [K in IpcCommand]: Handler<K> } = {
       retention: settings.backupRetention,
     });
   },
+  "source.distribute": async ({ vaultPath, name }) => {
+    const settings = readSettings();
+    const changedPaths = await distributeCurrentSource(vaultPath, name, {
+      backupRoot: settings.backupRoot,
+      retention: settings.backupRetention,
+      retentionDays: settings.backupRetentionDays,
+    });
+    return { name, changedPaths };
+  },
   "source.forkPreview": ({ vaultPath, skill, as }) => previewFork(vaultPath, skill, as),
   "source.fork": ({ vaultPath, skill, as }) => forkSkill(vaultPath, skill, as),
   "source.addLocal": async ({ vaultPath, path: inputPath, name, kind, entrypoint, plugin, noPlugin, confirm }) => {
@@ -163,6 +176,19 @@ const handlers: { [K in IpcCommand]: Handler<K> } = {
     });
   },
   "target.verify": ({ vaultPath, id }) => verifyTarget(vaultPath, id),
+  "pluginTarget.list": ({ vaultPath }) => readVaultFile(vaultPath).plugin_targets ?? [],
+  "pluginTarget.add": async ({ vaultPath, id, dest, names, installAfterUpdate }) => {
+    await registerPluginTarget(vaultPath, { id, dest, names, installAfterUpdate });
+    return readVaultFile(vaultPath).plugin_targets ?? [];
+  },
+  "pluginTarget.remove": async ({ vaultPath, id, deleteFiles }) => {
+    const settings = readSettings();
+    const result = await removePluginTarget(vaultPath, id, {
+      deleteFiles,
+      backupRoot: settings.backupRoot,
+    });
+    return result;
+  },
   "tool.verify": ({ vaultPath, name, profile, pythonPath, nodePath }) =>
     verifyToolReadiness(vaultPath, name, { profile, pythonPath, nodePath }),
   "target.backups": async ({ vaultPath, targetId }): Promise<{ backups: BackupEntry[] }> => {

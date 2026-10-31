@@ -204,7 +204,7 @@ export function SettingsView({
           <label className="toggle-row auto-sync-toggle">
             <span className="toggle-copy">
               <span className="toggle-label">关闭应用后继续自动更新</span>
-              <span className="toggle-hint">仅更新设为“自动更新”的远程 Git 来源；本地来源不自动拉取。</span>
+              <span className="toggle-hint">仅更新设为“自动更新”的远程 Git 来源；本地来源不会自动拉取，也不会自动分发本地编辑。</span>
             </span>
             <input type="checkbox" checked={enabled} onChange={(event) => setEnabled(event.target.checked)} />
             <span className="toggle-track" aria-hidden="true"><span className="toggle-thumb" /></span>
@@ -224,7 +224,7 @@ export function SettingsView({
               ? "后台服务仅在 /Applications 中安装的正式版可用。"
               : settings.autoSyncEnabled && settings.checkIntervalHours > 0 && !background.loaded
                 ? "后台服务尚未运行。请保存设置重试；若仍失败，请查看系统日志。"
-                : "来源新增技能会提示接纳；手动改动或目标冲突不会被覆盖。"}
+                : "来源新增技能会提示接纳；手动改动或目标冲突不会被覆盖。本地来源有编辑时，请到来源页手动分发。"}
           </p>
           <Button size="sm" variant="quiet" icon="refresh" loading={syncing} onClick={() => void onAutoSync()} >
             立即检查并同步全部仓库

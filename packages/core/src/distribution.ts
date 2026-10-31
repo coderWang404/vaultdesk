@@ -125,6 +125,24 @@ export function managedAgentsSkillsRoot(): string {
 
 export type ManagedMasterStatus = "missing" | "unmanaged" | "current" | "modified";
 
+export type ManagedPluginTargetStatus = "missing" | "unmanaged" | "current" | "modified";
+
+export function inspectManagedPluginTarget(
+  inputPath: string,
+  pluginName: string,
+  targetId: string,
+  slot: string,
+): ManagedPluginTargetStatus {
+  const vault = canonicalPath(inputPath);
+  if (!hasEntry(slot)) return "missing";
+  if (isLink(slot) || !fs.statSync(slot).isDirectory()) return "unmanaged";
+  const marker = readMarker(path.join(slot, PLUGIN_MARKER));
+  if (!marker?.vault || canonicalPath(marker.vault) !== vault ||
+      marker.plugin !== pluginName || marker.target_id !== targetId) return "unmanaged";
+  const actual = contentHash(slot);
+  return marker.hash && marker.hash === actual ? "current" : "modified";
+}
+
 export function inspectManagedMaster(inputPath: string, skillName: string, agentsSkillsDir?: string): ManagedMasterStatus {
   const vault = canonicalPath(inputPath);
   const slot = path.join(agentsRoot({ agentsSkillsDir }), safeName(skillName));

@@ -3608,6 +3608,63 @@ kbd {
   padding-top: 10px;
 }
 
+.install-fields {
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.install-context {
+  padding-bottom: 16px;
+  margin-bottom: 16px;
+  border-bottom: 1px solid var(--line);
+}
+
+.install-context-head {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.install-context p {
+  margin: 8px 0 0;
+  overflow-wrap: anywhere;
+}
+
+.install-scope h3 {
+  font: inherit;
+  font-weight: 600;
+  margin: 0 0 12px;
+}
+
+.install-scope ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  max-height: 260px;
+  overflow-y: auto;
+}
+
+.install-scope li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 0;
+  border-top: 1px solid var(--line);
+  overflow-wrap: anywhere;
+}
+
+.install-scope li svg {
+  flex-shrink: 0;
+  color: var(--ink-muted);
+}
+
+.picker-search {
+  padding: 10px 11px 0;
+}
+
 .install-form {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));

@@ -1,3 +1,13 @@
+# VaultDesk v1.2.8 release
+
+Status: local verification in progress on 2026-10-31.
+
+Reinstalling a registered target now keeps its destination, ID and registered skills fixed. A separate Add skills action selects only new entries, while installation from skill/source details keeps that context. Search remains available for general and additional-skill selection. A single confirmation action follows preview.
+
+Desktop selections persist as exact skills with `skills_only: true`; CLI agents can request the same behavior with `--skills-only`. Legacy source selectors remain compatible. Exact targets do not expand a same-named source during reload, distribution or later reinstallation. Existing paused synchronization is preserved, and a target ID/destination mismatch is rejected before any file is replaced.
+
+Type checking and all 188 tests in 30 files passed. Contextual installation E2E and light/dark modal accessibility passed; the remaining release acceptance is recorded in QA-CURRENT.md.
+
 # VaultDesk v1.2.7 release
 
 Status: published and installed on 2026-10-31. Tag v1.2.7 points to cff404d81f6cf6875df9e56bb998cc70fb6b260a. CI 41183040004 passed all three jobs, and the public DMG download matched the locally tested artifact byte for byte. This patch adds a standalone CLI/MCP bundle to the DMG and a guarded Settings installer for `~/.local/bin/vaultdesk`; it does not change Vault ownership or agent activation boundaries.

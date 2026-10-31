@@ -90,6 +90,7 @@ export const ipcCommands = {
   "target.install": z.object({
     vaultPath,
     names: z.array(slugSchema).min(1),
+    skillsOnly: z.boolean().default(false),
     dest: vaultPath,
     id: z.string().min(1).optional(),
     dryRun: z.boolean().default(false),

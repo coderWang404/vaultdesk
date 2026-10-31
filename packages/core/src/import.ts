@@ -496,7 +496,10 @@ export function importTargetPath(snapshot: VaultSnapshot, preview: ImportPreview
 }
 
 export function vaultTargetsReferencing(snapshot: VaultSnapshot, sourceName: string): string[] {
-  return snapshot.targets.filter((target) => target.names.includes(sourceName)).map((target) => target.id);
+  const sourceSkills = new Set(snapshot.sources.find((source) => source.name === sourceName)?.skills.map((skill) => skill.name));
+  return snapshot.targets
+    .filter((target) => (!target.skillsOnly && target.names.includes(sourceName)) || target.skills.some((name) => sourceSkills.has(name)))
+    .map((target) => target.id);
 }
 
 export function ensureFileConflictFree(filePath: string): void {

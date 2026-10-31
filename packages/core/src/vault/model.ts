@@ -553,9 +553,10 @@ async function loadV2(vaultPath: string): Promise<{
     dest: target.dest,
     expandedDest: canonicalPath(expandHome(target.dest)),
     names: target.names,
+    skillsOnly: target.skills_only === true,
     installAfterUpdate: target.install_after_update,
     exists: exists(expandHome(target.dest)),
-    skills: resolveTargetSkills(target.names, sources, skills),
+    skills: resolveTargetSkills(target.names, sources, skills, target.skills_only === true),
     installed: [],
     otherManaged: [],
     lastInstalledAt: state?.targets[target.id]?.last_installed_at,
@@ -587,10 +588,10 @@ async function loadV2(vaultPath: string): Promise<{
   };
 }
 
-function resolveTargetSkills(names: string[], sources: SourceRecord[], skills: SkillRecord[]): string[] {
+function resolveTargetSkills(names: string[], sources: SourceRecord[], skills: SkillRecord[], skillsOnly = false): string[] {
   const resolved = new Set<string>();
   for (const name of names) {
-    const source = sources.find((entry) => entry.name === name);
+    const source = skillsOnly ? undefined : sources.find((entry) => entry.name === name);
     if (source) {
       for (const skill of source.skills) resolved.add(skill.name);
       continue;

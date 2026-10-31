@@ -74,7 +74,7 @@ patterns, but Vault contents should still never be used as secret storage.
 ### Install skills
 
 1. Run `target list --json` or read the targets in `vault.yml`.
-2. Preview with `target install <skill...> --dest <dir> --id <id>`.
+2. Preview with `target install <skill...> --skills-only --dest <dir> --id <id>`. `--skills-only` keeps each selected skill exact, including when its name also names a collection; omit it only when intentionally installing a whole source.
 3. Within the authorized scope, repeat with `--yes`. This registers the target and copies files. Run `source distribute <source> --yes` for each affected source to establish the shared `~/.agents/skills` master and per-skill links, with tracked copies if links are unavailable.
 4. Verify with `target verify <id>` and `agent catalog --json`. For related tool cards, check the intended runtime/profile as well, then verify the agent can discover the skill. File verification alone does not establish that last step.
 

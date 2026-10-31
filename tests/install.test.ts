@@ -8,12 +8,15 @@ import {
   listBackups,
   openVault,
   planInstall,
+  readVaultFile,
+  reinstallTargets,
   removeTarget,
   restoreBackup,
   validateVault,
   verifyTarget,
+  writeVaultFile,
 } from "@vaultdesk/core";
-import { copyFixture, setTargetDest, tempDir } from "./helpers.js";
+import { copyFixture, setTargetDest, snapshotTree, tempDir } from "./helpers.js";
 
 function scaffold() {
   const vaultPath = copyFixture("v2-basic");
@@ -28,6 +31,23 @@ function scaffold() {
   fs.mkdirSync(dest, { recursive: true });
   fs.symlinkSync(external, path.join(dest, "gh-standalone"), "dir");
   return { vaultPath, dest, backupRoot, external };
+}
+
+function sameNamedSourceScaffold() {
+  const context = scaffold();
+  const { vaultPath } = context;
+  const oldSource = path.join(vaultPath, "sources", "gh-pack.yml");
+  const newSource = path.join(vaultPath, "sources", "gh-pack-alpha.yml");
+  fs.writeFileSync(newSource, fs.readFileSync(oldSource, "utf8").replace(/^name: gh-pack$/m, "name: gh-pack-alpha"));
+  fs.unlinkSync(oldSource);
+  const lock = path.join(vaultPath, "vault.lock");
+  fs.writeFileSync(lock, fs.readFileSync(lock, "utf8").replace(/^  gh-pack:$/m, "  gh-pack-alpha:"));
+  const config = readVaultFile(vaultPath);
+  for (const target of config.targets) {
+    target.names = target.names.map((name) => name === "gh-pack" ? "gh-pack-alpha" : name);
+  }
+  writeVaultFile(vaultPath, config);
+  return context;
 }
 
 describe("install slots and backups", () => {
@@ -194,6 +214,97 @@ describe("install slots and backups", () => {
     const inside = path.join(vaultPath, "installed");
     const snapshot = await openVault(vaultPath);
     expect(() => planInstall(snapshot, { names: ["local-notes"], dest: inside })).toThrow(/inside the vault/);
+  });
+
+  it("preserves an existing target's paused synchronization policy when reinstalling", async () => {
+    const { vaultPath, dest, backupRoot } = scaffold();
+    await installSkills(vaultPath, { names: ["local-notes"], dest, id: "paused-target", backupRoot });
+    const file = readVaultFile(vaultPath);
+    const target = file.targets.find((entry) => entry.id === "paused-target")!;
+    target.install_after_update = false;
+    writeVaultFile(vaultPath, file);
+
+    const result = await installSkills(vaultPath, { names: ["local-notes"], dest, id: "paused-target", backupRoot });
+
+    expect(result.verification.filesInPlace).toBe(true);
+    expect(readVaultFile(vaultPath).targets.find((entry) => entry.id === "paused-target")).toEqual(target);
+    expect((await openVault(vaultPath)).targets.find((entry) => entry.id === "paused-target")?.installAfterUpdate).toBe(false);
+  });
+
+  it("rejects an existing target ID with a different destination before preview or writes", async () => {
+    const { vaultPath, dest, backupRoot } = scaffold();
+    const requestedDest = tempDir("conflicting-target-dest");
+    fs.mkdirSync(path.join(requestedDest, "local-notes"));
+    fs.writeFileSync(path.join(requestedDest, "local-notes", "user-note.txt"), "keep this directory\n");
+    const vaultBefore = snapshotTree(vaultPath);
+    const originalBefore = snapshotTree(dest);
+    const requestedBefore = snapshotTree(requestedDest);
+    const backupBefore = snapshotTree(backupRoot);
+    const options = { names: ["local-notes"], dest: requestedDest, id: "fixture-agents", backupRoot };
+    const snapshot = await openVault(vaultPath);
+
+    expect(() => planInstall(snapshot, options)).toThrow(/already points at/);
+    for (const dryRun of [true, false]) {
+      await expect(installSkills(vaultPath, { ...options, dryRun })).rejects.toMatchObject({ code: "conflict" });
+    }
+
+    expect(snapshotTree(vaultPath)).toEqual(vaultBefore);
+    expect(snapshotTree(dest)).toEqual(originalBefore);
+    expect(snapshotTree(requestedDest)).toEqual(requestedBefore);
+    expect(snapshotTree(backupRoot)).toEqual(backupBefore);
+  });
+
+  it("keeps an exact skill selection exact after installation and reload when its source has the same name", async () => {
+    const { vaultPath, backupRoot } = sameNamedSourceScaffold();
+    const config = readVaultFile(vaultPath);
+    config.targets = [];
+    writeVaultFile(vaultPath, config);
+    const dest = tempDir("exact-skill-dest");
+    const options = { names: ["gh-pack-alpha"], skillsOnly: true, dest, id: "exact-target", backupRoot };
+    const preview = planInstall(await openVault(vaultPath), options);
+    expect(preview.slots.map((slot) => slot.skill)).toEqual(["gh-pack-alpha"]);
+
+    const result = await installSkills(vaultPath, options);
+    expect(result.installed).toBe(1);
+    expect(result.verification.filesInPlace).toBe(true);
+    expect(fs.existsSync(path.join(dest, "gh-pack-beta"))).toBe(false);
+    expect(readVaultFile(vaultPath).targets.find((target) => target.id === "exact-target")).toMatchObject({
+      names: ["gh-pack-alpha"], skills_only: true,
+    });
+    expect((await openVault(vaultPath)).targets.find((target) => target.id === "exact-target")?.skills).toEqual(["gh-pack-alpha"]);
+    const refreshed = await reinstallTargets(vaultPath, ["gh-pack-alpha"], { backupRoot });
+    expect(refreshed).toHaveLength(1);
+    expect(refreshed[0]?.installed).toBe(1);
+    expect(fs.existsSync(path.join(dest, "gh-pack-beta"))).toBe(false);
+    expect((await validateVault(vaultPath)).ok).toBe(true);
+  });
+
+  it("retains CLI source shorthand while adding its resolved skills to an existing exact target", async () => {
+    const { vaultPath, backupRoot } = sameNamedSourceScaffold();
+    const dest = tempDir("exact-cli-merge-dest");
+    await installSkills(vaultPath, { names: ["gh-pack-alpha"], skillsOnly: true, dest, id: "exact-target", backupRoot });
+
+    const legacyPlan = planInstall(await openVault(vaultPath), { names: ["gh-pack-alpha"], dest, id: "exact-target" });
+    expect(legacyPlan.slots.map((slot) => slot.skill)).toEqual(["gh-pack-alpha", "gh-pack-beta"]);
+    const added = await installSkills(vaultPath, { names: ["gh-pack-alpha"], dest, id: "exact-target", backupRoot });
+
+    expect(added.installed).toBe(2);
+    expect(added.verification.filesInPlace).toBe(true);
+    expect(readVaultFile(vaultPath).targets.find((target) => target.id === "exact-target")).toMatchObject({
+      names: ["gh-pack-alpha", "gh-pack-beta"], skills_only: true,
+    });
+    expect((await openVault(vaultPath)).targets.find((target) => target.id === "exact-target")?.skills).toEqual(["gh-pack-alpha", "gh-pack-beta"]);
+  });
+
+  it("preserves earlier source registrations when an exact selection is added to a legacy target", async () => {
+    const { vaultPath, dest, backupRoot } = sameNamedSourceScaffold();
+    const before = (await openVault(vaultPath)).targets.find((target) => target.id === "fixture-agents")!.skills;
+    await installSkills(vaultPath, { names: ["gh-pack-alpha"], skillsOnly: true, dest, id: "fixture-agents", backupRoot });
+
+    const target = (await openVault(vaultPath)).targets.find((entry) => entry.id === "fixture-agents")!;
+    expect(target.skills).toEqual(before);
+    expect(target.skillsOnly).toBe(true);
+    expect(readVaultFile(vaultPath).targets.find((entry) => entry.id === "fixture-agents")!.names.slice().sort()).toEqual(before.slice().sort());
   });
 
   it("never overwrites a slot managed by another vault", async () => {

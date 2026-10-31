@@ -18,6 +18,7 @@ const MARKER = ".vault-managed";
 
 export interface InstallOptions {
   names: string[];
+  skillsOnly?: boolean;
   dest: string;
   id?: string;
   dryRun?: boolean;
@@ -51,10 +52,10 @@ function legacyBackupRootFor(targetId: string, base?: string): string | undefine
   return path.join(base || defaultBackupBase(), safe);
 }
 
-function resolveSkills(snapshot: VaultSnapshot, names: string[]): SkillRecord[] {
+function resolveSkills(snapshot: VaultSnapshot, names: string[], skillsOnly = false): SkillRecord[] {
   const selected = new Map<string, SkillRecord>();
   for (const name of names) {
-    const source = snapshot.sources.find((entry) => entry.name === name);
+    const source = skillsOnly ? undefined : snapshot.sources.find((entry) => entry.name === name);
     if (source) {
       if (source.shape === "plugin") {
         throw new VaultDeskError(
@@ -146,13 +147,17 @@ function validateDest(vaultPath: string, dest: string): string {
 
 export function planInstall(
   snapshot: VaultSnapshot,
-  input: { names: string[]; dest: string; id?: string; backupRoot?: string },
+  input: { names: string[]; skillsOnly?: boolean; dest: string; id?: string; backupRoot?: string },
 ): InstallPlan {
   const vaultPath = snapshot.path;
   const dest = validateDest(vaultPath, input.dest);
   const targetId = input.id || `target:${input.names.join("+")}`;
+  const existingTarget = snapshot.targets.find((target) => target.id === targetId);
+  if (existingTarget && canonicalPath(expandHome(existingTarget.dest)) !== dest) {
+    throw new VaultDeskError("conflict", `Target ${targetId} already points at ${existingTarget.dest}`);
+  }
   const backupRoot = backupRootFor(targetId, input.backupRoot);
-  const skills = resolveSkills(snapshot, input.names);
+  const skills = resolveSkills(snapshot, input.names, input.skillsOnly);
   const stamp = timestampSlug();
   const slots: InstallSlotPlan[] = [];
   const warnings: string[] = [];
@@ -202,18 +207,31 @@ function planPrune(backupRoot: string, retention: number): void {
   }
 }
 
-function ensureRegistered(snapshot: VaultSnapshot, targetId: string, dest: string, names: string[]): void {
+function ensureRegistered(snapshot: VaultSnapshot, targetId: string, dest: string, names: string[], skillsOnly = false): void {
   const file = readVaultFile(snapshot.path);
   const existing = file.targets.find((target) => target.id === targetId);
   if (existing) {
     if (canonicalPath(expandHome(existing.dest)) !== canonicalPath(expandHome(dest))) {
       throw new VaultDeskError("conflict", `Target ${targetId} already points at ${existing.dest}`);
     }
-    const merged = [...new Set([...existing.names, ...names])];
-    existing.names = merged;
-    existing.install_after_update = true;
+    if (skillsOnly || existing.skills_only) {
+      // Expand previous source selectors once before fixing the target to exact
+      // skill names; adding an exact skill must not drop earlier registrations.
+      const previousSkills = snapshot.targets.find((target) => target.id === targetId)?.skills ?? [];
+      const addedSkills = resolveSkills(snapshot, names, skillsOnly).map((skill) => skill.name);
+      existing.names = [...new Set([...previousSkills, ...addedSkills])];
+      existing.skills_only = true;
+    } else {
+      existing.names = [...new Set([...existing.names, ...names])];
+    }
   } else {
-    file.targets.push({ id: targetId, dest, names: [...names], install_after_update: true });
+    file.targets.push({
+      id: targetId,
+      dest,
+      names: skillsOnly ? resolveSkills(snapshot, names, true).map((skill) => skill.name) : [...names],
+      ...(skillsOnly ? { skills_only: true } : {}),
+      install_after_update: true,
+    });
   }
   writeVaultFile(snapshot.path, file);
 }
@@ -260,7 +278,7 @@ export async function installSkills(inputPath: string, options: InstallOptions):
       let buildHashes: Record<string, string>;
       if (options.rebuild === false) {
         buildHashes = {};
-        for (const skill of resolveSkills(fresh, options.names)) {
+        for (const skill of resolveSkills(fresh, options.names, options.skillsOnly)) {
           buildHashes[skill.name] = hashDirectory(path.join(vaultPath, "build", "skills", skill.name));
         }
       } else {
@@ -312,7 +330,7 @@ export async function installSkills(inputPath: string, options: InstallOptions):
 
       if (options.register !== false) {
         journal.start("register");
-        ensureRegistered(fresh, freshPlan.targetId, options.dest, options.names);
+        ensureRegistered(fresh, freshPlan.targetId, options.dest, options.names, options.skillsOnly);
         journal.done("register", freshPlan.targetId);
       } else {
         journal.skipped("register");
@@ -612,6 +630,7 @@ export async function reinstallTargets(
     results.push(
       await installSkills(vaultPath, {
         names: target.names,
+        skillsOnly: target.skillsOnly,
         dest: target.dest,
         id: target.id,
         register: false,

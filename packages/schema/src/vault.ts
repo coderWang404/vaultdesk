@@ -131,6 +131,7 @@ export const targetSchema = z.object({
     message: "dest must be absolute or start with ~/",
   }),
   names: z.array(slugSchema).min(1),
+  skills_only: z.boolean().optional(),
   install_after_update: z.boolean().default(true),
 });
 

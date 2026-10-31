@@ -133,6 +133,7 @@ const BOOLEAN_FLAGS = new Set([
   "full",
   "git",
   "no-state",
+  "skills-only",
   "plugin",
   "no-plugin",
   "pin",
@@ -239,9 +240,9 @@ function version(): string {
   if (typeof __VAULTDESK_VERSION__ === "string") return __VAULTDESK_VERSION__;
   try {
     const pkg = JSON.parse(fs.readFileSync(new URL("../package.json", import.meta.url), "utf8")) as { version?: string };
-    return pkg.version ?? "1.2.7";
+    return pkg.version ?? "1.2.8";
   } catch {
-    return "1.2.7";
+    return "1.2.8";
   }
 }
 
@@ -296,7 +297,7 @@ Commands:
   plugin target remove <id> --yes [--delete-files]
   build                            Preview or rebuild build/skills
   target list                      List install targets
-  target install <names...> --dest <dir> [--id id]
+  target install <names...> --dest <dir> [--id id] [--skills-only]
   target remove <id>               Unregister a target; optionally move files to backup
   target verify <id>               Verify files in place (no tool discovery claim)
   target restore <id> --backup <path> --name <skill>
@@ -1524,7 +1525,7 @@ async function dispatch(parsed: Parsed): Promise<CommandResult> {
         if (!dest) throw new VaultDeskError("invalid-input", "target install requires --dest.");
         const id = valueOf(options, "id");
         const dryRun = !parsed.yes || hasFlag(options, "dry-run");
-        const result = await installSkills(vaultPath, { names, dest, id, dryRun });
+        const result = await installSkills(vaultPath, { names, dest, id, dryRun, skillsOnly: hasFlag(options, "skills-only") });
         return {
           data: result,
           warnings: result.plan.warnings,

@@ -23,6 +23,12 @@ export interface Selection {
   name: string | null;
 }
 
+export type InstallIntent =
+  | { mode: "select" }
+  | { mode: "skills"; names: string[] }
+  | { mode: "reinstall"; targetId: string }
+  | { mode: "add"; targetId: string };
+
 export type ModalState =
   | { kind: "new-vault" }
   | { kind: "migration"; vaultPath: string }
@@ -30,7 +36,7 @@ export type ModalState =
   | { kind: "diff"; vaultPath: string; source: string }
   | { kind: "pending-skills"; vaultPath: string; source: string }
   | { kind: "update"; vaultPath: string; source?: string }
-  | { kind: "install"; vaultPath: string; targetId?: string }
+  | { kind: "install"; vaultPath: string; intent: InstallIntent }
   | { kind: "import"; vaultPath: string }
   | { kind: "fork"; vaultPath: string; skill: string }
   | { kind: "editor"; vaultPath: string; skill: string }

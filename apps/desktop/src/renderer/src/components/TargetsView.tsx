@@ -1,6 +1,7 @@
 import { useState } from "react";
 import type { InstallVerification, TargetRecord, VaultSnapshot } from "@vaultdesk/core";
 import { call, errorMessage } from "../api";
+import type { InstallIntent } from "../types";
 import { Icon } from "./icons";
 import {
   ActionMenu,
@@ -41,7 +42,7 @@ export function TargetsView({
   onError,
 }: {
   vault: VaultSnapshot;
-  onInstall: (targetId?: string) => void;
+  onInstall: (intent?: InstallIntent) => void;
   onBackups: (targetId?: string) => void;
   onRemove: (targetId: string) => void;
   onReveal: (path: string) => void;
@@ -148,10 +149,11 @@ export function TargetsView({
                     </div>
                   </div>
                   <div className="row-actions">
-                    <Button className="row-action-primary" size="sm" variant="quiet" icon="download" onClick={() => onInstall(target.id)}>
-                      安装
+                    <Button className="row-action-primary" size="sm" variant="quiet" icon="download" onClick={() => onInstall({ mode: "reinstall", targetId: target.id })}>
+                      重新安装
                     </Button>
                     <ActionMenu label={"更多目标操作：" + target.id}>
+                      <button onClick={() => onInstall({ mode: "add", targetId: target.id })}>添加技能</button>
                       <button onClick={() => void verify(target.id)} disabled={!target.exists || verifying === target.id}>
                         {verifying === target.id ? "验证中…" : "验证文件"}
                       </button>

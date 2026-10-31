@@ -96,6 +96,8 @@ export interface AgentCatalogTarget {
   path: string;
   exists: boolean;
   installAfterUpdate: boolean;
+  skillsOnly: boolean;
+  selectors: string[];
   skillNames: string[];
   files: Array<CatalogFileState & { skillName: string }>;
 }
@@ -495,6 +497,8 @@ export function buildAgentCatalog(
       path: targetPath,
       exists: isDirectory(targetPath),
       installAfterUpdate: target.installAfterUpdate,
+      skillsOnly: target.skillsOnly === true,
+      selectors: target.names,
       skillNames: target.skills,
       files: target.skills.map((skillName) => ({
         skillName,

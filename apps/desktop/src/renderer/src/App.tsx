@@ -41,7 +41,7 @@ import { RemoveSourceModal } from "./components/modals/RemoveSourceModal";
 import { UpdateModal } from "./components/modals/UpdateModal";
 import { ValidationModal } from "./components/modals/ValidationModal";
 import { Button, ConfirmDialog, Spinner } from "./components/ui";
-import type { AppInfo, ModalState, Section, Selection, ToastItem } from "./types";
+import type { AppInfo, InstallIntent, ModalState, Section, Selection, ToastItem } from "./types";
 
 interface RecentEntry {
   path: string;
@@ -357,9 +357,9 @@ export function App() {
   }, [notify, readOnly]);
 
   const openInstall = useCallback(
-    (targetId?: string): void => {
+    (intent: InstallIntent = { mode: "select" }): void => {
       if (!activeVault || !guardWritable()) return;
-      setModal({ kind: "install", vaultPath: activeVault.path, ...(targetId ? { targetId } : {}) });
+      setModal({ kind: "install", vaultPath: activeVault.path, intent });
     },
     [activeVault, guardWritable],
   );
@@ -1119,7 +1119,7 @@ export function App() {
       {modal?.kind === "install" && modalVault ? (
         <InstallModal
           vault={modalVault}
-          targetId={modal.targetId}
+          intent={modal.intent}
           presets={presets}
           onClose={() => setModal(null)}
           onDone={(message) => {

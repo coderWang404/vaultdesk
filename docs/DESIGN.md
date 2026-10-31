@@ -143,8 +143,11 @@ targets:
   - id: agents-shared
     dest: ~/.agents/skills
     names: [vaultdesk, ultra-research, find-skills]
+    skills_only: true      # 精确技能名单；省略时兼容旧的来源或技能简写
     install_after_update: true
 ```
+
+桌面端的技能选择和 CLI `target install --skills-only` 使用精确名单，避免技能与来源同名时展开整个来源。重新安装或添加技能会保留目标原有的 `install_after_update` 设置。
 
 ### 4.2 sources/<name>.yml
 

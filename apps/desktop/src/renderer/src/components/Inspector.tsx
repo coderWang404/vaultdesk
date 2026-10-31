@@ -23,7 +23,7 @@ import {
   statusLabel,
   statusTone,
 } from "../format";
-import type { Selection } from "../types";
+import type { InstallIntent, Selection } from "../types";
 import { call, errorMessage } from "../api";
 import { Icon } from "./icons";
 import { Button, Callout, EmptyState, MetaRow, StatusMark, StatusPill } from "./ui";
@@ -67,7 +67,7 @@ export function Inspector({
   onRemoveSource: (source: string) => void;
   onEdit: (skill: SkillRecord) => void;
   onFork: (skill: SkillRecord) => void;
-  onInstall: (targetId?: string) => void;
+  onInstall: (intent?: InstallIntent) => void;
   onSkill: (skill: SkillRecord) => void;
   onBackups: (targetId?: string) => void;
   onRefresh: () => Promise<unknown>;
@@ -161,7 +161,7 @@ function SourceInspector({
   onDiff: (source: string) => void;
   onUpdate: (source: string) => void;
   onRemove: (source: string) => void;
-  onInstall: (targetId?: string) => void;
+  onInstall: (intent?: InstallIntent) => void;
   onSkill: (skill: SkillRecord) => void;
   onBackups: (targetId?: string) => void;
 }) {
@@ -271,7 +271,7 @@ function SourceInspector({
             </Button>
           </>
         ) : null}
-        <Button size="sm" variant="ghost" icon="download" onClick={() => onInstall()}>
+        <Button size="sm" variant="ghost" icon="download" onClick={() => onInstall({ mode: "skills", names: source.skills.map((skill) => skill.name) })}>
           安装技能
         </Button>
         <Button size="sm" variant="ghost" icon="backup" onClick={() => onBackups()}>
@@ -309,7 +309,7 @@ function SkillInspector({
   onReveal: (path: string) => void;
   onEdit: (skill: SkillRecord) => void;
   onFork: (skill: SkillRecord) => void;
-  onInstall: (targetId?: string) => void;
+  onInstall: (intent?: InstallIntent) => void;
   onBackups: (targetId?: string) => void;
 }) {
   const drift = Boolean(skill.lockedHash && skill.lockedHash !== skill.contentHash);
@@ -420,7 +420,7 @@ function SkillInspector({
             编辑 SKILL.md
           </Button>
         )}
-        <Button size="sm" variant="ghost" icon="download" onClick={() => onInstall()}>
+        <Button size="sm" variant="ghost" icon="download" onClick={() => onInstall({ mode: "skills", names: [skill.name] })}>
           安装
         </Button>
         <Button size="sm" variant="ghost" icon="backup" onClick={() => onBackups()}>

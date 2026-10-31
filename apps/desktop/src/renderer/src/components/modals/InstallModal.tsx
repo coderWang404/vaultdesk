@@ -1,41 +1,56 @@
 import { useMemo, useState } from "react";
 import type { InstallPlan, InstallResult, VaultSnapshot } from "@vaultdesk/core";
 import type { ToolPreset } from "@vaultdesk/schema";
+import type { InstallIntent } from "../../types";
 import { call, errorMessage } from "../../api";
 import { Icon } from "../icons";
 import { Button, Callout, Field, Modal, StatusPill } from "../ui";
 
 export function InstallModal({
   vault,
-  targetId,
+  intent,
   presets,
   onClose,
   onDone,
 }: {
   vault: VaultSnapshot;
-  targetId?: string;
+  intent: InstallIntent;
   presets: ToolPreset[];
   onClose: () => void;
   onDone: (message: string) => void;
 }) {
-  const target = vault.targets.find((entry) => entry.id === targetId);
-  const [names, setNames] = useState<string[]>(target?.skills ?? []);
+  const fixedTarget = intent.mode === "reinstall" || intent.mode === "add";
+  const target = fixedTarget ? vault.targets.find((entry) => entry.id === intent.targetId) : undefined;
+  const fixedSkills = intent.mode === "reinstall" || intent.mode === "skills";
+  const [names, setNames] = useState<string[]>(intent.mode === "skills" ? intent.names : intent.mode === "reinstall" ? target?.skills ?? [] : []);
   const [dest, setDest] = useState(target?.dest ?? "~/.agents/skills");
   const [id, setId] = useState(target?.id ?? "agents-shared");
   const [plan, setPlan] = useState<InstallPlan | null>(null);
   const [result, setResult] = useState<InstallResult | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [query, setQuery] = useState("");
+  const availableSkills = useMemo(() => vault.skills.filter((skill) => intent.mode !== "add" || !target?.skills.includes(skill.name)), [vault.skills, intent.mode, target]);
+  const validScope = (!fixedTarget || Boolean(target)) && names.length > 0 && names.every((name) => vault.skills.some((skill) => skill.name === name));
+  const canSubmit = vault.format === "v2" && validScope;
+  const title = intent.mode === "reinstall" ? `重新安装到 ${intent.targetId}` : intent.mode === "add" ? `添加技能到 ${intent.targetId}` : intent.mode === "skills" && names.length === 1 ? `安装 ${names[0]}` : "安装技能";
+  const actionLabel = intent.mode === "reinstall" ? "确认重新安装" : intent.mode === "add" ? "确认添加" : "确认安装";
+  function close(): void {
+    if (busy) return;
+    if (result) onDone(`已${intent.mode === "reinstall" ? "重新安装" : "安装"} ${result.installed} 个技能到 ${result.targetId}`);
+    else onClose();
+  }
 
   const grouped = useMemo(() => {
     const map = new Map<string, typeof vault.skills>();
-    for (const skill of vault.skills) {
+    for (const skill of availableSkills) {
+      if (query.trim() && !`${skill.name} ${skill.sourceName} ${skill.description}`.toLowerCase().includes(query.trim().toLowerCase())) continue;
       const list = map.get(skill.sourceName) ?? [];
       list.push(skill);
       map.set(skill.sourceName, list);
     }
     return [...map.entries()].sort(([a], [b]) => a.localeCompare(b));
-  }, [vault.skills]);
+  }, [availableSkills, query]);
 
   function resetPreview(): void {
     setPlan(null);
@@ -58,12 +73,14 @@ export function InstallModal({
   }
 
   async function preview(): Promise<void> {
+    if (!canSubmit || busy || result) return;
     setBusy(true);
     setError(null);
     try {
       const next = await call<InstallResult>("target.install", {
         vaultPath: vault.path,
         names,
+        skillsOnly: true,
         dest,
         ...(id.trim() ? { id: id.trim() } : {}),
         dryRun: true,
@@ -79,12 +96,14 @@ export function InstallModal({
   }
 
   async function apply(): Promise<void> {
+    if (!canSubmit || !plan || busy || result) return;
     setBusy(true);
     setError(null);
     try {
       const next = await call<InstallResult>("target.install", {
         vaultPath: vault.path,
         names,
+        skillsOnly: true,
         dest,
         ...(id.trim() ? { id: id.trim() } : {}),
         dryRun: false,
@@ -101,23 +120,23 @@ export function InstallModal({
 
   return (
     <Modal
-      title={target ? `安装到 ${target.id}` : "安装技能"}
-      subtitle="先构建再写入。受管目录原地替换，符号链接只删链接，未受管目录先备份。"
-      onClose={onClose}
-      width="wide"
+      title={title}
+      subtitle={intent.mode === "reinstall" ? "将此目标已登记的技能重新写入原目录。请先预览替换内容。" : intent.mode === "add" ? "只选择要新增到此目标的技能。" : "选择安装目录，预览后确认写入。"}
+      onClose={close}
+      width={fixedSkills ? "default" : "wide"}
       dismissable={!busy}
       footer={
         <>
-          <Button variant="ghost" onClick={onClose} disabled={busy}>
+          <Button variant="ghost" onClick={close} disabled={busy}>
             {result ? "关闭" : "取消"}
           </Button>
           {result ? (
-            <Button variant="primary" onClick={() => onDone(`已安装 ${result.installed} 个技能到 ${result.targetId}`)}>
+            <Button variant="primary" onClick={close}>
               完成
             </Button>
           ) : (
             <>
-              <Button variant="quiet" icon="shield" onClick={() => void preview()} disabled={names.length === 0 || busy}>
+              <Button variant="quiet" icon="shield" onClick={() => void preview()} disabled={!canSubmit || busy}>
                 预览计划
               </Button>
               <Button
@@ -125,9 +144,9 @@ export function InstallModal({
                 icon="download"
                 onClick={() => void apply()}
                 loading={busy}
-                disabled={names.length === 0 || !plan}
+                disabled={!canSubmit || !plan}
               >
-                确认安装
+                {actionLabel}
               </Button>
             </>
           )}
@@ -146,7 +165,17 @@ export function InstallModal({
         </Callout>
       ) : null}
 
-      <div className="install-form">
+      {fixedTarget && !target ? <Callout tone="danger" title="安装目标已不存在"><p>请关闭此窗口，刷新后重新选择目标。</p></Callout> : null}
+      {target ? (
+        <section className="install-context" aria-label="安装目标信息">
+          <div className="install-context-head"><strong>{target.id}</strong><StatusPill tone={target.installAfterUpdate ? "accent" : "muted"}>{target.installAfterUpdate ? "自动同步已开启" : "自动同步已暂停"}</StatusPill></div>
+          <p className="mono">{target.expandedDest}</p>
+          <p className="muted-small">{intent.mode === "reinstall" ? `本次仅重新安装已登记的 ${names.length} 个技能。` : `已登记 ${target.skills.length} 个技能，请选择新增项。`}{!target.installAfterUpdate ? " 完成后仍保持暂停。" : ""}</p>
+        </section>
+      ) : null}
+
+      <fieldset className="install-fields" disabled={busy || Boolean(result)}>
+      {!fixedTarget ? <div className="install-form">
         <Field label="安装目标目录" hint="绝对路径或 ~/ 开头，不能位于仓库内。">
           <input
             className="input mono"
@@ -177,20 +206,26 @@ export function InstallModal({
             ))}
           </div>
         </Field>
-      </div>
+      </div> : null}
 
-      <div className="install-skill-picker">
+      {fixedSkills ? (
+        <section className="install-scope" aria-label="本次安装的技能">
+          <h3>本次{intent.mode === "reinstall" ? "重新安装" : "安装"} · {names.length} 个技能</h3>
+          <ul>{names.map((name) => <li key={name}><Icon name="skill" size={16} /><span>{name}</span></li>)}</ul>
+          {!validScope ? <p className="muted-small">有技能已不存在，请关闭后刷新仓库。</p> : null}
+        </section>
+      ) : <div className="install-skill-picker">
         <div className="picker-head">
-          <span>选择技能</span>
+          <span>{intent.mode === "add" ? "选择新增技能" : "选择技能"} · 已选 {names.length} 项</span>
           <div>
             <button
               className="text-link"
               onClick={() => {
                 resetPreview();
-                setNames(vault.skills.map((skill) => skill.name));
+                setNames((current) => [...new Set([...current, ...grouped.flatMap(([, skills]) => skills.map((skill) => skill.name))])]);
               }}
             >
-              全选
+              {query.trim() ? "全选结果" : "全选"}
             </button>
             <button
               className="text-link"
@@ -203,7 +238,9 @@ export function InstallModal({
             </button>
           </div>
         </div>
+        <div className="picker-search"><input className="input" type="search" aria-label="搜索可安装技能" placeholder="搜索技能或来源" value={query} onChange={(event) => setQuery(event.target.value)} /></div>
         <div className="picker-groups">
+          {grouped.length === 0 ? <p className="muted-small">{availableSkills.length === 0 ? "所有技能都已登记到此目标。" : "没有匹配的技能。"}</p> : null}
           {grouped.map(([sourceName, skills]) => (
             <div className="picker-group" key={sourceName}>
               <span className="picker-group-name">{sourceName}</span>
@@ -216,14 +253,14 @@ export function InstallModal({
                       onChange={() => toggleSkill(skill.name)}
                     />
                     <span>{skill.name}</span>
-                    {skill.installed.length > 0 ? <span className="installed-dot" /> : null}
                   </label>
                 ))}
               </div>
             </div>
           ))}
         </div>
-      </div>
+      </div>}
+      </fieldset>
 
       {plan ? (
         <div className="install-plan">
@@ -231,7 +268,7 @@ export function InstallModal({
             <div>
               <span className="eyebrow">安装计划</span>
               <h3>
-                {plan.targetId} · {plan.slots.length} 个槽位
+                {plan.slots.length} 个技能 · {result ? "已写入" : "等待确认"}
               </h3>
             </div>
             {result ? <StatusPill tone="ok">已写入</StatusPill> : <StatusPill tone="warn">尚未写入</StatusPill>}
@@ -258,11 +295,7 @@ export function InstallModal({
               {warning}
             </p>
           ))}
-          {!result ? (
-            <Button variant="primary" icon="check" onClick={() => void apply()} loading={busy}>
-              确认并写入
-            </Button>
-          ) : (
+          {result ? (
             <Callout tone={result.verification.filesInPlace ? "ok" : "warn"}>
               <p>
                 {result.verification.filesInPlace
@@ -273,7 +306,7 @@ export function InstallModal({
                 <p>已备份 {result.backups.length} 个目录。</p>
               ) : null}
             </Callout>
-          )}
+          ) : null}
         </div>
       ) : null}
     </Modal>

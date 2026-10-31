@@ -42,7 +42,7 @@ const V2_SOURCE_KEYS = new Set([
   "script_deps",
   "forked_from",
 ]);
-const V2_TARGET_KEYS = new Set(["id", "dest", "names", "install_after_update"]);
+const V2_TARGET_KEYS = new Set(["id", "dest", "names", "skills_only", "install_after_update"]);
 const V2_PLUGIN_TARGET_KEYS = new Set(["id", "dest", "names", "install_after_update"]);
 const V2_TOOL_KEYS = new Set([
   "schema",
@@ -227,6 +227,7 @@ function checkTargets(snapshot: VaultSnapshot, issues: ValidationIssue[]): void 
   const pluginNames = new Set(snapshot.plugins.map((plugin) => plugin.name));
   const pluginSkillNames = new Set(snapshot.plugins.flatMap((plugin) => plugin.skills.map((skill) => skill.name)));
   const externalNames = new Set(snapshot.externalSkills.map((skill) => skill.name));
+  const skillNames = new Set(snapshot.skills.map((skill) => skill.name));
   for (const target of snapshot.targets) {
     if (ids.has(target.id)) {
       push(issues, "error", "target.duplicate-id", `Duplicate install target id: ${target.id}`);
@@ -238,6 +239,7 @@ function checkTargets(snapshot: VaultSnapshot, issues: ValidationIssue[]): void 
     const pluginNames = new Set(snapshot.plugins.map((plugin) => plugin.name));
     const pluginSkillNames = new Set(snapshot.plugins.flatMap((plugin) => plugin.skills.map((skill) => skill.name)));
     for (const name of target.names) {
+      if (target.skillsOnly && skillNames.has(name)) continue;
       if (pluginNames.has(name) || pluginSkillNames.has(name)) {
         push(
           issues,
@@ -252,8 +254,8 @@ function checkTargets(snapshot: VaultSnapshot, issues: ValidationIssue[]): void 
           "target.external-not-installable",
           `Install target ${target.id} references external skill ${name}; its owning tool manages that path, not VaultDesk`,
         );
-      } else if (!knownNames.has(name)) {
-        push(issues, "error", "target.unknown-name", `Install target ${target.id} references unknown source or skill: ${name}`);
+      } else if (!(target.skillsOnly ? skillNames : knownNames).has(name)) {
+        push(issues, "error", "target.unknown-name", `Install target ${target.id} references unknown ${target.skillsOnly ? "skill" : "source or skill"}: ${name}`);
       }
     }
     if (!target.dest.startsWith("/") && target.dest !== "~" && !target.dest.startsWith("~/")) {

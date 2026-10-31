@@ -54,6 +54,7 @@ macOS desktop session; the default suites need no network.
 | Create vault, local imports, edit, explicit commit and push | New vault, three import shapes, editor save, explicit commit path list, push. |
 | GitHub import, check, diff, guarded update, fork | Import dialog, source row state, diff view, update confirmation, install refresh, fork into a local skill. |
 | Install, backup, verify, restore, remove and re-register target | Full target lifecycle through the UI, including unmanaged and symlink slots, backups, drift, restore and orphaned backups. |
+| Contextual target reinstall, add and skill detail install | Fixed target and skill scope, separate searchable addition, paused-policy preservation, same-name source disambiguation, CLI exact selection, and light/dark modal accessibility at a narrow desktop width. |
 | Cross-vault search, settings validation and persistence | `Cmd+K` palette across two vaults, keyboard selection, jump to skill, settings validation and restart persistence. |
 | Manual source check and automatic update mode | Source checking and explicit update modes remain separate operations. |
 | All registered vaults sync and keyboard tabs | Sync includes registered Vaults, including those without an open tab; tab navigation remains keyboard accessible. |

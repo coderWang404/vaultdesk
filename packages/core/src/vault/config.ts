@@ -39,6 +39,7 @@ export function writeVaultFile(vaultPath: string, file: VaultFile): void {
         id: target.id,
         dest: target.dest,
         names: [...target.names],
+        ...(target.skills_only ? { skills_only: true } : {}),
         install_after_update: target.install_after_update,
       })),
     ...(file.plugin_targets && file.plugin_targets.length > 0

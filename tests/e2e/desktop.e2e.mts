@@ -1467,11 +1467,11 @@ async function installFlow(suite: Suite): Promise<void> {
   await card.getByRole("button", { name: "验证文件" }).click();
   await waitForText(page, "0 缺失 · 1 修改", 30_000);
 
-  await card.getByRole("button", { name: "安装" }).click();
+  await card.getByRole("button", { name: "重新安装", exact: true }).click();
   const reinstall = await dialog(page);
   await reinstall.getByRole("button", { name: "预览计划" }).click();
   await waitForText(page, "受管");
-  await reinstall.getByRole("button", { name: "确认安装" }).click();
+  await reinstall.getByRole("button", { name: "确认重新安装" }).click();
   await waitForText(page, "校验通过 ·", 60_000);
   await reinstall.locator(".modal-footer").getByRole("button", { name: "完成" }).click();
   await reinstall.waitFor({ state: "hidden" });
@@ -1559,6 +1559,110 @@ async function installFlow(suite: Suite): Promise<void> {
   await restoredBackups.locator(".modal-footer").getByRole("button", { name: "关闭" }).click();
   await restoredBackups.waitFor({ state: "hidden" });
   console.log("      install plan, unmanaged backup, symlink replace, verify drift, reinstall, restore, remove, re-register OK");
+}
+
+async function contextualInstall(suite: Suite): Promise<void> {
+  const workspace = suite.workspace("contextual-install");
+  const vaultPath = path.join(workspace.root, "vault");
+  const cli = (...args: string[]) => {
+    const result = runCli([...args, "--vault", vaultPath, "--yes"], { workspace });
+    equal(result.status, 0, result.stderr || result.stdout);
+  };
+  equal(runCli(["vault", "init", vaultPath, "--git", "--yes"], { workspace }).status, 0, "context vault init");
+  const bundle = path.join(workspace.root, "imports", "alpha");
+  writeSkill(path.join(bundle, "alpha"), "alpha", "Alpha in a same-named source.");
+  writeSkill(path.join(bundle, "beta"), "beta", "Beta in alpha source.");
+  const gamma = path.join(workspace.root, "imports", "gamma");
+  writeSkill(gamma, "gamma", "Separate gamma.");
+  cli("source", "add", bundle, "--name", "alpha");
+  cli("source", "add", gamma);
+  const singleDest = path.join(workspace.root, "single");
+  const multiDest = path.join(workspace.root, "multi");
+  cli("target", "install", "beta", "--dest", singleDest, "--id", "single");
+  cli("target", "install", "alpha", "--dest", multiDest, "--id", "multi");
+  cli("target", "install", "alpha", "--skills-only", "--dest", path.join(workspace.root, "cli-exact"), "--id", "cli-exact");
+  const config = path.join(vaultPath, "vault.yml");
+  fs.writeFileSync(config, read(config).replace(/(id: single[\s\S]*?install_after_update:) true/, "$1 false"));
+  const targets = () => JSON.parse(runCli(["target", "list", "--vault", vaultPath, "--json"], { workspace }).stdout).data as Array<{ id: string; skills: string[]; installAfterUpdate: boolean }>;
+  equal(targets().find((t) => t.id === "single")?.installAfterUpdate, false, "paused fixture");
+  equal(targets().find((t) => t.id === "cli-exact")?.skills.join(","), "alpha", "CLI exact selection does not expand its source");
+  const launched = await suite.launch({ workspace, initialVault: vaultPath });
+  const page = launched.page;
+  await openSection(page, "安装目标");
+  const single = page.locator(".target-card").filter({ has: page.getByRole("heading", { name: "single", exact: true }) });
+  const multi = page.locator(".target-card").filter({ has: page.getByRole("heading", { name: "multi", exact: true }) });
+  await single.getByRole("button", { name: "重新安装", exact: true }).click();
+  const reinstall = await dialog(page);
+  equal(await reinstall.locator(".install-skill-picker").count(), 0, "reinstall has no full catalog");
+  equal(await reinstall.getByLabel("安装目标目录").count(), 0, "reinstall cannot redirect destination");
+  equal(await reinstall.getByLabel("目标 ID").count(), 0, "reinstall cannot change target identity");
+  equal(await reinstall.locator(".preset-chip").count(), 0, "reinstall has no destination presets");
+  equal((await reinstall.locator(".install-scope li").allTextContents()).join(","), "beta", "only registered skill is shown");
+  await reinstall.getByText("完成后仍保持暂停。", { exact: false }).waitFor();
+  await page.setViewportSize({ width: 1000, height: 760 });
+  await page.evaluate(fs.readFileSync(axeSourcePath, "utf8"));
+  const artifacts = path.join(repoRoot, "tests/e2e/artifacts");
+  fs.mkdirSync(artifacts, { recursive: true });
+  for (const colorScheme of ["light", "dark"] as const) {
+    await page.emulateMedia({ colorScheme, reducedMotion: "reduce" });
+    await page.waitForFunction((theme) => document.documentElement.dataset.theme === theme, colorScheme);
+    equal(await auditPage(page, `contextual reinstall ${colorScheme}`), 0, "reinstall accessibility");
+    await reinstall.screenshot({ path: path.join(artifacts, `target-reinstall-${colorScheme}.png`) });
+  }
+  await page.emulateMedia({ colorScheme: "light", reducedMotion: "reduce" });
+  await reinstall.getByRole("button", { name: "预览计划" }).click();
+  await reinstall.locator(".plan-row").waitFor();
+  equal(await reinstall.locator(".plan-row").count(), 1, "preview stays within selected target");
+  await reinstall.getByRole("button", { name: "确认重新安装" }).click();
+  await reinstall.getByText("校验通过 ·", { exact: false }).waitFor();
+  await reinstall.getByRole("button", { name: "完成", exact: true }).click();
+  await reinstall.waitFor({ state: "hidden" });
+  equal(targets().find((t) => t.id === "single")?.installAfterUpdate, false, "reinstall preserves pause");
+
+  await multi.getByRole("button", { name: "重新安装", exact: true }).click();
+  const multiple = await dialog(page);
+  equal((await multiple.locator(".install-scope li").allTextContents()).join(","), "alpha,beta", "legacy source selector resolves to its registered skills");
+  equal(await multiple.locator(".install-skill-picker").count(), 0, "multi-skill reinstall remains scoped");
+  await multiple.getByRole("button", { name: "取消", exact: true }).click();
+
+  await single.locator(".row-menu summary").click();
+  await single.getByRole("button", { name: "添加技能", exact: true }).click();
+  const adding = await dialog(page);
+  equal(await adding.getByRole("checkbox", { name: "beta", exact: true }).count(), 0, "already registered skills are excluded from add picker");
+  await adding.getByLabel("搜索可安装技能").fill("gamma");
+  equal(await adding.locator(".picker-chip").count(), 1, "new skill picker can be searched");
+  await adding.locator(".picker-chip").filter({ hasText: "gamma" }).click();
+  await adding.screenshot({ path: path.join(artifacts, "target-add-skills.png") });
+  await adding.getByRole("button", { name: "预览计划" }).click();
+  await adding.locator(".plan-row").waitFor();
+  equal((await adding.locator(".plan-row .mono").allTextContents()).join(","), "gamma", "add preview includes only the new skill");
+  await adding.getByRole("button", { name: "确认添加", exact: true }).click();
+  await adding.getByText("校验通过 ·", { exact: false }).waitFor();
+  await adding.getByRole("button", { name: "完成", exact: true }).click();
+  await adding.waitFor({ state: "hidden" });
+  equal(targets().find((t) => t.id === "single")?.skills.join(","), "beta,gamma", "add preserves prior mapping");
+  equal(targets().find((t) => t.id === "single")?.installAfterUpdate, false, "add also preserves pause");
+
+  await openSection(page, "技能");
+  await page.locator(".skill-table-row").filter({ hasText: "Alpha in a same-named source." }).click();
+  await page.locator(".inspector").getByRole("button", { name: "安装", exact: true }).click();
+  const detail = page.getByRole("dialog", { name: "安装 alpha", exact: true });
+  await detail.waitFor({ state: "visible" });
+  equal((await detail.locator(".install-scope li").allTextContents()).join(","), "alpha", "skill detail installs only current skill");
+  equal(await detail.locator(".install-skill-picker").count(), 0, "skill detail does not show all skills");
+  const detailDest = path.join(workspace.root, "detail");
+  await detail.getByLabel("安装目标目录").fill(detailDest);
+  await detail.getByLabel("目标 ID").fill("detail");
+  await detail.getByRole("button", { name: "预览计划" }).click();
+  await detail.locator(".plan-row").waitFor();
+  equal((await detail.locator(".plan-row .mono").allTextContents()).join(","), "alpha", "same-named source does not expand selection");
+  await detail.getByRole("button", { name: "确认安装", exact: true }).click();
+  await detail.getByText("校验通过 ·", { exact: false }).waitFor();
+  await detail.getByRole("button", { name: "完成", exact: true }).click();
+  await detail.waitFor({ state: "hidden" });
+  equal(targets().find((t) => t.id === "detail")?.skills.join(","), "alpha", "exact mapping survives reload");
+  assert(!fs.existsSync(path.join(detailDest, "beta")), "unselected sibling never installed");
+  console.log("      contextual reinstall, separate add, pause preservation and exact skill installation OK");
 }
 
 async function openImportModal(page: LaunchedApp["page"]) {
@@ -2290,6 +2394,7 @@ async function main(): Promise<void> {
   await run("create vault, local imports, edit, explicit commit and push", writableFlow);
   await run("GitHub import, check, diff, guarded update, fork", githubFlow);
   await run("install, backup, verify, restore, remove and re-register target", installFlow);
+  await run("contextual target reinstall, add and skill detail install", contextualInstall);
   await run("cross-vault search, settings validation and persistence", searchAndSettings);
   await run("plugin page, filters, search and imports", pluginsFlow);
   await run("tool page, filters, copy and search routing", toolsFlow);

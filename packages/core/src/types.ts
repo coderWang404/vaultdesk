@@ -132,6 +132,8 @@ export interface TargetRecord {
   dest: string;
   expandedDest: string;
   names: string[];
+  /** Exact skill selectors; absent for legacy source-or-skill targets. */
+  skillsOnly?: boolean;
   installAfterUpdate: boolean;
   exists: boolean;
   skills: string[];

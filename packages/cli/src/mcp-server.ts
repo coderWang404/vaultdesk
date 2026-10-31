@@ -147,7 +147,7 @@ function listSummary(catalog: AgentCatalog): Record<string, unknown> {
 
 export function createVaultDeskMcpServer(options: VaultDeskMcpOptions = {}): McpServer {
   const server = new McpServer(
-    { name: "vaultdesk", version: options.version ?? "1.2.7" },
+    { name: "vaultdesk", version: options.version ?? "1.2.8" },
     { instructions: "VaultDesk is read-only here. It reports ownership, distribution, install instructions, and observed file state; it never installs, starts, updates, or registers tools." },
   );
 

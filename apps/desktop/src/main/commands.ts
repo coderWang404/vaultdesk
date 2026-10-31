@@ -159,10 +159,11 @@ const handlers: { [K in IpcCommand]: Handler<K> } = {
 
   "build.run": ({ vaultPath }) => buildVault(vaultPath),
   "target.list": async ({ vaultPath }) => (await openVault(vaultPath)).targets,
-  "target.install": async ({ vaultPath, names, dest, id, dryRun, confirm }) => {
+  "target.install": async ({ vaultPath, names, skillsOnly, dest, id, dryRun, confirm }) => {
     const settings = readSettings();
     return installSkills(vaultPath, {
       names,
+      skillsOnly,
       dest,
       id,
       dryRun: dryRun || !confirm,

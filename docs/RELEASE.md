@@ -1,12 +1,24 @@
 # VaultDesk v1.2.8 release
 
-Status: local verification in progress on 2026-10-31.
+Status: published and installed on 2026-10-31. Tag v1.2.8 points to 5454d03ed510bb85460b5b81acf36db1a888410e. CI 41185992856 passed all three jobs, and the public DMG download matched the locally tested artifact byte for byte.
 
 Reinstalling a registered target now keeps its destination, ID and registered skills fixed. A separate Add skills action selects only new entries, while installation from skill/source details keeps that context. Search remains available for general and additional-skill selection. A single confirmation action follows preview.
 
 Desktop selections persist as exact skills with `skills_only: true`; CLI agents can request the same behavior with `--skills-only`. Legacy source selectors remain compatible. Exact targets do not expand a same-named source during reload, distribution or later reinstallation. Existing paused synchronization is preserved, and a target ID/destination mismatch is rejected before any file is replaced.
 
-Type checking and all 188 tests in 30 files passed. Contextual installation E2E and light/dark modal accessibility passed; the remaining release acceptance is recorded in QA-CURRENT.md.
+Type checking, all 188 tests in 30 files, CLI E2E, 21 desktop scenarios, 22 zero-violation axe scans, and the mounted-DMG launch/edit/CLI/MCP acceptance passed. The actual qoder:paper-reading target was opened in the installed app: its compact reinstall dialog and preview contain only paper-reading, with the original path fixed. The preview was cancelled without reinstalling the skill.
+
+The app, bundled CLI and LaunchAgent report 1.2.8, with one GUI and one headless worker. Installed app.asar and CLI hashes match the tested DMG; the previous app was moved to Trash. Startup sync updated the managed VaultDesk skill and pushed c551fb0 in the private Vault, leaving a clean worktree with no ahead/behind commits. Its 38 master skills and 20 target-skill entries are current; REA ownership remains external.
+
+| Field | Value |
+| --- | --- |
+| File | release/VaultDesk-1.2.8-arm64.dmg |
+| Platform | macOS Apple Silicon |
+| Size | 124,916,056 bytes |
+| SHA-256 | f8c540a6abc587c5ad1449acb16e3833233afba62eb4ba9f2baf563fd3a69f61 |
+| app.asar SHA-256 | dc09e6e65e3b7d4d8980b2825e9a31aa4be78f1bc9508612251545df2d782022 |
+| CLI SHA-256 | 87b6aed000c62a96cf1961ae831b9379fd1e72c10fbd7e094fd7b9d1c9629bd6 |
+| Signing | Ad-hoc, not notarized |
 
 # VaultDesk v1.2.7 release
 

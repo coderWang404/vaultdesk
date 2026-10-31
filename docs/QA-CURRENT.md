@@ -7,8 +7,23 @@
 | 类型检查与单测 | 通过 | 30 个测试文件，188/188 项通过 |
 | 上下文安装回归 | 通过 | 单/多技能目标固定重装；独立新增、搜索、暂停保留；详情安装与 CLI 精确选择在重载后不扩展 |
 | 浅深主题与窄窗口 | 通过 | 1000×760 下重装弹窗截图；2 次 axe 扫描零违规 |
-| CLI 与桌面 E2E | 验收中 | 等待完整回归结束 |
-| DMG、CI、正式安装 | 验收中 | 待记录最终产物与安装证据 |
+| CLI 与桌面 E2E | 通过 | CLI 全场景、21 个桌面场景；合计 22 次 axe 扫描零违规 |
+| DMG CLI/MCP 验收 | 通过 | 镜像和严格签名校验；挂载包启动、编辑持久化；无源码依赖运行 CLI 和 MCP 握手 |
+| GitHub CI | 通过 | 41185992856，5454d03 的三个 job 全部通过 |
+| 公开回下载 | 通过 | 发布 DMG 与本地验收产物 SHA-256 和逐字节 cmp 均一致 |
+| 正式安装 | 通过 | /Applications/VaultDesk.app 与 CLI 均为 1.2.8；app.asar/CLI 哈希与 DMG 一致；LaunchAgent 1.2.8，单 GUI/worker；旧版移至废纸篓 |
+| 用户真实目标 | 通过 | qoder:paper-reading 弹窗固定原目录且仅列 paper-reading；预览也只有此技能，显示尚未写入，随后取消 |
+| 真实 Vault 与后台同步 | 通过 | 38 个主库技能、20 个目标条目 current；REA 保持外部归属；后台自动更新 vaultdesk 并推送 c551fb0，工作树干净，ahead/behind 均为 0 |
+
+| 产物 | 值 |
+| --- | --- |
+| 版本 / 发布提交 | v1.2.8 / 5454d03ed510bb85460b5b81acf36db1a888410e |
+| DMG | release/VaultDesk-1.2.8-arm64.dmg，124,916,056 bytes |
+| DMG SHA-256 | f8c540a6abc587c5ad1449acb16e3833233afba62eb4ba9f2baf563fd3a69f61 |
+| app.asar SHA-256 | dc09e6e65e3b7d4d8980b2825e9a31aa4be78f1bc9508612251545df2d782022 |
+| CLI SHA-256 | 87b6aed000c62a96cf1961ae831b9379fd1e72c10fbd7e094fd7b9d1c9629bd6 |
+| 内置与主库 skill SHA-256 | 3e900b0b80cd9d2403e589fd40b38273c383bee7122f0a510195356770cd58cb |
+| 签名 | Ad-hoc，未公证 |
 
 # v1.2.7 发布 QA 记录
 

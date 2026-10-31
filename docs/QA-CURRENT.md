@@ -1,3 +1,25 @@
+# v1.2.4 发布 QA 记录
+
+> 日期：2026-10-31。类型检查、全量测试、CLI/桌面及 DMG 验收通过；正式安装替换、GitHub CI 和公开发布尚待完成。
+
+| 检查 | 状态 | 证据或备注 |
+| --- | --- | --- |
+| 类型检查与单测 | 通过 | 4 个 workspace；26 个文件，154/154 项测试 |
+| CLI 与桌面 E2E | 通过 | CLI 全场景；桌面 19/19 场景，axe 扫描零违规 |
+| DMG 安装验证 | 通过 | hdiutil、严格签名、应用启动、编辑持久化 |
+| Python 默认选择 | 通过 | Finder 式 PATH 不含 Conda 时优先 Miniconda base 3.13.11；显式系统 Python 路径可覆盖 |
+| /Applications、后台服务 | 待完成 | 安装后核对版本、哈希与单 GUI/worker |
+| GitHub CI 与公开 Release | 待完成 | 发布后回下载核对 SHA-256 |
+
+| v1.2.4 DMG 字段 | 值 |
+| --- | --- |
+| 文件 | release/VaultDesk-1.2.4-arm64.dmg |
+| 大小 | 124,621,660 字节（约 118.8 MiB） |
+| SHA-256 | 78c1791b5e3a7ff415d4ad915a4c98d8551a4925bea21ea5d3d9e098cdfa4e33 |
+| app.asar SHA-256 | 7be035aa82ae992c1ac3bc4626937077d65452adc96112f5817dabbf386125fe |
+| 内置技能 SHA-256 | bf3a0e9fc9710067433b51ade7bf13fae858e998bfc484477792957b2d035cec |
+| 签名与公证 | Ad-hoc 签名，严格校验通过；未公证 |
+
 # v1.2.3 发布 QA 记录
 
 > 日期：2026-10-30。v1.2.3 已完成本地测试、DMG 验收、正式应用替换、GitHub CI 和公开发布回下载核对。

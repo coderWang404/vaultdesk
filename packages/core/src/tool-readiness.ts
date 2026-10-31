@@ -43,14 +43,18 @@ const TRUSTED_SYSTEM_DIRS = ["/usr/bin", "/opt/homebrew/bin", "/usr/local/bin"];
 
 function trustedPythonDirs(): string[] {
   const home = os.homedir();
-  const condaDirs = [path.join(home, "miniconda3", "bin"), path.join(home, "anaconda3", "bin")];
+  // Desktop apps can inherit a stale PATH from Finder. Keep Miniconda base
+  // deterministic and ahead of system Python for app readiness checks.
+  const preferredCondaDirs = [path.join(home, "miniconda3", "bin")];
+  const otherCondaDirs = [path.join(home, "anaconda3", "bin")];
+  const condaDirs = [...preferredCondaDirs, ...otherCondaDirs];
   const pyenvRoot = path.join(home, ".pyenv", "versions");
   const fromPath = (process.env.PATH ?? "").split(path.delimiter).filter((dir) =>
     path.isAbsolute(dir) && dir === path.resolve(dir) &&
     (TRUSTED_SYSTEM_DIRS.includes(dir) || condaDirs.includes(dir) ||
       (path.basename(dir) === "bin" && path.dirname(path.dirname(dir)) === pyenvRoot &&
         /^\d+\.\d+\.\d+$/.test(path.basename(path.dirname(dir))))));
-  return [...new Set([...fromPath, ...TRUSTED_SYSTEM_DIRS])];
+  return [...new Set([...preferredCondaDirs, ...otherCondaDirs, ...fromPath, ...TRUSTED_SYSTEM_DIRS])];
 }
 
 function executablePath(value: string): string | null {

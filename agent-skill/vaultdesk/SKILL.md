@@ -93,6 +93,7 @@ Steps:
 2. Read `homepage`, `docs`, `install`, `run`, `requirements`, `related_skills`, and declared `checks`. Prefer the official page and the agent's current rules over the recorded command.
 3. Use `tool verify <name> [--profile <workflow>] --json` when the user wants a runtime readiness check. It checks only the declared environment and does not install dependencies, configure an agent, or prove an end-to-end workflow. No `checks` means unconfigured, not ready.
    For an isolated Python environment, pass `--python <absolute-path>` and make the actual skill commands use that same interpreter or its `bin` directory on `PATH`; a successful override does not change the agent environment.
+   When no override is supplied, VaultDesk prefers the user's `~/miniconda3/bin` base interpreter before system Python, Homebrew Python, other Conda installs, or pyenv. The report always includes the exact interpreter path and version that was checked.
    For a Node tool, pass `--node <absolute-path>` only when the trusted default search does not match the agent's Node. A passing version check does not prove the tool's CLI, MCP service, or agent registration is present.
 4. Check requirements first. Ask before running any install or run command; do not assume the recorded version is still current.
 5. Do not write the tool's config, credentials, or installed state back into the vault.

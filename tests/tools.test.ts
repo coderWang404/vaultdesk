@@ -555,7 +555,7 @@ describe("tool readiness", () => {
   });
 
   it.skipIf(!fs.existsSync(path.join(os.homedir(), "miniconda3/bin/python3")))(
-    "respects trusted Conda versus system Python PATH priority", async () => {
+    "prefers the Miniconda base Python regardless of system PATH order", async () => {
       const vaultPath = copyFixture("v2-basic");
       writeToolCard(vaultPath, { ...baseCard, checks: [
         { id: "python", kind: "python", label: "Python", executable: "python3", min_version: "3.10" },
@@ -567,14 +567,18 @@ describe("tool readiness", () => {
       try {
         process.env.PATH = condaDir + path.delimiter + "/usr/bin";
         condaReport = await verifyToolReadiness(vaultPath, "demo-tool");
-        process.env.PATH = "/usr/bin" + path.delimiter + condaDir;
+        process.env.PATH = "/usr/bin";
         systemReport = await verifyToolReadiness(vaultPath, "demo-tool");
       } finally {
         if (previousPath === undefined) delete process.env.PATH;
         else process.env.PATH = previousPath;
       }
       expect(condaReport.pythonPath).toContain("miniconda3/bin/python3");
-      expect(systemReport.pythonPath).toContain("CommandLineTools/usr/bin/python3");
+      expect(systemReport.pythonPath).toContain("miniconda3/bin/python3");
+      const overridden = await verifyToolReadiness(vaultPath, "demo-tool", { pythonPath: "/usr/bin/python3" });
+      const systemPython = spawnSync("/usr/bin/python3", ["-I", "-c", "import sys; print(sys.executable)"], { encoding: "utf8" });
+      expect(systemPython.status).toBe(0);
+      expect(overridden.pythonPath).toBe(systemPython.stdout.trim());
     });
 
   it("distinguishes a card without checks from a ready environment", async () => {

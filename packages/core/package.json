@@ -1,6 +1,6 @@
 {
   "name": "@vaultdesk/core",
-  "version": "1.2.3",
+  "version": "1.2.4",
   "private": true,
   "type": "module",
   "main": "./dist/index.js",

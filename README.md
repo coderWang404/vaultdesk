@@ -18,7 +18,7 @@
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-Apache--2.0-blue.svg" alt="License: Apache-2.0"></a>
   <img src="https://img.shields.io/badge/platform-macOS%2013%2B-lightgrey.svg" alt="Platform: macOS 13+">
   <img src="https://img.shields.io/badge/node-22%2B-339933.svg" alt="Node.js 22+">
-  <img src="https://img.shields.io/badge/version-1.2.3-brightgreen.svg" alt="Version 1.2.3">
+  <img src="https://img.shields.io/badge/version-1.2.4-brightgreen.svg" alt="Version 1.2.4">
 </p>
 
 <p align="center">
@@ -26,7 +26,7 @@
 </p>
 
 > [!NOTE]
-> VaultDesk 1.2.3 is available as an Apple Silicon DMG from [GitHub Releases](https://github.com/coderWang404/vaultdesk/releases/tag/v1.2.3). The build is ad-hoc signed and is not notarized. There is no Homebrew formula or npm package yet.
+> VaultDesk 1.2.4 is available as an Apple Silicon DMG from [GitHub Releases](https://github.com/coderWang404/vaultdesk/releases/tag/v1.2.4). The build is ad-hoc signed and is not notarized. There is no Homebrew formula or npm package yet.
 
 ## Contents
 
@@ -110,7 +110,7 @@ Both screenshots use a demo vault built from the public fixtures. No personal sk
 - **Build:** Node.js 22+, pnpm 11.5.2, Git on `PATH`
 - **CLI:** Node.js 22+; CI also builds and tests on Ubuntu
 
-Download the Apple Silicon desktop DMG from [GitHub Releases](https://github.com/coderWang404/vaultdesk/releases/tag/v1.2.3). The CLI is not on npm; build it from this repository. Intel users can build the desktop app from source.
+Download the Apple Silicon desktop DMG from [GitHub Releases](https://github.com/coderWang404/vaultdesk/releases/tag/v1.2.4). The CLI is not on npm; build it from this repository. Intel users can build the desktop app from source.
 
 ### Desktop from source
 
@@ -126,7 +126,7 @@ To package an ad-hoc signed DMG:
 
 ```bash
 pnpm package:mac
-# release/VaultDesk-1.2.3-<arch>.dmg
+# release/VaultDesk-1.2.4-<arch>.dmg
 ```
 
 The build is ad-hoc signed and not notarized. On first launch, right-click the app and choose **Open**, or allow it in **System Settings → Privacy & Security**.
@@ -306,7 +306,7 @@ checks:
       - { min_version: "26.12.1" }
 ```
 
-Verification never executes `install` or `run` entries. A tool card can name `python3` or a versioned Python command; it cannot supply an executable path. Those names follow PATH priority only among approved system, Homebrew, Conda, and versioned pyenv directories; arbitrary project directories are ignored. Only an explicit `--python` or app selection accepts an absolute native Python path. A Node.js check supplies version intervals, not a command; it checks a native `node` from system/Homebrew or scans installed standard nvm versions for the highest compatible one, even when Finder launches the app without an nvm PATH. An explicit `--node` override covers other installations. Python and Node checks use fixed arguments, a minimal environment without preload variables, asynchronous subprocesses, a three-check concurrency limit, a whole-verification timeout, and bounded output; scripts and arbitrary interpreter commands are rejected. Path checks require an absolute path or `~/`, while file-hash checks reject symlinks and stay inside the vault. Environment-variable checks report existence only, never the value. VaultDesk still does not install dependencies, register MCP servers, or prove that an agent can complete a workflow; run an end-to-end task for that final claim.
+Verification never executes `install` or `run` entries. A tool card can name `python3` or a versioned Python command; it cannot supply an executable path. Those names search approved locations in a deterministic order: the user's `~/miniconda3/bin` base environment first, then `~/anaconda3/bin`, then other trusted directories in PATH order, followed by system-directory fallbacks. Arbitrary project directories are ignored. Only an explicit `--python` or app selection accepts an absolute native Python path. A Node.js check supplies version intervals, not a command; it checks a native `node` from system/Homebrew or scans installed standard nvm versions for the highest compatible one, even when Finder launches the app without an nvm PATH. An explicit `--node` override covers other installations. Python and Node checks use fixed arguments, a minimal environment without preload variables, asynchronous subprocesses, a three-check concurrency limit, a whole-verification timeout, and bounded output; scripts and arbitrary interpreter commands are rejected. Path checks require an absolute path or `~/`, while file-hash checks reject symlinks and stay inside the vault. Environment-variable checks report existence only, never the value. VaultDesk still does not install dependencies, register MCP servers, or prove that an agent can complete a workflow; run an end-to-end task for that final claim.
 
 VaultDesk does not check the recorded upstream version for updates, does not start or health-check an MCP server, and does not write MCP configuration into any agent. Never put tokens, keys, or private URLs in a card.
 
@@ -475,15 +475,15 @@ Release QA results are recorded in [docs/QA-CURRENT.md](docs/QA-CURRENT.md); [do
 
 | Area | State |
 | --- | --- |
-| Desktop app and CLI | 1.2.3; Apple Silicon DMG published, CLI available from source |
-| Tool cards and MCP view | Runtime checks and cross-category MCP discovery in v1.2.3 |
+| Desktop app and CLI | 1.2.4; Apple Silicon DMG published, CLI available from source |
+| Tool cards and MCP view | Runtime checks and cross-category MCP discovery in v1.2.3; Miniconda base is the preferred Python for runtime checks in v1.2.4 |
 | External skill records | Included in v1.2.0 |
 | DMG | Apple Silicon release; ad-hoc signed, not notarized |
 | GitHub Release / Homebrew / npm | GitHub Release published; Homebrew and npm not published |
 | Automatic source sync | Available in the installed macOS app; per-source auto/review/pause controls |
-| Windows and Linux desktop | Not included in v1.2.3 |
+| Windows and Linux desktop | Not included in v1.2.4 |
 
-The desktop app is macOS-only at 1.2.3. The CLI is tested on macOS and Ubuntu.
+The desktop app is macOS-only at 1.2.4. The CLI is tested on macOS and Ubuntu.
 
 ## Contributing
 

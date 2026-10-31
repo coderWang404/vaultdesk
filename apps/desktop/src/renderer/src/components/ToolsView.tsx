@@ -211,7 +211,7 @@ export function ToolsView({
                       type="text"
                       value={interpreters[selectionKey] ?? ""}
                       onChange={(event) => setInterpreters((current) => ({ ...current, [selectionKey]: event.target.value }))}
-                      placeholder="留空使用卡内解释器；或填入 venv/bin/python 的绝对路径"
+                      placeholder="留空优先使用 Miniconda base；或填入绝对路径覆盖"
                       aria-label={tool.title + " Python 解释器绝对路径"}
                       spellCheck={false}
                     />

@@ -1,6 +1,6 @@
 # VaultDesk v1.2.4 release
 
-Status: local verification completed on 2026-10-31. Publication and installed-app verification are pending.
+Status: published and installed on 2026-10-31. GitHub CI run 41156645007 passed all three jobs; the downloaded public DMG matches the locally tested artifact.
 
 ## v1.2.4 artifact
 
@@ -19,7 +19,7 @@ Status: local verification completed on 2026-10-31. Publication and installed-ap
 
 Python readiness checks prefer the user's Miniconda base interpreter in ~/miniconda3/bin, even when Finder supplies a system-only PATH. Explicit Python paths still override this default. The desktop hint and agent skill explain the choice; checks do not change the agent's PATH or replace Apple's Command Line Tools Python.
 
-Type checking and all 154 tests in 26 files passed. CLI and all 19 desktop end-to-end scenarios passed, including accessibility. Regression coverage verifies a PATH without Conda and an explicit system-Python override. The mounted-DMG test passed signature, launch, edit, and persistence checks.
+Type checking and all 154 tests in 26 files passed. CLI and all 19 desktop end-to-end scenarios passed, including accessibility. Regression coverage verifies a PATH without Conda and an explicit system-Python override. The mounted-DMG test passed signature, launch, edit, and persistence checks. The installed app is 1.2.4 with one GUI and one headless worker; its app.asar and bundled skill hashes match the tested bundle. The public release is https://github.com/coderWang404/vaultdesk/releases/tag/v1.2.4.
 
 # VaultDesk v1.2.3 release
 

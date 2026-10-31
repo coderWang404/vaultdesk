@@ -1,6 +1,6 @@
 # v1.2.4 发布 QA 记录
 
-> 日期：2026-10-31。类型检查、全量测试、CLI/桌面及 DMG 验收通过；正式安装替换、GitHub CI 和公开发布尚待完成。
+> 日期：2026-10-31。v1.2.4 已完成本地测试、DMG 验收、正式应用替换、GitHub CI、公开发布和回下载核对。
 
 | 检查 | 状态 | 证据或备注 |
 | --- | --- | --- |
@@ -8,8 +8,8 @@
 | CLI 与桌面 E2E | 通过 | CLI 全场景；桌面 19/19 场景，axe 扫描零违规 |
 | DMG 安装验证 | 通过 | hdiutil、严格签名、应用启动、编辑持久化 |
 | Python 默认选择 | 通过 | Finder 式 PATH 不含 Conda 时优先 Miniconda base 3.13.11；显式系统 Python 路径可覆盖 |
-| /Applications、后台服务 | 待完成 | 安装后核对版本、哈希与单 GUI/worker |
-| GitHub CI 与公开 Release | 待完成 | 发布后回下载核对 SHA-256 |
+| /Applications、后台服务 | 通过 | 版本 1.2.4；app.asar、内置技能哈希匹配构建产物；LaunchAgent 1.2.4；一个 GUI 和一个无 Dock worker |
+| GitHub CI 与公开 Release | 通过 | 标签指向 6b04502；运行 41156645007 三项成功；公开 Release https://github.com/coderWang404/vaultdesk/releases/tag/v1.2.4；回下载 DMG 与本地字节一致 |
 
 | v1.2.4 DMG 字段 | 值 |
 | --- | --- |

@@ -11,7 +11,7 @@ Date: 2026-10-31. Scope: agent discovery, installation guidance, source ownershi
 | MCP, CLI, app, or external plugin tool card | Official installation/run instructions, capabilities, related skills, declared runtime profiles | Official package manager or tool updater | `tool verify` checks declared prerequisites; registration, connection and end-to-end use need agent evidence |
 | Tool-owned external skill | Owner/path/tool association and read-only observation | Owning tool | Pinned or observed hash; VaultDesk does not write its files |
 
-The catalog is a registry view, not a scan of every tool installed on the computer. MCP clients must explicitly register `vaultdesk mcp serve`; CLI-based agents can use the bundled VaultDesk skill and `agent catalog --json`. The desktop DMG does not independently install a global CLI command; the documented source-built CLI remains necessary for that command.
+The catalog is a registry view, not a scan of every tool installed on the computer. MCP clients must explicitly register `vaultdesk mcp serve`; CLI-based agents can use the bundled VaultDesk skill and `agent catalog --json`. The desktop DMG includes the CLI and Settings can install a guarded `~/.local/bin/vaultdesk` launcher that uses the app's bundled Node runtime, so a source checkout or separate Node installation is not required. The launcher does not silently overwrite an unmanaged or manually edited file, and copying the MCP JSON still requires the client to register it explicitly.
 
 ## Defects addressed
 

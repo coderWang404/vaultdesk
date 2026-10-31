@@ -1,6 +1,6 @@
 {
   "name": "@coderWang404/vaultdesk",
-  "version": "1.2.6",
+  "version": "1.2.7",
   "description": "Local-first skill and plugin vault manager for macOS",
   "license": "Apache-2.0",
   "author": "coderWang404",
@@ -20,7 +20,7 @@
     "node": ">=22"
   },
   "scripts": {
-    "build": "tsup && node scripts/copy-agent-skill.mjs",
+    "build": "tsup && tsup --config tsup.bundle.config.ts && node scripts/copy-bundled-cli.mjs && node scripts/copy-agent-skill.mjs",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {

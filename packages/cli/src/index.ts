@@ -85,6 +85,8 @@ import {
 import { toolKindSchema } from "@vaultdesk/schema";
 import { serveVaultDeskMcp } from "./mcp-server.js";
 
+declare const __VAULTDESK_VERSION__: string;
+
 const VALUE_FLAGS = new Set([
   "vault",
   "name",
@@ -234,11 +236,12 @@ function hasFlag(parsed: Parsed, name: string): boolean {
 }
 
 function version(): string {
+  if (typeof __VAULTDESK_VERSION__ === "string") return __VAULTDESK_VERSION__;
   try {
     const pkg = JSON.parse(fs.readFileSync(new URL("../package.json", import.meta.url), "utf8")) as { version?: string };
-    return pkg.version ?? "1.2.6";
+    return pkg.version ?? "1.2.7";
   } catch {
-    return "1.2.6";
+    return "1.2.7";
   }
 }
 

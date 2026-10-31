@@ -25,6 +25,15 @@ interface BackgroundStatus {
   installed: boolean;
   loaded: boolean;
 }
+interface CliStatus {
+  available: boolean;
+  installed: boolean;
+  launcherPath: string;
+  bundlePath?: string;
+  managed: boolean;
+  conflict: boolean;
+  detail: string;
+}
 const activityLabels: Record<ActivityStatus, string> = {
   updated: "已更新",
   current: "最新",
@@ -66,6 +75,10 @@ export function SettingsView({
   const [retentionDays, setRetentionDays] = useState(String(settings.backupRetentionDays));
   const [backupRoot, setBackupRoot] = useState(settings.backupRoot ?? "");
   const [background, setBackground] = useState<BackgroundStatus | null>(null);
+  const [cli, setCli] = useState<CliStatus | null>(null);
+  const [cliError, setCliError] = useState<string | null>(null);
+  const [installingCli, setInstallingCli] = useState(false);
+  const [cliNotice, setCliNotice] = useState<string | null>(null);
   const [activity, setActivity] = useState<AutoSyncActivity[]>([]);
   const [activityError, setActivityError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
@@ -98,17 +111,24 @@ export function SettingsView({
   useEffect(() => {
     let cancelled = false;
     const refresh = async (): Promise<void> => {
-      const [status, log] = await Promise.allSettled([
+      const [backgroundResult, cliResult, activityResult] = await Promise.allSettled([
         call<BackgroundStatus>("app.backgroundStatus", {}),
+        call<CliStatus>("app.cliStatus", {}),
         call<AutoSyncActivity[]>("app.autoSyncActivity", { limit: 30 }),
       ]);
       if (cancelled) return;
-      if (status.status === "fulfilled") setBackground(status.value);
-      if (log.status === "fulfilled") {
-        setActivity(log.value);
+      if (backgroundResult.status === "fulfilled") setBackground(backgroundResult.value);
+      if (cliResult.status === "fulfilled") {
+        setCli(cliResult.value);
+        setCliError(null);
+      } else {
+        setCliError(errorMessage(cliResult.reason));
+      }
+      if (activityResult.status === "fulfilled") {
+        setActivity(activityResult.value);
         setActivityError(null);
       } else {
-        setActivityError(errorMessage(log.reason));
+        setActivityError(errorMessage(activityResult.reason));
       }
     };
     void refresh();
@@ -122,6 +142,31 @@ export function SettingsView({
       defaultPath: backupRoot || undefined,
     });
     if (selected) setBackupRoot(selected);
+  }
+
+  async function installCli(): Promise<void> {
+    setInstallingCli(true);
+    setCliNotice(null);
+    try {
+      const installed = await call<CliStatus>("app.installCli", { confirm: true });
+      setCli(installed);
+      setCliNotice(`已安装到 ${installed.launcherPath}`);
+    } catch (error) {
+      onError(errorMessage(error));
+    } finally {
+      setInstallingCli(false);
+    }
+  }
+
+  async function copyMcpConfig(): Promise<void> {
+    if (!cli?.installed) return;
+    try {
+      const { config } = await call<{ config: string }>("app.mcpClientConfig", { vaultPath: vault.path });
+      await call("app.copyText", { text: config });
+      setCliNotice("已复制 MCP JSON 配置，已指定当前 Vault。请按目标 agent 的配置格式登记。");
+    } catch (error) {
+      onError(errorMessage(error));
+    }
   }
 
   async function save(): Promise<void> {
@@ -425,6 +470,35 @@ export function SettingsView({
             </p>
           </>
         ) : null}
+      </section>
+
+      <section className="panel agent-skill-panel" aria-labelledby="cli-heading">
+        <div className="panel-head">
+          <div>
+            <span className="eyebrow">AI 连接</span>
+            <h2 id="cli-heading">命令行与 MCP</h2>
+            <p>把 VaultDesk 的目录查询能力交给支持 MCP 的 agent。</p>
+          </div>
+          <StatusPill tone={cli?.conflict ? "warn" : cli?.installed ? "ok" : cli?.available ? "accent" : "muted"}>
+            {cli?.conflict ? "路径冲突" : cli?.installed ? "启动器已安装" : cli?.available ? "可安装" : "不可用"}
+          </StatusPill>
+        </div>
+        <p className="agent-skill-description">
+          {cliError ?? cli?.detail ?? "正在检查应用内置命令行工具。"}
+          {cli?.installed ? ` 路径：${cli.launcherPath}` : ""}
+        </p>
+        <div className="about-links">
+          <Button size="sm" variant="quiet" icon="terminal" loading={installingCli} disabled={!cli?.available || cli.conflict} onClick={() => void installCli()}>
+            {cli?.installed ? "更新命令行工具" : "安装命令行工具"}
+          </Button>
+          <Button size="sm" variant="quiet" icon="copy" disabled={!cli?.installed} onClick={() => void copyMcpConfig()}>
+            复制 MCP 配置
+          </Button>
+        </div>
+        {cliNotice ? <p className="agent-skill-hint" role="status">{cliNotice}</p> : null}
+        <p className="agent-skill-hint">
+          MCP 配置使用绝对命令路径，不依赖 agent 的 PATH。请在目标 agent 中登记并验证连接；不同客户端的配置格式可能不同。终端若找不到 <span className="mono">vaultdesk</span>，请使用上方完整路径，或将 <span className="mono">~/.local/bin</span> 加入 PATH。
+        </p>
       </section>
 
       <section className="panel about-panel">

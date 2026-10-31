@@ -1,4 +1,5 @@
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import { spawn } from "node:child_process";
 import { pathToFileURL } from "node:url";
@@ -85,6 +86,8 @@ function registerIpc(): void {
       const data = await runCommand(command, parsed.data.payload, {
         version: app.getVersion(),
         agentSkillDir: resolveAgentSkillDir(),
+        cliBundlePath: resolveCliBundlePath(),
+        appExecutable: process.execPath,
       });
       return { ok: true, data, warnings: warningsOf(data) };
     } catch (error) {
@@ -116,6 +119,14 @@ function registerIpc(): void {
       : await dialog.showOpenDialog(dialogOptions);
     return result.canceled ? null : result.filePaths[0] ?? null;
   });
+}
+
+function resolveCliBundlePath(): string | undefined {
+  if (!app.isPackaged) return undefined;
+  const appPath = path.dirname(path.dirname(path.dirname(process.execPath)));
+  if (!["/Applications", path.join(os.homedir(), "Applications")].includes(path.dirname(appPath))) return undefined;
+  const candidate = path.join(process.resourcesPath, "cli", "vaultdesk.cjs");
+  return fs.existsSync(candidate) ? candidate : undefined;
 }
 
 function hardenWebContents(window: BrowserWindow): void {

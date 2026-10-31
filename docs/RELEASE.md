@@ -1,3 +1,17 @@
+# VaultDesk v1.2.7 release
+
+Status: release verification in progress on 2026-10-31. This patch adds a standalone CLI/MCP bundle to the DMG and a guarded Settings installer for `~/.local/bin/vaultdesk`; it does not change Vault ownership or agent activation boundaries.
+
+The packaged `Resources/cli/vaultdesk.cjs` contains the CLI's workspace dependencies and runs through Electron's bundled Node runtime with `ELECTRON_RUN_AS_NODE=1`. The installer refuses unknown, symlinked, or edited launchers and clears common Node/dynamic-library injection variables. Settings can copy an absolute-path MCP configuration for the selected Vault; the agent still registers and verifies that configuration itself.
+
+Local validation: typecheck, 174 tests, launcher/MCP regression tests, CLI and desktop E2E, and the mounted-DMG CLI/MCP smoke all passed. The DMG test runs without the source checkout, `node_modules`, or a system Node path. The release-specific artifact, CI run, installed app version, and hashes will be recorded below after publication.
+
+| Field | Value |
+| --- | --- |
+| Planned tag | v1.2.7 |
+| Platform | macOS Apple Silicon |
+| Signing | Ad-hoc, not notarized |
+
 # VaultDesk v1.2.6 release
 
 Status: published and installed on 2026-10-31. Release tag v1.2.6 points to 4515ca5093ffd92769063a35a0f4d12b3f1e4ad8. CI 41173511182 passed all three jobs; the public DMG download matched the locally tested artifact byte for byte.

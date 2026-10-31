@@ -10,6 +10,10 @@ files:
 extraResources:
   - from: ../../agent-skill
     to: agent-skill
+  - from: ../../packages/cli/dist/vaultdesk.cjs
+    to: cli/vaultdesk.cjs
+  - from: ../../packages/cli/dist/agent-skill
+    to: cli/agent-skill
 asar: true
 electronDist: node_modules/electron/dist
 mac:

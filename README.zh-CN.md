@@ -18,7 +18,7 @@
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-Apache--2.0-blue.svg" alt="许可证：Apache-2.0"></a>
   <img src="https://img.shields.io/badge/platform-macOS%2013%2B-lightgrey.svg" alt="平台：macOS 13+">
   <img src="https://img.shields.io/badge/node-22%2B-339933.svg" alt="Node.js 22+">
-  <img src="https://img.shields.io/badge/version-1.2.6-brightgreen.svg" alt="版本 1.2.6">
+  <img src="https://img.shields.io/badge/version-1.2.7-brightgreen.svg" alt="版本 1.2.7">
 </p>
 
 <p align="center">
@@ -26,7 +26,7 @@
 </p>
 
 > [!NOTE]
-> VaultDesk 1.2.6 已在 [GitHub Releases](https://github.com/coderWang404/vaultdesk/releases/tag/v1.2.6) 提供 Apple Silicon DMG。构建采用 ad-hoc 签名，未公证；目前没有 Homebrew formula 或 npm 包。
+> VaultDesk 1.2.7 已在 [GitHub Releases](https://github.com/coderWang404/vaultdesk/releases/tag/v1.2.7) 提供 Apple Silicon DMG。构建采用 ad-hoc 签名，未公证；CLI 随应用内置，不依赖源码目录或额外 Node.js。
 
 ## 目录
 
@@ -123,7 +123,7 @@ VaultDesk 面向同时使用多个编码 agent、并且维护自己技能库的�
 - **构建：** Node.js 22+、pnpm 11.5.2、`PATH` 中可用的 Git
 - **CLI：** Node.js 22+；CI 也会在 Ubuntu 上构建和测试
 
-Apple Silicon 桌面版可从 [GitHub Releases](https://github.com/coderWang404/vaultdesk/releases/tag/v1.2.6) 下载。CLI 尚未发布到 npm，需要从本仓库构建；Intel 用户也可从源码构建桌面版。
+Apple Silicon 桌面版可从 [GitHub Releases](https://github.com/coderWang404/vaultdesk/releases/tag/v1.2.7) 下载。首次打开后，在“设置 → 命令行与 MCP”点击“安装命令行工具”；它会把随应用提供的 CLI 安全安装到 `~/.local/bin/vaultdesk`。Intel 用户也可从源码构建桌面版。
 
 ### 从源码运行桌面应用
 
@@ -139,20 +139,19 @@ pnpm dev
 
 ```bash
 pnpm package:mac
-# release/VaultDesk-1.2.6-<arch>.dmg
+# release/VaultDesk-1.2.7-<arch>.dmg
 ```
 
 构建产物使用 ad-hoc 签名，没有公证。第一次启动时右键点击应用并选择 **打开**，或者在 **系统设置 → 隐私与安全性** 中放行。
 
-### 从源码安装 CLI
+### 从源码使用 CLI
 
 ```bash
 pnpm build:packages
-ln -sf "$PWD/packages/cli/dist/index.js" ~/.local/bin/vaultdesk
-vaultdesk --help
+node packages/cli/dist/index.js --help
 ```
 
-确认 `~/.local/bin` 在 `PATH` 中。也可以直接用 `node packages/cli/dist/index.js ...` 运行 CLI。
+源码模式需要 Node.js 22+。正式 DMG 的 CLI 不需要这一步，使用应用设置中的安装按钮即可。
 
 ## 快速开始
 
@@ -485,15 +484,15 @@ CI 会运行类型检查、单元与集成测试，并在 macOS 和 Ubuntu 上�
 
 | 范围 | 状态 |
 | --- | --- |
-| 桌面应用与 CLI | 1.2.6；Apple Silicon DMG 已发布，CLI 可从源码使用 |
+| 桌面应用与 CLI | 1.2.7；Apple Silicon DMG 已发布，CLI 随应用提供并可从设置安装 |
 | 工具卡与 MCP 页面 | v1.2.3 加入运行环境检查和跨类别 MCP 展示；v1.2.4 默认优先使用 Miniconda base；v1.2.5 增加 agent catalog 与只读 MCP 发现入口 |
 | 外部技能记录 | 已包含在 v1.2.0 |
 | DMG | Apple Silicon 版本已发布，ad-hoc 签名，未公证 |
 | GitHub Release / Homebrew / npm | GitHub Release 已发布；Homebrew 与 npm 未发布 |
 | 来源自动同步 | 已在 macOS 安装版提供，支持逐来源自动/审核/暂停 |
-| Windows 与 Linux 桌面端 | v1.2.6 未包含 |
+| Windows 与 Linux 桌面端 | v1.2.7 未包含 |
 
-桌面应用在 1.2.6 只支持 macOS。CLI 已在 macOS 和 Ubuntu 上测试。
+桌面应用在 1.2.7 只支持 macOS。源码 CLI 已在 macOS 和 Ubuntu 上测试；DMG 内置 CLI 使用 Electron 自带 Node 运行时。
 
 ## 参与贡献
 

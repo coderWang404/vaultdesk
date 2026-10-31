@@ -18,7 +18,7 @@
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-Apache--2.0-blue.svg" alt="License: Apache-2.0"></a>
   <img src="https://img.shields.io/badge/platform-macOS%2013%2B-lightgrey.svg" alt="Platform: macOS 13+">
   <img src="https://img.shields.io/badge/node-22%2B-339933.svg" alt="Node.js 22+">
-  <img src="https://img.shields.io/badge/version-1.2.6-brightgreen.svg" alt="Version 1.2.6">
+  <img src="https://img.shields.io/badge/version-1.2.7-brightgreen.svg" alt="Version 1.2.7">
 </p>
 
 <p align="center">
@@ -26,7 +26,7 @@
 </p>
 
 > [!NOTE]
-> VaultDesk 1.2.6 is available as an Apple Silicon DMG from [GitHub Releases](https://github.com/coderWang404/vaultdesk/releases/tag/v1.2.6). The build is ad-hoc signed and is not notarized. There is no Homebrew formula or npm package yet.
+> VaultDesk 1.2.7 is available as an Apple Silicon DMG from [GitHub Releases](https://github.com/coderWang404/vaultdesk/releases/tag/v1.2.7). The build is ad-hoc signed and is not notarized. The CLI is bundled with the app and does not depend on a source checkout or a separate Node.js installation.
 
 ## Contents
 
@@ -123,7 +123,7 @@ Both screenshots use a demo vault built from the public fixtures. No personal sk
 - **Build:** Node.js 22+, pnpm 11.5.2, Git on `PATH`
 - **CLI:** Node.js 22+; CI also builds and tests on Ubuntu
 
-Download the Apple Silicon desktop DMG from [GitHub Releases](https://github.com/coderWang404/vaultdesk/releases/tag/v1.2.6). The CLI is not on npm; build it from this repository. Intel users can build the desktop app from source.
+Download the Apple Silicon desktop DMG from [GitHub Releases](https://github.com/coderWang404/vaultdesk/releases/tag/v1.2.7). After opening it, use **Settings → Command line and MCP → Install command-line tool**. The bundled CLI is installed safely at `~/.local/bin/vaultdesk`; it does not require the source repository or a separate Node.js runtime. Intel users can build the desktop app from source.
 
 ### Desktop from source
 
@@ -139,7 +139,7 @@ To package an ad-hoc signed DMG:
 
 ```bash
 pnpm package:mac
-# release/VaultDesk-1.2.6-<arch>.dmg
+# release/VaultDesk-1.2.7-<arch>.dmg
 ```
 
 The build is ad-hoc signed and not notarized. On first launch, right-click the app and choose **Open**, or allow it in **System Settings → Privacy & Security**.
@@ -148,11 +148,10 @@ The build is ad-hoc signed and not notarized. On first launch, right-click the a
 
 ```bash
 pnpm build:packages
-ln -sf "$PWD/packages/cli/dist/index.js" ~/.local/bin/vaultdesk
-vaultdesk --help
+node packages/cli/dist/index.js --help
 ```
 
-Make sure `~/.local/bin` is on your `PATH`. You can also run the CLI directly with `node packages/cli/dist/index.js ...`.
+Source mode requires Node.js 22+. The released DMG uses Electron's bundled Node runtime; install its launcher from the app settings instead of linking into a source checkout.
 
 ## Quick start
 
@@ -494,15 +493,15 @@ Release QA results are recorded in [docs/QA-CURRENT.md](docs/QA-CURRENT.md); [do
 
 | Area | State |
 | --- | --- |
-| Desktop app and CLI | 1.2.6; Apple Silicon DMG published, CLI available from source |
+| Desktop app and CLI | 1.2.7; Apple Silicon DMG published, CLI bundled and installable from Settings |
 | Tool cards and MCP view | Runtime checks and cross-category MCP discovery in v1.2.3; Miniconda base is the preferred Python in v1.2.4; agent catalog and read-only MCP discovery in v1.2.5 |
 | External skill records | Included in v1.2.0 |
 | DMG | Apple Silicon release; ad-hoc signed, not notarized |
 | GitHub Release / Homebrew / npm | GitHub Release published; Homebrew and npm not published |
 | Automatic source sync | Available in the installed macOS app; per-source auto/review/pause controls |
-| Windows and Linux desktop | Not included in v1.2.6 |
+| Windows and Linux desktop | Not included in v1.2.7 |
 
-The desktop app is macOS-only at 1.2.6. The CLI is tested on macOS and Ubuntu.
+The desktop app is macOS-only at 1.2.7. The source CLI is tested on macOS and Ubuntu; the DMG CLI uses Electron's bundled Node runtime.
 
 ## Contributing
 

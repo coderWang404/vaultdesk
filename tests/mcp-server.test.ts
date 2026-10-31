@@ -1,6 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
-import { spawn } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import { createRequire } from "node:module";
 import { describe, expect, it } from "vitest";
 import { copyFixture, repoRoot, snapshotTree, tempDir } from "./helpers.js";
@@ -149,10 +149,24 @@ describe("VaultDesk MCP server", () => {
 
   it("speaks MCP JSON-RPC over the real CLI stdio transport", async () => {
     const vault = copyFixture("v2-basic");
-    const child = spawn(process.execPath, [path.join(repoRoot, "packages/cli/dist/index.js"), "mcp", "serve", "--vault", vault], {
-      cwd: repoRoot,
+    const runtime = tempDir("mcp-bundled-cli");
+    const cli = path.join(runtime, "vaultdesk.cjs");
+    fs.copyFileSync(path.join(repoRoot, "packages/cli/dist/vaultdesk.cjs"), cli);
+    fs.chmodSync(cli, 0o755);
+    fs.cpSync(path.join(repoRoot, "packages/cli/dist/agent-skill"), path.join(runtime, "agent-skill"), { recursive: true });
+
+    const version = spawnSync(process.execPath, [cli, "--version"], {
+      cwd: runtime,
+      encoding: "utf8",
+      env: { ...process.env, NODE_PATH: "" },
+    });
+    expect(version.status).toBe(0);
+    expect(version.stdout.trim()).toMatch(/^\d+\.\d+\.\d+$/);
+
+    const child = spawn(process.execPath, [cli, "mcp", "serve", "--vault", vault], {
+      cwd: runtime,
       stdio: ["pipe", "pipe", "pipe"],
-      env: { ...process.env, NO_COLOR: "1" },
+      env: { ...process.env, NODE_PATH: "", NO_COLOR: "1" },
     });
     let buffer = "";
     const pending: Array<(line: string) => void> = [];

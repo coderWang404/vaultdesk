@@ -57,10 +57,13 @@ import { ipcCommands, type IpcCommand, type IpcPayload } from "@vaultdesk/schema
 import { addRecent, readRecents, removeRecent } from "./recents.js";
 import { readAutoSyncActivity, runAutoSyncAll } from "./background-sync.js";
 import { backgroundStatus, configureLaunchAgent } from "./launch-agent.js";
+import { cliStatus, installCli, mcpClientConfig } from "./cli-launcher.js";
 
 export interface CommandContext {
   version: string;
   agentSkillDir: string;
+  cliBundlePath?: string;
+  appExecutable: string;
 }
 
 type Handler<K extends IpcCommand> = (payload: IpcPayload<K>, context: CommandContext) => unknown;
@@ -267,6 +270,13 @@ const handlers: { [K in IpcCommand]: Handler<K> } = {
   "app.autoSyncNow": ({ vaultPath }) => runAutoSyncAll(vaultPath, "manual"),
   "app.autoSyncActivity": ({ limit }) => readAutoSyncActivity(limit),
   "app.backgroundStatus": () => backgroundStatus(),
+  "app.cliStatus": (_payload, context) => cliStatus(context),
+  "app.installCli": (_payload, context) => installCli(context),
+  "app.mcpClientConfig": ({ vaultPath }, context) => {
+    const status = cliStatus(context);
+    if (!status.installed) throw new VaultDeskError("conflict", "请先安装命令行工具，再复制 MCP 配置。");
+    return { config: mcpClientConfig(status.launcherPath, vaultPath) };
+  },
   "app.recents": () =>
     readRecents().map((entry) => ({ ...entry, exists: fs.existsSync(entry.path) })),
   "app.addRecent": ({ path: vaultPath }) => addRecent(vaultPath, path.basename(vaultPath)),

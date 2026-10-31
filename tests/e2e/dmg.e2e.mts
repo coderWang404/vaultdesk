@@ -1,6 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
-import { spawnSync } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import { _electron as electron, type ElectronApplication } from "playwright-core";
 import {
   assert,
@@ -82,6 +82,23 @@ function verifyBundle(): string {
   assert(fs.existsSync(agentSkill), "packaged agent skill resource is present");
   assert(read(agentSkill).includes("name: vaultdesk"), "packaged agent skill frontmatter");
 
+  const cli = path.join(appPath, "Contents/Resources/cli/vaultdesk.cjs");
+  assert(fs.existsSync(cli), "bundled standalone CLI resource is present");
+  const cliEnv = {
+    ...process.env,
+    ELECTRON_RUN_AS_NODE: "1",
+    PATH: "/usr/bin:/bin",
+    NODE_PATH: "",
+    NO_COLOR: "1",
+  };
+  const cliVersion = run(binary, [cli, "--version"], { cwd: path.dirname(cli), env: cliEnv });
+  equal(cliVersion.status, 0, `bundled CLI --version: ${cliVersion.stderr || cliVersion.stdout}`);
+  equal(cliVersion.stdout.trim(), version, "bundled CLI version");
+  const cliSkill = run(binary, [cli, "agent", "skill"], { cwd: path.dirname(cli), env: cliEnv });
+  equal(cliSkill.status, 0, `bundled CLI agent skill: ${cliSkill.stderr || cliSkill.stdout}`);
+  assert(cliSkill.stdout.includes("name: vaultdesk"), "bundled CLI reads its packaged agent skill");
+  console.log("      bundled CLI runs from DMG resources with only the Electron runtime");
+
   const signature = run("codesign", ["-dv", "--verbose=4", appPath]);
   const details = `${signature.stderr}${signature.stdout}`;
   const developerId = /Authority=Developer ID Application/.test(details);
@@ -111,6 +128,69 @@ function verifyBundle(): string {
   const quarantine = run("xattr", ["-p", "com.apple.quarantine", appPath]);
   assert(quarantine.status !== 0, "locally built app must not carry a quarantine flag");
   return appPath;
+}
+
+async function verifyBundledMcp(appPath: string, vaultPath: string): Promise<void> {
+  const cli = path.join(appPath, "Contents/Resources/cli/vaultdesk.cjs");
+  assert(workspace, "DMG MCP test workspace missing");
+  const child = spawn(path.join(appPath, "Contents/MacOS/VaultDesk"), [cli, "mcp", "serve", "--vault", vaultPath], {
+    cwd: path.dirname(cli),
+    stdio: ["pipe", "pipe", "pipe"],
+    env: {
+      ...process.env,
+      ELECTRON_RUN_AS_NODE: "1",
+      PATH: "/usr/bin:/bin",
+      NODE_PATH: "",
+      NO_COLOR: "1",
+      VAULTDESK_USER_DATA: workspace.userData,
+      VAULTDESK_SETTINGS_FILE: workspace.settingsFile,
+      VAULTDESK_CACHE_DIR: workspace.cache,
+      VAULTDESK_BACKUP_DIR: workspace.backups,
+      VAULTDESK_LOCK_DIR: workspace.locks,
+    },
+  });
+  let buffer = "";
+  const lines: string[] = [];
+  const waiters: Array<{ resolve: (line: string) => void; reject: (error: Error) => void }> = [];
+  child.stdout.on("data", (chunk: Buffer) => {
+    buffer += chunk.toString("utf8");
+    while (true) {
+      const index = buffer.indexOf("\n");
+      if (index < 0) break;
+      const line = buffer.slice(0, index);
+      buffer = buffer.slice(index + 1);
+      const waiter = waiters.shift();
+      if (waiter) waiter.resolve(line); else lines.push(line);
+    }
+  });
+  child.once("error", (error) => {
+    while (waiters.length > 0) waiters.shift()!.reject(error);
+  });
+  child.once("exit", (code, signal) => {
+    const error = new Error(`bundled MCP exited before response (code=${code ?? "null"}, signal=${signal ?? "null"})`);
+    while (waiters.length > 0) waiters.shift()!.reject(error);
+  });
+  const nextLine = (): Promise<string> => new Promise((resolve, reject) => {
+    const queued = lines.shift();
+    if (queued !== undefined) { resolve(queued); return; }
+    const timer = setTimeout(() => reject(new Error("bundled MCP response timed out")), 10_000);
+    waiters.push({ resolve: (line) => { clearTimeout(timer); resolve(line); }, reject });
+  });
+  const send = (message: Record<string, unknown>): void => child.stdin.write(`${JSON.stringify(message)}\n`);
+  try {
+    send({ jsonrpc: "2.0", id: 1, method: "initialize", params: { protocolVersion: "2025-06-18", capabilities: {}, clientInfo: { name: "dmg-e2e", version: "1.0.0" } } });
+    const initialized = JSON.parse(await nextLine()) as { id?: number };
+    equal(initialized.id, 1, "bundled MCP initialize");
+    send({ jsonrpc: "2.0", method: "notifications/initialized", params: {} });
+    send({ jsonrpc: "2.0", id: 2, method: "tools/list", params: {} });
+    const listed = JSON.parse(await nextLine()) as { id?: number; result?: { tools?: Array<{ name?: string }> } };
+    equal(listed.id, 2, "bundled MCP tools/list");
+    assert(listed.result?.tools?.some((tool) => tool.name === "vaultdesk_get_catalog"), "bundled MCP exposes catalog tool");
+    console.log("      bundled CLI MCP stdio tools/list passed without repository dependencies");
+  } finally {
+    child.kill("SIGTERM");
+    await new Promise<void>((resolve) => child.once("exit", () => resolve()));
+  }
 }
 
 async function exerciseApp(appPath: string): Promise<void> {
@@ -203,6 +283,7 @@ try {
   await verifyPackage();
   const appPath = verifyBundle();
   await exerciseApp(appPath);
+  await verifyBundledMcp(appPath, path.join(workspace!.root, "v2-basic"));
   console.log(`  PASS packaged DMG mount, bundle, launch and write flow (${Date.now() - started}ms)`);
 } catch (error) {
   console.error(`  FAIL packaged DMG (${Date.now() - started}ms)`);

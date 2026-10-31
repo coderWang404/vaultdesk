@@ -27,7 +27,7 @@ const api: VaultDeskApi = {
   platform: process.platform,
   initialVault: argument("--vaultdesk-initial-vault="),
   versions: {
-    app: argument("--vaultdesk-version=") ?? "1.2.6",
+    app: argument("--vaultdesk-version=") ?? "1.2.7",
     electron: process.versions.electron ?? "",
     chrome: process.versions.chrome ?? "",
     node: process.versions.node ?? "",

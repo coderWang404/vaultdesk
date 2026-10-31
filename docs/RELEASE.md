@@ -1,10 +1,12 @@
 # VaultDesk v1.2.6 release
 
-Status: final local verification passed on 2026-10-31; publication, CI and installed-app verification are pending.
+Status: published and installed on 2026-10-31. Release tag v1.2.6 points to 4515ca5093ffd92769063a35a0f4d12b3f1e4ad8. CI 41173511182 passed all three jobs; the public DMG download matched the locally tested artifact byte for byte.
 
 Fixes shared-master and legacy-marker catalog false positives, distinguishes outdated distributions from intact current ones, and validates recorded symlink slot identity. Automatic sync now refreshes outdated skills and plugin targets after a manual Vault-only update, while preserving paused targets, review/frozen sources and manual edits. Agent guidance consistently separates managed file distribution, tool-owned installations, runtime prerequisites and agent activation. The previous user-specific automatic scan bypass was removed; prior explicitly authorized private uploads remain intact.
 
 Validation: type checking, 174 tests in 28 files, CLI and 19 desktop E2E scenarios, 20 zero-violation axe scans, mounted-DMG launch/edit/persistence checks, and a real MCP stdio client query against the registered Vault. The live catalog verified 38 managed masters and 20 target-skill entries. See [the audit](AGENT-MANAGEMENT-AUDIT.md) for capability boundaries.
+
+The installed app and bundled skill hashes match the final DMG. LaunchAgent reports version 1.2.6; repeated opens retain one GUI and one headless worker. The startup sync updated and distributed the VaultDesk skill, committed/pushed f421cb1 in the private Vault, and left a clean worktree with no ahead/behind commits. Its other sources reported seven current and nine skipped, with no errors. Only the latest app remains in /Applications; previous rollback copies were moved to Trash.
 
 | Field | Value |
 | --- | --- |

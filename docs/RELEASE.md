@@ -1,8 +1,22 @@
 # VaultDesk v1.2.9 release
 
-Status: local verification in progress on 2026-10-31.
+Status: published and installed on 2026-10-31. Tag v1.2.9 points to f34851dadc6e3f8ee537e756c520a9d523c76e1d. CI 41203860175 passed all three jobs, and the public DMG download matched the tested artifact byte for byte.
 
 Installation targets are grouped by their canonical destination directory. Group headers show agent/preset names, one shared path, unique skill counts and rule status; compact rows preserve independent target identity and installation actions. Other managed directory entries appear once per group. Search covers agents, skills, sources, rule IDs and paths, with separate attention/paused filters and keyboard-accessible group collapse. Search and filter changes reveal matching rules. File verification results are bound to the snapshot checked so they cannot survive a stale refresh or vault switch.
+
+Validation: type checking, 188 tests in 30 files, CLI E2E, 22 desktop scenarios, 24 zero-violation axe scans and mounted-DMG launch/edit/CLI/MCP acceptance passed. A regression also covers repairing a modified file outside the app: verification refreshes the snapshot and removes its stale attention state. Home abbreviation uses the actual home path rather than assuming every /Users directory belongs to the current user.
+
+The installed app, CLI and LaunchAgent report 1.2.9, with one GUI and one worker. Installed app.asar/CLI hashes match the tested DMG; the previous app was moved to Trash. The live Personal Skills page shows four destination groups, 17 independent rules and 11 unique registered skills, with Qoder expanded. Its 38 master skills and 20 target-skill entries are current; REA ownership remains external. Startup synchronization pushed e397b7e in the private Vault, leaving it clean and synchronized.
+
+| Field | Value |
+| --- | --- |
+| File | release/VaultDesk-1.2.9-arm64.dmg |
+| Platform | macOS Apple Silicon |
+| Size | 124,918,885 bytes |
+| SHA-256 | 0b04a6440b61d591aee125f85cdd494eef8ef83858d5ab555684461b1be3a559 |
+| app.asar SHA-256 | 8f6d0b05d89a4aced0db5b551c772be83106b04de7b90609af7044d0a8af7b01 |
+| CLI SHA-256 | cb02f66053c056765884aa783ed5692ddc7c302eeaeb357b7db1853fbfd2b93b |
+| Signing | Ad-hoc, not notarized |
 
 # VaultDesk v1.2.8 release
 

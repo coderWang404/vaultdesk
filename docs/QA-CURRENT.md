@@ -1,22 +1,48 @@
+# v1.2.6 发布 QA 记录
+
+> 日期：2026-10-31。本地最终版本已通过完整验收；发布、CI 和正式安装在完成后补录。
+
+| 检查 | 状态 | 证据 |
+| --- | --- | --- |
+| 类型检查与单测 | 通过 | 4 个 workspace；28 个测试文件，174/174 项通过 |
+| CLI 与桌面 E2E | 通过 | CLI 全场景、19 个桌面场景；20 次 axe 扫描零违规 |
+| DMG 验收 | 通过 | 镜像验证、严格签名、启动、编辑持久化 |
+| 原生 MCP | 通过 | 独立 MCP 客户端连接真实 CLI stdio；5 个工具，真实 Vault 查询与外部所有者返回正确 |
+| 真实分发状态 | 通过 | 38 个主库技能、20 个登记目标条目与 Vault 内容一致；REA 外部归属与固定 hash 正常 |
+| 补分发与冲突 | 通过 | 手动仅更新 Vault 后自动补发；暂停/review/frozen 不动；插件手改保留；旧标记、共享主库、错误链接路径与 outdated 状态回归 |
+| Python 环境 | 通过 | 默认验证选 Miniconda base 3.13.11；PPT Master 隔离环境 svg-pptx 7 项通过 |
+| GitHub 与正式安装 | 待完成 | 发布流程中 |
+
+| 产物 | 值 |
+| --- | --- |
+| DMG | release/VaultDesk-1.2.6-arm64.dmg |
+| 字节数 | 124,633,938 |
+| SHA-256 | b3c20a0a0a563d177dddebe075aa0e02a90d50515e3c0207dcc9b6a43efaea19 |
+| app.asar SHA-256 | f3d1f125d621b346046d54a57cbfcd2431b85a08def9759601f7413acd2c261a |
+| 内置 skill SHA-256 | c77355329df43ff5e5f8b8cf1242c3d1ae23b8166b05b44ff79e4a923579913b |
+| 签名 | Ad-hoc，未公证 |
+
+能力和未覆盖边界见 [Agent 管理审计](AGENT-MANAGEMENT-AUDIT.md)。文件同步、依赖满足和 agent 激活分别验收；不宣称任意第三方工具可自动安装、启用或升级。
+
 # v1.2.5 发布 QA 记录
 
-> 日期：2026-10-31。本地完整回归与 DMG 验收通过；GitHub 发布、CI、回下载及 `/Applications` 替换仍待完成。
+> 日期：2026-10-31。v1.2.5 已完成本地回归、发布、CI、回下载和正式安装；真实 Vault 复验发现 catalog 对共享主库目标与旧 marker 的误报，后续由 v1.2.6 修复。
 
 | 检查 | 状态 | 证据或备注 |
 | --- | --- | --- |
 | 类型检查 | 通过 | `pnpm typecheck`，4 个 workspace |
 | 单元与集成测试 | 通过 | 28 个文件，169/169 项测试 |
-| CLI 与桌面 E2E | 通过 | CLI 全场景；桌面 20 个场景，axe 扫描零违规 |
+| CLI 与桌面 E2E | 通过 | CLI 全场景；桌面 19 个场景、20 次 axe 扫描零违规 |
 | DMG 安装验证 | 通过 | `hdiutil verify`、签名检查、启动、编辑和持久化 |
 | Agent 发现 | 通过 | catalog / MCP tools/list 及真实 stdio 子进程工具调用测试通过；未知 agent 激活状态显式保留为 unknown |
 | 自动更新安全 | 通过 | Git 只提交本轮路径、敏感文件拦截、插件目标漂移与手改保护回归通过 |
 | DMG 哈希 | 通过 | `release/VaultDesk-1.2.5-arm64.dmg` SHA-256 `7744a3ef79a30bb79a969cbfbed3eb3923b0155177c4afa916922c47eb5d25df` |
-| GitHub CI、公开 Release、正式安装 | 待完成 | 发布流程尚未运行 |
+| GitHub CI、公开 Release、正式安装 | 通过 | d85a92c；CI 41168361045 三个 job 通过；公开 DMG 回下载字节一致，安装版 1.2.5 GUI 与 worker 正常 |
 
 | v1.2.5 DMG 字段 | 值 |
 | --- | --- |
 | 文件 | release/VaultDesk-1.2.5-arm64.dmg |
-| 大小 | 约 128 MiB |
+| 大小 | 124,630,440 字节（约 118.9 MiB） |
 | app.asar SHA-256 | a973d5d8520c0c8efe9885834d2ca13c1328832a6391d1066b2db7a0b86df202 |
 | 签名与公证 | Ad-hoc 签名，严格校验通过；未公证 |
 

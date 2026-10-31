@@ -57,6 +57,61 @@ describe("agent catalog", () => {
     expect(skill?.installedTargets[0]).toMatchObject({ targetId: "fixture-agents", status: "current", hashMatches: true });
     expect(catalog.targets[0]?.files.find((file) => file.skillName === "local-notes")).toMatchObject({ skillName: "local-notes", status: "current" });
     expect(catalog.agent).toEqual({ loaded: "unknown", connected: "unknown" });
+
+    fs.appendFileSync(path.join(vault, "skills", "local-notes", "SKILL.md"), "\nNew source revision.\n");
+    const stale = buildAgentCatalog(await openVault(vault), { agentsSkillsDir: master });
+    expect(stale.skills.find((entry) => entry.name === "local-notes")?.master).toMatchObject({
+      status: "outdated", hashMatches: true, sourceMatches: false,
+    });
+    expect(stale.targets[0]?.files.find((file) => file.skillName === "local-notes")?.status).toBe("outdated");
+
+    const slot = path.join(target, "local-notes");
+    const markerPath = path.join(master, "local-notes", ".vault-managed");
+    const marker = JSON.parse(fs.readFileSync(markerPath, "utf8"));
+    const aliasSlot = path.join(root, "unregistered-alias");
+    fs.symlinkSync(fs.realpathSync(slot), aliasSlot);
+    marker.targets[0].path = aliasSlot;
+    fs.writeFileSync(markerPath, JSON.stringify(marker));
+    const wrongLink = buildAgentCatalog(await openVault(vault), { agentsSkillsDir: master });
+    expect(wrongLink.targets[0]?.files.find((file) => file.skillName === "local-notes")?.status).toBe("foreign");
+  });
+
+  it("recognizes a target mapped directly to the shared master directory", async () => {
+    const vault = copyFixture("v2-basic");
+    const root = tempDir("catalog-master-target");
+    const master = path.join(root, "agents", "skills");
+    const vaultFile = path.join(vault, "vault.yml");
+    fs.writeFileSync(vaultFile, fs.readFileSync(vaultFile, "utf8").replace("~/.vaultdesk-fixtures/v2-agents", master), "utf8");
+    const transaction = await beginManagedDistribution(vault, "local-notes", {
+      agentsSkillsDir: master,
+      backupRoot: path.join(root, "backups"),
+    });
+    transaction.finalize();
+
+    const catalog = buildAgentCatalog(await openVault(vault), { agentsSkillsDir: master });
+    expect(catalog.skills.find((entry) => entry.name === "local-notes")?.installedTargets[0]).toMatchObject({
+      targetId: "fixture-agents",
+      status: "current",
+      markerPresent: true,
+      markerOwnedByVault: true,
+      hashMatches: true,
+    });
+    expect(catalog.targets[0]?.files.find((file) => file.skillName === "local-notes")).toMatchObject({
+      status: "current",
+      markerOwnedByVault: true,
+      hashMatches: true,
+    });
+    const markerPath = path.join(master, "local-notes", ".vault-managed");
+    const marker = JSON.parse(fs.readFileSync(markerPath, "utf8"));
+    marker.target_id = "fixture-agents";
+    fs.writeFileSync(markerPath, JSON.stringify(marker));
+    const legacy = buildAgentCatalog(await openVault(vault), { agentsSkillsDir: master });
+    expect(legacy.skills.find((entry) => entry.name === "local-notes")?.master.status).toBe("current");
+    expect(legacy.targets[0]?.files.find((file) => file.skillName === "local-notes")?.status).toBe("current");
+    marker.vault = path.join(root, "another-vault");
+    fs.writeFileSync(markerPath, JSON.stringify(marker));
+    const foreign = buildAgentCatalog(await openVault(vault), { agentsSkillsDir: master });
+    expect(foreign.skills.find((entry) => entry.name === "local-notes")?.master.status).toBe("foreign");
   });
 
   it("exposes tool capabilities and plugin target ownership without claiming activation", async () => {

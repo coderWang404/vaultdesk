@@ -52,7 +52,7 @@ function json(value: unknown): { content: [{ type: "text"; text: string }]; stru
 }
 
 function errorResult(message: string): { content: [{ type: "text"; text: string }]; isError: true } {
-  return { content: [{ type: "text", text: message }], isError: true };
+  return { content: [{ type: "text", text: String(sanitize(message)) }], isError: true };
 }
 
 function registeredVaults(settingsFile?: string): RegisteredVault[] {
@@ -147,7 +147,7 @@ function listSummary(catalog: AgentCatalog): Record<string, unknown> {
 
 export function createVaultDeskMcpServer(options: VaultDeskMcpOptions = {}): McpServer {
   const server = new McpServer(
-    { name: "vaultdesk", version: options.version ?? "1.2.5" },
+    { name: "vaultdesk", version: options.version ?? "1.2.6" },
     { instructions: "VaultDesk is read-only here. It reports ownership, distribution, install instructions, and observed file state; it never installs, starts, updates, or registers tools." },
   );
 
@@ -215,12 +215,13 @@ export function createVaultDeskMcpServer(options: VaultDeskMcpOptions = {}): Mcp
       return json({
         tool,
         relatedSkills: catalog.skills.filter((skill) => tool.relatedSkills.includes(skill.name)),
+        relatedExternalSkills: catalog.externalSkills.filter((skill) => tool.relatedSkills.includes(skill.name) || skill.relatedTool === tool.name),
         integration: {
           installState: tool.installState,
           enabledState: tool.enabledState,
           connectedState: tool.connectedState,
           readiness: tool.readiness,
-          note: "These states are unknown until an agent-specific probe is implemented.",
+          note: "Catalog queries do not run checks. Use vaultdesk tool verify for declared runtime requirements; agent activation and connection require evidence from the agent itself.",
         },
       });
     } catch (error) {

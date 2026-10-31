@@ -18,7 +18,7 @@
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-Apache--2.0-blue.svg" alt="License: Apache-2.0"></a>
   <img src="https://img.shields.io/badge/platform-macOS%2013%2B-lightgrey.svg" alt="Platform: macOS 13+">
   <img src="https://img.shields.io/badge/node-22%2B-339933.svg" alt="Node.js 22+">
-  <img src="https://img.shields.io/badge/version-1.2.5-brightgreen.svg" alt="Version 1.2.5">
+  <img src="https://img.shields.io/badge/version-1.2.6-brightgreen.svg" alt="Version 1.2.6">
 </p>
 
 <p align="center">
@@ -26,7 +26,7 @@
 </p>
 
 > [!NOTE]
-> VaultDesk 1.2.5 is available as an Apple Silicon DMG from [GitHub Releases](https://github.com/coderWang404/vaultdesk/releases/tag/v1.2.5). The build is ad-hoc signed and is not notarized. There is no Homebrew formula or npm package yet.
+> VaultDesk 1.2.6 is available as an Apple Silicon DMG from [GitHub Releases](https://github.com/coderWang404/vaultdesk/releases/tag/v1.2.6). The build is ad-hoc signed and is not notarized. There is no Homebrew formula or npm package yet.
 
 ## Contents
 
@@ -56,27 +56,40 @@ The project is built on four rules:
 
 1. **The repository is the source of truth.** Install destinations are artifacts, not the primary copy.
 2. **Review before changing managed content.** Network fetches happen outside the vault; changes to skills, plugins, and targets have previews. Source checks record local state separately.
-3. **Third-party stays third-party.** VaultDesk stores plugins and can update their in-vault copies after review; it only records or observes external tools and tool-managed skills. It never executes or installs those assets or rewrites a tool-owned external path.
+3. **Each path has one owner.** VaultDesk manages imported skills and plugin roots, including explicitly registered file targets. External tools and tool-managed skills stay with their own installer or updater; VaultDesk records or observes them without rewriting their paths. Agent registration, activation, and runtime dependencies are separate from file distribution.
 4. **One core, two surfaces.** The desktop app and CLI share the same TypeScript core, rules, and JSON contract.
 
-VaultDesk is for people who run more than one coding agent and maintain their own skill library. It is not a marketplace, an agent runtime, or a plugin installer.
+VaultDesk is for people who run more than one coding agent and maintain their own skill library. It manages files and records; agent-specific plugin installation and activation remain with the agent.
 
 ## What it manages
 
 | Layer | Stored as | VaultDesk does | VaultDesk never does |
 | --- | --- | --- | --- |
 | Skills | `skills/`, `packages/` | Build, install, verify, restore, edit local skills, fork GitHub skills | Edit GitHub originals before a fork |
-| Plugins | `plugins/`, `third_party/` | Register whole roots, validate assets, show diffs, update with review | Install, enable, adapt, or execute hooks, scripts, or MCP servers |
+| Plugins | `plugins/`, `third_party/`, `plugin_targets` | Register whole roots, validate assets, show diffs, update, distribute files to explicitly registered targets | Register or enable plugins in an agent, adapt manifests, or execute hooks, scripts, or MCP servers |
 | Tool cards | `tools/<name>.yml` | Record official links, install methods, run entry points, and optional runtime readiness checks | Download, install, or run the recorded tool commands; write agent configuration |
 | External skills | `external-skills/<name>.yml`, the tool's own path | Record the owning tool and path, pin an optional hash, observe status read-only, adopt a skill out of the vault | Install, update, run, or write the external path; write agent configuration |
 | Install targets | `vault.yml`, `.vault-managed` markers | Classify slots, back up, copy, verify, restore | Delete unmanaged content |
 
 The four asset types have deliberately different boundaries:
 
-- **Skills** are fully managed by VaultDesk. They are built into `build/skills/` and copied into explicit install targets.
-- **Plugins** are registered as `shape: plugin` sources. VaultDesk stores the whole root, validates it, and tracks changes, but the agent installs and adapts the plugin itself.
+- **Skills** are managed by VaultDesk. Builds go to `build/skills/`; managed distribution projects them into `~/.agents/skills` and uses per-skill links to registered agent targets, with tracked copies when links are unavailable.
+- **Plugins** are registered as `shape: plugin` sources. VaultDesk stores, validates, and updates the whole root and can distribute it to registered plugin file targets. The agent still registers, enables, and loads that root through its supported plugin mechanism.
 - **Tool cards** are records for things VaultDesk does not host at all: MCP servers, CLIs, desktop tools, and multi-tool suites such as REA. Agents read the card and install the tool from the official source.
-- **External skills** are owned by a tool or another manager. VaultDesk records the path, pins an optional hash, and reports drift or conflicts, but never writes the path. This is how a tool that validates its own bundled skill (REA, for example) keeps ownership without fighting the vault.
+- **External skills** are owned by a tool or another manager that installs or rewrites their files. VaultDesk records the path, pins an optional hash, and reports drift or conflicts, but never writes the path. A read-only attribution or integrity check alone does not establish external ownership.
+
+One product can provide a skill, CLI, MCP server, and plugin. Related tool cards describe the runtime and installation method without changing ownership. File distribution, runtime readiness, and agent registration are separate results; the presence of files or a passing version check does not prove that the agent has loaded the tool.
+
+### Completing an agent installation
+
+Read `agent catalog --json` first and reuse the user's existing ownership and installation authorization. Ask only when the destination, owner, or scope is unresolved.
+
+| Asset | Files and installation | Completion check and updates |
+| --- | --- | --- |
+| Managed skill | Preview and apply `target install <skill> --dest <dir> --id <id>`, then run `source distribute <source> --yes` to establish the shared master and managed links. | `target verify <id>` checks files; check related tool prerequisites and the agent's skill discovery separately. Remote auto sources keep active registered targets synchronized. |
+| Managed plugin root | Inspect `plugin show <name> --json`; register a stable parent directory with `plugin target add <name> --id <id> --dest <parent>`, then `source distribute <name> --yes`. The copy is `<parent>/<name>`. | Inspect `agent catalog --json` for file state, then register/enable that root through the agent and verify it there. Remote auto sources update registered file targets. Do not register an installer-owned plugin cache as a VaultDesk target. |
+| Tool card: MCP, CLI, app, or external plugin | Read `tool show <name> --json`, follow the current official install method, and configure the intended agent within the user's request. | Run relevant `tool verify` checks and an agent status check or small end-to-end task. Use the official tool updater; the card itself does not install or update binaries. |
+| Tool-managed external skill | Read `external show <name> --json`; use its owner's installer/updater. Do not also use `target install` on the same path. | Observe hash/status after the owner's update and verify agent discovery. Re-pin an accepted version when authorized. |
 
 ## Desktop app
 
@@ -110,7 +123,7 @@ Both screenshots use a demo vault built from the public fixtures. No personal sk
 - **Build:** Node.js 22+, pnpm 11.5.2, Git on `PATH`
 - **CLI:** Node.js 22+; CI also builds and tests on Ubuntu
 
-Download the Apple Silicon desktop DMG from [GitHub Releases](https://github.com/coderWang404/vaultdesk/releases/tag/v1.2.5). The CLI is not on npm; build it from this repository. Intel users can build the desktop app from source.
+Download the Apple Silicon desktop DMG from [GitHub Releases](https://github.com/coderWang404/vaultdesk/releases/tag/v1.2.6). The CLI is not on npm; build it from this repository. Intel users can build the desktop app from source.
 
 ### Desktop from source
 
@@ -126,7 +139,7 @@ To package an ad-hoc signed DMG:
 
 ```bash
 pnpm package:mac
-# release/VaultDesk-1.2.5-<arch>.dmg
+# release/VaultDesk-1.2.6-<arch>.dmg
 ```
 
 The build is ad-hoc signed and not notarized. On first launch, right-click the app and choose **Open**, or allow it in **System Settings → Privacy & Security**.
@@ -171,15 +184,17 @@ vaultdesk source update some-source --vault "$VAULT" --yes
 
 `source check` queries upstream commits and writes its results to the Git-ignored `.vault/state.json`; it does not change tracked vault content. `source diff` caches upstream content outside the vault and shows a per-file unified diff. `source update` previews first and applies only with `--yes`; the desktop app shows the same preview behind a confirmation dialog.
 
-Manual plugin updates refresh the stored plugin root and its lock entry. Automatic sync writes only to plugin destinations explicitly registered with VaultDesk; it does not take over an agent's own plugin installation.
+`source update` refreshes Vault content and defaults to no distribution. Run `source distribute <source> --yes` afterward to refresh the shared skill master and active registered skill targets, or the registered plugin file targets. This also distributes intentional changes to local sources. Automatic sync performs remote updates and managed distribution as a source transaction. Neither path takes over an agent-owned plugin installation or enables a plugin in the agent.
 
 ## Automatic sync
 
 The macOS app installed at `/Applications/VaultDesk.app` registers a per-user background worker by default. It checks every registered vault at login, after network recovery, and hourly, even while the app window is closed. Settings let you pause it, run a check manually, inspect activity, and change the interval and backup retention. Development builds and apps launched from a mounted DMG do not register this worker.
 
-Remote Git sources default to `auto`, with per-source review and pause modes. For each successful update, VaultDesk syncs the vault, the `~/.agents/skills` master, and registered destinations together. Individual skill symlinks are preferred, with tracked copies where links are unavailable. Local edits, unknown ownership, and name collisions block the affected source without overwriting files. VaultDesk commits only files from that update and pushes normally; a failed push keeps the local commit and reports the problem. New upstream skills await adoption, while upstream deletions never automatically remove local copies.
+Remote Git sources default to `auto`, with per-source review and pause modes. For each successful skill update, VaultDesk syncs the vault, the `~/.agents/skills` master, and registered destinations together; plugin updates sync the plugin root and explicitly registered plugin file targets. Individual skill symlinks are preferred, with tracked copies where links are unavailable. Targets with `install_after_update=false` remain paused. Local edits, unknown ownership, and name collisions block the affected source without overwriting files. VaultDesk commits only files from that update and pushes normally; a failed push keeps the local commit and reports the problem. New upstream skills await adoption, while upstream deletions never automatically remove local copies.
 
 Use `source pending <source>` to list skills awaiting adoption, `source adopt <source> --path <upstream-relative-path> --yes` to accept a selected skill, and `source distribute <source> --yes` to initialize or refresh managed destinations. Register plugin destinations through `plugin target add|list|remove`.
+
+When a manual update has already brought an `auto` source current, the next automatic check also refreshes missing or outdated managed copies if they have no manual edits. This distribution-only repair does not commit unrelated Vault changes. Review/frozen sources and paused targets remain excluded.
 
 ## CLI
 
@@ -189,20 +204,21 @@ vaultdesk <group> <action> [arguments] [options]
 
 | Group | Actions |
 | --- | --- |
-| `vault` | `status`, `validate`, `init`, `migrate` |
+| `vault` | `list`, `status`, `validate`, `init`, `migrate` |
 | `source` | `list`, `show`, `check`, `diff`, `update`, `auto-sync`, `mode`, `pending`, `adopt`, `distribute`, `add`, `remove`, `fork` |
 | `plugin` | `list`, `show`, `target add/list/remove` |
-| `tool` | `list`, `show`, `add` |
+| `tool` | `list`, `show`, `verify`, `add` |
 | `external` | `list`, `show`, `add`, `remove`, `adopt` |
 | `target` | `list`, `install`, `remove`, `verify`, `restore` |
 | `build` | Rebuild `build/skills/`, `build/tools.json`, and `build/external-skills.json` |
 | `presets` | `list`, `verify` |
-| `agent` | `skill` |
+| `agent` | `skill`, `catalog` |
+| `mcp` | `serve` (read-only stdio server) |
 | `git` | `status`, `commit`, `push` |
 
 Pure query commands do not write to disk. `source check` does not change managed content, but it records local check state; commands that change managed content print a preview unless `--yes` is passed. Global options are `--vault <path>`, `--json`, `--yes`, `--help`, and `--version`.
 
-Every command supports `--json`, which returns one envelope on stdout:
+CLI commands support `--json`, which returns one envelope on stdout. `mcp serve` instead reserves stdout for MCP JSON-RPC:
 
 ```json
 {
@@ -254,7 +270,7 @@ notes: Recorded for display only; VaultDesk never installs, starts, or registers
 | `cli` | Standalone command-line tools | A build helper |
 | `app` | Desktop or GUI tools | A local editor |
 
-Cards live in `tools/<name>.yml`. The desktop **Tools** page shows all of them, and the **MCP** page filters to `kind: mcp`. The CLI exposes the same data:
+Cards live in `tools/<name>.yml`. The desktop **Tools** page shows all cards; **MCP** includes `kind: mcp` and cards tagged `mcp`, including plugin and CLI forms. `tool list --kind mcp` filters only standalone MCP cards; use catalog `capabilities` or all tool cards to include other MCP-capable tools:
 
 ```bash
 vaultdesk tool list --vault "$VAULT" --json
@@ -308,11 +324,11 @@ checks:
 
 Verification never executes `install` or `run` entries. A tool card can name `python3` or a versioned Python command; it cannot supply an executable path. Those names search approved locations in a deterministic order: the user's `~/miniconda3/bin` base environment first, then `~/anaconda3/bin`, then other trusted directories in PATH order, followed by system-directory fallbacks. Arbitrary project directories are ignored. Only an explicit `--python` or app selection accepts an absolute native Python path. A Node.js check supplies version intervals, not a command; it checks a native `node` from system/Homebrew or scans installed standard nvm versions for the highest compatible one, even when Finder launches the app without an nvm PATH. An explicit `--node` override covers other installations. Python and Node checks use fixed arguments, a minimal environment without preload variables, asynchronous subprocesses, a three-check concurrency limit, a whole-verification timeout, and bounded output; scripts and arbitrary interpreter commands are rejected. Path checks require an absolute path or `~/`, while file-hash checks reject symlinks and stay inside the vault. Environment-variable checks report existence only, never the value. VaultDesk still does not install dependencies, register MCP servers, or prove that an agent can complete a workflow; run an end-to-end task for that final claim.
 
-VaultDesk does not check the recorded upstream version for updates, does not start or health-check an MCP server, and does not write MCP configuration into any agent. Never put tokens, keys, or private URLs in a card.
+VaultDesk provides a read-only MCP server through `vaultdesk mcp serve`, optionally pinned with `--vault <path>`. Register that command in the agent client to expose Vault listing, catalog, asset search, and tool-card queries. The server redacts common credential patterns but never runs recorded commands, checks third-party upstream versions, starts or health-checks third-party MCP servers, or writes agent configuration. Never put tokens, keys, or private URLs in a card.
 
 ## External skills
 
-Some tools ship a skill directory and rewrite or validate it on every setup. If the vault also managed that path, the two writers would overwrite each other. An external skill card records the owner and path and reports state without ever writing the content.
+Some tools ship a skill directory and rewrite it during setup or upgrades. If the vault also managed that path, the two writers could overwrite each other. An external skill card records the owner and path and reports state without writing the content. A read-only check does not by itself make the tool the owner.
 
 ```yaml
 schema: 1
@@ -364,16 +380,18 @@ It accepts only a standalone source with exactly one skill, outside the vault, w
 
 ### Recommending ownership when a tool arrives
 
-Before importing a new tool or its skills, inspect the path and its tool, form a default recommendation, and ask the user to confirm it. Do not write first, and do not ask with no opinion.
+Before importing a new tool or its skills, inspect the path and its tool and apply the user's existing ownership decision. If ownership is unresolved, give a recommendation and ask for that decision. Existing authorization for the same action does not require another confirmation.
 
-- **The tool manages itself** (it ships, installs, rewrites, or validates the skill): recommend an external card. REA is the default example.
+- **The tool manages itself** (its installer or updater owns and rewrites the skill path): recommend an external card. REA is the default example. A read-only attribution or integrity check alone does not imply this ownership.
 - **VaultDesk should manage it**: recommend a normal source.
 - **Another manager owns it**: recommend leaving it in place; optionally record an external card with that manager as owner.
 - **A separate copy is needed**: recommend a fork to a new path and name.
 
-State the evidence and the recommendation in one line: "REA's setup rewrites this skill, so I recommend an external card owned by rea-agents. Confirm?" If the user already named the owner, follow it. Path traits and markers are evidence, not a substitute for confirmation. One path has one owner.
+State the evidence and recommendation, for example: "REA's setup rewrites this skill, so I recommend an external card owned by rea-agents." Follow an owner already chosen by the user. One path has one owner.
 
 `vaultdesk build` writes `build/external-skills.json` with `observed_hash`, `observed_version`, and `status` for each card. Agents read the card, the index, or `external show --json`, then install and update the tool themselves.
+
+`vaultdesk vault list --json` lists explicitly registered Vaults without scanning the home directory. `agent catalog --json` and the read-only MCP server report ownership, update modes, fresh master/target marker and hash checks, plugin targets, tool installation guidance, and external owners. Without agent-specific probes, `installState`, `enabledState`, `connectedState`, and `agentLoaded` remain `unknown`. Registered files do not prove that an agent loaded a skill or connected to MCP.
 
 ## Vault layout
 
@@ -395,7 +413,7 @@ build/external-skills.json # generated external observation index
 .vault/state.json          # local machine state, gitignored
 ```
 
-VaultDesk writes a `.vault-managed` marker into every install slot it owns. That marker is how it distinguishes its own copies from unmanaged directories, and why an unmanaged directory is moved to a timestamped backup instead of being overwritten.
+VaultDesk uses `.vault-managed` for managed skill copies/master directories and `.vaultdesk-plugin-managed` for plugin file targets. Per-skill links are recorded in the master marker. Manual skill installation can back up an explicitly selected unmanaged slot; automatic distribution stops on unknown ownership or manual edits instead of overwriting them.
 
 ## Architecture
 
@@ -444,11 +462,12 @@ The renderer has no Node access. The main process owns all filesystem, Git, and 
 - **Preview manual writes.** The CLI requires `--yes`, and the app requires confirmation. Only remote sources set to `auto` sync to registered destinations without another prompt.
 - **Fetch outside the vault.** Upstream content lands in the cache first. `source check` may update ignored local state; tracked vault content is written only after the preview is accepted.
 - **GitHub content is read-only until forked.** GitHub-origin skills cannot be edited in place.
-- **Plugins are stored, not executed.** Hooks, scripts, commands, and MCP servers inside a plugin root are never run. VaultDesk does not generate marketplace or adapter manifests.
+- **Plugin files can be distributed; plugin code is not executed.** Only explicitly registered file targets are managed. Hooks, scripts, commands, and MCP servers inside a plugin root are never run by VaultDesk, and it does not generate marketplace or adapter manifests.
 - **Tool cards are records.** No download, installation, tool-command execution, upstream version check, or agent registration; explicit runtime checks are limited to declared read-only probes.
 - **External skills belong to their tool.** VaultDesk reads and hashes the path, reports drift, and never writes it. `adopt` removes only vault-owned content and a marker owned by this vault.
 - **One owner per path.** A managed skill and an external skill cannot share a path; a marker from another owner blocks `adopt`.
 - **Automatic sync protects unmanaged directories.** Explicit manual installs can back up an old directory; automatic sync pauses the affected source on unknown ownership or local edits. Automatic distribution keeps at most three completed backups or seven days of history.
+- **Automatic commits check for sensitive content.** High-confidence credential paths, private keys, Python caches, and token patterns pause the source before commit/push, reporting only paths and risk types. This reduces accidental disclosure; it is not a complete secret-detection guarantee.
 - **Git staging is explicit.** VaultDesk commits only the paths it changed. It never runs `git add -A` and refuses paths outside the vault or under `.git`.
 - **Verification has a defined scope.** `target verify` proves that expected files exist and hashes match. It does not prove that an agent loaded a skill.
 - **Secrets stay out.** Do not store tokens, keys, or private URLs in a vault, a plugin record, or a tool card.
@@ -475,15 +494,15 @@ Release QA results are recorded in [docs/QA-CURRENT.md](docs/QA-CURRENT.md); [do
 
 | Area | State |
 | --- | --- |
-| Desktop app and CLI | 1.2.5; Apple Silicon DMG published, CLI available from source |
+| Desktop app and CLI | 1.2.6; Apple Silicon DMG published, CLI available from source |
 | Tool cards and MCP view | Runtime checks and cross-category MCP discovery in v1.2.3; Miniconda base is the preferred Python in v1.2.4; agent catalog and read-only MCP discovery in v1.2.5 |
 | External skill records | Included in v1.2.0 |
 | DMG | Apple Silicon release; ad-hoc signed, not notarized |
 | GitHub Release / Homebrew / npm | GitHub Release published; Homebrew and npm not published |
 | Automatic source sync | Available in the installed macOS app; per-source auto/review/pause controls |
-| Windows and Linux desktop | Not included in v1.2.5 |
+| Windows and Linux desktop | Not included in v1.2.6 |
 
-The desktop app is macOS-only at 1.2.5. The CLI is tested on macOS and Ubuntu.
+The desktop app is macOS-only at 1.2.6. The CLI is tested on macOS and Ubuntu.
 
 ## Contributing
 
@@ -493,7 +512,7 @@ Issues and pull requests are welcome. Before changing behavior, read:
 - [docs/PLUGINS.md](docs/PLUGINS.md) for plugin detection, validation, and update rules
 - [agent-skill/vaultdesk/SKILL.md](agent-skill/vaultdesk/SKILL.md) for the agent-facing contract
 
-Keep the boundary intact. VaultDesk stores, validates, records, and displays. It does not install or execute plugins, tools, or MCP servers, does not write a tool-managed skill path, does not generate marketplace or adapter manifests, and does not write agent configuration. When adding a new asset type, recommend an owner and confirm it with the user before writing any code.
+Keep ownership boundaries intact. VaultDesk stores, validates, and distributes managed skill/plugin files to registered targets. Agent activation, external tool installation, and tool-owned paths remain with their owner; VaultDesk does not execute plugin/tool commands, generate marketplace or adapter manifests, or write agent configuration. For a new asset type, determine the owner from the user's request and existing authorization; clarify only unresolved ownership or scope.
 
 ```bash
 pnpm install

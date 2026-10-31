@@ -38,6 +38,7 @@ export interface RegisteredVault {
 export type CatalogFileStatus =
   | "missing"
   | "current"
+  | "outdated"
   | "modified"
   | "unmanaged"
   | "foreign"
@@ -54,6 +55,8 @@ export interface CatalogFileState {
   expectedHash?: string;
   observedHash?: string;
   hashMatches?: boolean;
+  sourceHash?: string;
+  sourceMatches?: boolean;
   status: CatalogFileStatus;
   linkTarget?: string;
 }
@@ -340,20 +343,25 @@ function targetFileState(
   vaultPath: string,
   masterRoot: string,
 ): CatalogFileState {
-  const slot = path.join(canonicalPath(expandHome(target.dest)), skillName);
+  const targetRoot = canonicalPath(expandHome(target.dest));
+  const slot = path.join(targetRoot, skillName);
+  if (targetRoot === canonicalPath(masterRoot)) {
+    return inspectManagedFile(slot, vaultPath, ".vault-managed", "skill", skillName);
+  }
   const state = inspectManagedFile(slot, vaultPath, ".vault-managed", "skill", skillName, target.id);
   if (state.status !== "symlink") return state;
   let resolved: string | undefined;
   try { resolved = fs.realpathSync(slot); } catch { /* broken link */ }
   const master = path.join(masterRoot, skillName);
   if (!resolved || canonicalPath(resolved) !== canonicalPath(master)) return state;
-  const masterState = inspectManagedFile(master, vaultPath, ".vault-managed", "skill", skillName, "agents-master");
+  const masterState = inspectManagedFile(master, vaultPath, ".vault-managed", "skill", skillName);
   const masterMarker = markerFor(master, ".vault-managed").data;
   const targetRegistered = Array.isArray(masterMarker?.targets) && masterMarker.targets.some((item) => {
     if (!item || typeof item !== "object" || Array.isArray(item)) return false;
     const link = item as Record<string, unknown>;
     return link.id === target.id && link.mode === "symlink" &&
-      typeof link.path === "string" && canonicalPath(link.path) === canonicalPath(slot);
+      typeof link.path === "string" &&
+      path.join(canonicalPath(path.dirname(link.path)), path.basename(link.path)) === slot;
   });
   if (!targetRegistered) return { ...state, status: "foreign" };
   return {
@@ -365,6 +373,17 @@ function targetFileState(
     observedHash: masterState.observedHash,
     hashMatches: masterState.hashMatches,
     status: masterState.status === "current" ? "current" : masterState.status,
+  };
+}
+
+function compareWithSource(state: CatalogFileState, sourceHash: string | undefined): CatalogFileState {
+  if (!sourceHash) return state;
+  const sourceMatches = Boolean(state.observedHash && state.observedHash === sourceHash);
+  return {
+    ...state,
+    sourceHash,
+    sourceMatches,
+    status: state.status === "current" && !sourceMatches ? "outdated" : state.status,
   };
 }
 
@@ -447,9 +466,9 @@ export function buildAgentCatalog(
     for (const name of target.skills) targetBySkill.set(name, [...(targetBySkill.get(name) ?? []), target]);
   }
   const skills: AgentCatalogSkill[] = snapshot.skills.map((skill) => {
-    const master = inspectManagedFile(path.join(masterRoot, skill.name), vaultPath, ".vault-managed", "skill", skill.name, "agents-master");
+    const master = compareWithSource(inspectManagedFile(path.join(masterRoot, skill.name), vaultPath, ".vault-managed", "skill", skill.name), skill.contentHash);
     const installedTargets = (targetBySkill.get(skill.name) ?? []).map((target) => ({
-      ...targetFileState(target, skill.name, vaultPath, masterRoot),
+      ...compareWithSource(targetFileState(target, skill.name, vaultPath, masterRoot), skill.contentHash),
       targetId: target.id,
       installAfterUpdate: target.installAfterUpdate,
     }));
@@ -479,7 +498,7 @@ export function buildAgentCatalog(
       skillNames: target.skills,
       files: target.skills.map((skillName) => ({
         skillName,
-        ...targetFileState(target, skillName, vaultPath, masterRoot),
+        ...compareWithSource(targetFileState(target, skillName, vaultPath, masterRoot), snapshot.skills.find((skill) => skill.name === skillName)?.contentHash),
       })),
     };
   });
@@ -490,7 +509,7 @@ export function buildAgentCatalog(
       .filter((target) => target.names.includes(plugin.name))
       .map((target) => {
         const targetRoot = canonicalPath(expandHome(target.dest));
-        const file = inspectManagedFile(path.join(targetRoot, plugin.name), vaultPath, ".vaultdesk-plugin-managed", "plugin", plugin.name, target.id, true);
+        const file = compareWithSource(inspectManagedFile(path.join(targetRoot, plugin.name), vaultPath, ".vaultdesk-plugin-managed", "plugin", plugin.name, target.id, true), vaultFile.observedHash);
         return {
           id: target.id,
           path: targetRoot,
@@ -521,7 +540,7 @@ export function buildAgentCatalog(
     exists: isDirectory(masterRoot),
     skillFiles: [...masterSkillNames].sort().map((skillName) => ({
       skillName,
-      file: inspectManagedFile(path.join(masterRoot, skillName), vaultPath, ".vault-managed", "skill", skillName, "agents-master"),
+      file: skills.find((skill) => skill.name === skillName)!.master,
     })),
   };
   return {

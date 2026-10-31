@@ -4,7 +4,7 @@ import path from "node:path";
 import YAML from "yaml";
 import { sourceFileSchema } from "@vaultdesk/schema";
 import { VaultDeskError } from "./errors.js";
-import { canonicalPath, copyDirectory, expandHome, hashDirectory, hashText, isInside, readText, sha256, writeTextAtomic } from "./fsx.js";
+import { canonicalPath, copyDirectory, expandHome, hashDirectory, hashText, INTERNAL_METADATA, isInside, readText, sha256, writeTextAtomic } from "./fsx.js";
 import { commitPaths, currentCommit, getGitSummary, git, push } from "./git.js";
 import { beginManagedDistribution, inspectManagedMaster, inspectManagedPluginTarget, managedAgentsSkillsRoot } from "./distribution.js";
 import { withWriteLock } from "./vault/lockfile.js";
@@ -388,15 +388,31 @@ export async function distributeCurrentSource(
   });
 }
 
-function needsInitialDistribution(snapshot: VaultSnapshot, source: SourceRecord, options: AutoSyncOptions): boolean {
+function distributionContentHash(root: string): string {
+  return hashDirectory(root, { excludeFiles: new Set([...INTERNAL_METADATA, ".vaultdesk-plugin-managed"]) });
+}
+
+/** Call only after ownership and manual-edit checks have passed. */
+function needsDistributionRefresh(snapshot: VaultSnapshot, source: SourceRecord, options: AutoSyncOptions): boolean {
   if (source.shape === "plugin") {
-    return (readVaultFile(snapshot.path).plugin_targets ?? []).some((target) => target.install_after_update &&
-      target.names.includes(source.name) && !fs.existsSync(path.join(expandHome(target.dest), source.name)));
+    const expectedHash = distributionContentHash(source.workingPath);
+    return (readVaultFile(snapshot.path).plugin_targets ?? []).some((target) => {
+      if (!target.install_after_update || !target.names.includes(source.name)) return false;
+      const slot = path.join(expandHome(target.dest), source.name);
+      return !fs.existsSync(slot) || distributionContentHash(slot) !== expectedHash;
+    });
   }
   const root = canonicalPath(options.agentsSkillsDir ?? managedAgentsSkillsRoot());
-  if (source.skills.some((skill) => !fs.existsSync(path.join(root, skill.name)))) return true;
-  return snapshot.targets.some((target) => target.installAfterUpdate && source.skills.some((skill) =>
-    target.skills.includes(skill.name) && !fs.existsSync(path.join(target.expandedDest, skill.name))));
+  return source.skills.some((skill) => {
+    const expectedHash = distributionContentHash(skill.workingPath);
+    const master = path.join(root, skill.name);
+    if (!fs.existsSync(master) || distributionContentHash(master) !== expectedHash) return true;
+    return snapshot.targets.some((target) => {
+      if (!target.installAfterUpdate || !target.skills.includes(skill.name)) return false;
+      const slot = path.join(target.expandedDest, skill.name);
+      return !fs.existsSync(slot) || distributionContentHash(slot) !== expectedHash;
+    });
+  });
 }
 
 function localMasterDrift(snapshot: VaultSnapshot, source: SourceRecord, options: AutoSyncOptions): string | undefined {
@@ -478,7 +494,7 @@ function managedDistributionDrift(
       if (targetRoot === root) continue;
       const slot = path.join(targetRoot, skill.name);
       if (!hasPath(slot)) {
-        // Missing active targets are handled by the existing initial distribution path.
+        // Missing active targets are handled by the distribution refresh path.
         continue;
       }
 
@@ -554,11 +570,6 @@ const GENERATED_SENSITIVE_SUFFIXES = [
   ".mobileprovision",
 ];
 
-function isExplicitlyAuthorizedSensitivePath(sourceName: string, relative: string): boolean {
-  return sourceName === "ccswitch-provider" &&
-    relative === "skills/ccswitch-provider/_恢复工作/.secrets/opencode.env";
-}
-
 function sensitivePathReason(relative: string): string | undefined {
   const lower = relative.toLocaleLowerCase();
   if (lower.split("/").some((part) => part === ".env" || (part.startsWith(".env.") && ![".env.example", ".env.sample", ".env.template"].includes(part)) || part === ".secrets" || part === "credentials" || part === "secrets")) {
@@ -578,10 +589,9 @@ function sensitiveContentReason(content: string): string | undefined {
   return undefined;
 }
 
-function scanCommitFiles(vaultPath: string, sourceName: string, files: string[]): void {
+function scanCommitFiles(vaultPath: string, files: string[]): void {
   const findings: SensitivePathFinding[] = [];
   for (const relative of files.map((entry) => entry.replaceAll("\\", "/"))) {
-    if (isExplicitlyAuthorizedSensitivePath(sourceName, relative)) continue;
     const pathReason = sensitivePathReason(relative);
     if (pathReason) {
       findings.push({ path: relative, reason: pathReason });
@@ -670,7 +680,7 @@ async function updateOneSource(
       if (commitFiles.length === 0) {
         throw new VaultDeskError("git-failed", "Update changed no commit-eligible Vault files.");
       }
-      scanCommitFiles(vaultPath, name, commitFiles);
+      scanCommitFiles(vaultPath, commitFiles);
       commit = await commitPaths(vaultPath, commitFiles, control.commitMessage ?? "chore: auto-update " + name);
     } catch (error) {
       const newHead = await currentCommit(vaultPath);
@@ -812,7 +822,7 @@ export async function autoSyncVault(inputPath: string, options: AutoSyncOptions 
         continue;
       }
       const pendingMessage = pendingSkills.length > 0 ? "New upstream skills await adoption: " + pendingSkills.join(", ") : undefined;
-      if (source.updateMode === "auto" && needsInitialDistribution(snapshot, source, options)) {
+      if (source.updateMode === "auto" && needsDistributionRefresh(snapshot, source, options)) {
         try {
           const changed = await distributeCurrentSource(vaultPath, source.name, options);
           results.push({ name: source.name, status: "current", message: [`Distributed current source to ${changed.length} managed paths.`, pendingMessage].filter(Boolean).join(" "), ...(pendingSkills.length > 0 ? { pendingSkills } : {}) });

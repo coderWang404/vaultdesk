@@ -18,7 +18,7 @@
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-Apache--2.0-blue.svg" alt="许可证：Apache-2.0"></a>
   <img src="https://img.shields.io/badge/platform-macOS%2013%2B-lightgrey.svg" alt="平台：macOS 13+">
   <img src="https://img.shields.io/badge/node-22%2B-339933.svg" alt="Node.js 22+">
-  <img src="https://img.shields.io/badge/version-1.2.5-brightgreen.svg" alt="版本 1.2.5">
+  <img src="https://img.shields.io/badge/version-1.2.6-brightgreen.svg" alt="版本 1.2.6">
 </p>
 
 <p align="center">
@@ -26,7 +26,7 @@
 </p>
 
 > [!NOTE]
-> VaultDesk 1.2.5 已在 [GitHub Releases](https://github.com/coderWang404/vaultdesk/releases/tag/v1.2.5) 提供 Apple Silicon DMG。构建采用 ad-hoc 签名，未公证；目前没有 Homebrew formula 或 npm 包。
+> VaultDesk 1.2.6 已在 [GitHub Releases](https://github.com/coderWang404/vaultdesk/releases/tag/v1.2.6) 提供 Apple Silicon DMG。构建采用 ad-hoc 签名，未公证；目前没有 Homebrew formula 或 npm 包。
 
 ## 目录
 
@@ -56,29 +56,40 @@ Agent 技能写起来很快，长期维护却很难。它们被复制到多个 a
 
 1. **仓库是唯一事实来源。** 安装目标是产物，不是主副本。
 2. **先审阅，再修改受管内容。** 网络拉取发生在 vault 之外；修改技能、插件或目标前会给出预览。来源检查会单独记录本机状态。
-3. **第三方保持第三方身份。** 插件由 VaultDesk 存储，并可在审阅后更新 vault 内的副本；外部工具和工具托管的技能只做登记或观察。VaultDesk 不执行或安装这些资产，也不改写工具拥有的外部路径。
+3. **一个路径只有一个所有者。** VaultDesk 管理导入的技能、插件目录及明确登记的文件目标；外部工具和工具托管技能由其安装器或更新器负责，VaultDesk 只登记或观察。Agent 注册、启用和运行依赖与文件分发分别处理。
 4. **一个核心，两个入口。** 桌面应用和 CLI 共用同一套 TypeScript 核心、规则与 JSON 契约。
 
-VaultDesk 面向同时使用多个编码 agent、并且维护自己技能库的人。它不做市场，不做 agent 运行时，也不做插件安装器。
+VaultDesk 面向同时使用多个编码 agent、并且维护自己技能库的人。它管理文件和记录；具体 agent 的插件注册与启用仍由该 agent 完成。
 
 ## 它管理什么
 
 | 资产 | 存放位置 | VaultDesk 会做 | VaultDesk 不会做 |
 | --- | --- | --- | --- |
 | 技能 | `skills/`、`packages/` | 构建、安装、校验、恢复、编辑本地技能、fork GitHub 技能 | 在 fork 之前修改 GitHub 原文 |
-| 插件 | `plugins/`、`third_party/` | 登记整个目录、校验资产、显示差异、审阅后更新 | 安装、启用、适配或执行 hooks、脚本、MCP 服务 |
+| 插件 | `plugins/`、`third_party/`、`plugin_targets` | 登记整个目录、校验资产、显示差异、更新并分发到明确登记的文件目标 | 向 agent 注册或启用插件、适配清单、执行 hooks、脚本或 MCP 服务 |
 | 工具卡 | `tools/<name>.yml` | 记录官方链接、安装方式、运行入口和按场景声明的依赖；按需验证本机环境 | 下载、安装、运行工具或写 agent 配置 |
 | 外部技能 | `external-skills/<name>.yml` 与工具自己的路径 | 记录所有者和路径、可选固定 hash、只读观察状态、把技能从 vault 转出 | 安装、更新、运行或写入外部路径；写 agent 配置 |
 | 安装目标 | `vault.yml`、`.vault-managed` 标记 | 区分槽位、备份、复制、校验、恢复 | 删除未托管的内容 |
 
 四类资产的边界是刻意分开的：
 
-- **技能**由 VaultDesk 完整管理。它们构建到 `build/skills/`，再复制到明确的安装目标。
-- **插件**以 `shape: plugin` 的 source 形式登记。VaultDesk 保存整个目录、校验内容并跟踪变化，插件本身由 agent 安装和适配。
+- **技能**由 VaultDesk 管理。它们构建到 `build/skills/`；受管分发将内容投影到 `~/.agents/skills`，再逐技能链接到已登记的 agent 目标，不支持链接时使用受跟踪的副本。
+- **插件**以 `shape: plugin` 的 source 形式登记。VaultDesk 保存、校验和更新整个目录，并可分发到登记的插件文件目标；agent 仍须用自己的插件机制注册、启用和加载该目录。
 - **工具卡**记录的是 VaultDesk 完全不托管的东西：MCP 服务、CLI、桌面工具，以及 REA 这类包含多个工具的套件。Agent 读取卡片，然后从官方渠道自行安装。
-- **外部技能**由某个工具或另一个管理器负责。VaultDesk 记录路径、可选固定 hash，并报告漂移或冲突，但从不写这个路径。REA 这类会校验自带技能的工具因此可以保留所有权，不需要和 vault 争抢同一个目录。
+- **外部技能**由负责安装或改写其文件的工具或管理器拥有。VaultDesk 记录路径、可选固定 hash，并报告漂移或冲突，但从不写这个路径。只读的署名或完整性检查本身不代表工具拥有该目录。
 
 同一产品可以同时提供技能、CLI、MCP 和插件。归属、技能文件分发、运行依赖、agent 内的注册或启用是四件不同的事：关联的工具卡让前几项分别可见；MCP 或插件是否已在具体 agent 中启用仍须按该 agent 的规则核对，不能由文件存在或版本检查推断。
+
+### Agent 如何完成安装闭环
+
+先读取 `agent catalog --json`，沿用用户已确定的归属和安装授权；仅在目标路径、所有者或范围尚不明确时提问。
+
+| 资产 | 文件与安装 | 验收与更新 |
+| --- | --- | --- |
+| 受管技能 | 预览并应用 `target install <技能> --dest <目录> --id <目标>`，随后运行 `source distribute <来源> --yes` 建立共享主库与受管链接。 | 用 `target verify <目标>` 验证文件，再检查关联工具依赖和 agent 技能发现；远程 auto 来源持续同步开启更新的登记目标。 |
+| 受管插件目录 | 先读 `plugin show <名称> --json`；用 `plugin target add <名称> --id <目标> --dest <父目录>` 登记稳定路径，再运行 `source distribute <名称> --yes`；副本位于 `<父目录>/<名称>`。 | 用 `agent catalog --json` 查看文件状态，再按 agent 的规则注册、启用并在 agent 内验证。远程 auto 来源同步登记的文件目标；由 agent 安装器改写的缓存目录不再交给 VaultDesk 管理。 |
+| 工具卡：MCP、CLI、应用或外部插件 | 阅读 `tool show <名称> --json`，在用户请求范围内按当前官方方法安装并接入目标 agent。 | 执行相应 `tool verify`，再用 agent 状态检查或小型端到端任务验收。二进制更新使用工具的官方更新器；卡片本身不安装或更新工具。 |
+| 工具托管的外部技能 | 阅读 `external show <名称> --json`，使用其所有者的安装器或更新器；同一路径不再执行 `target install`。 | 所有者更新后观察 hash/status 并核对 agent 发现；有授权时接受新版本并重新固定 hash。 |
 
 ## 桌面应用
 
@@ -112,7 +123,7 @@ VaultDesk 面向同时使用多个编码 agent、并且维护自己技能库的�
 - **构建：** Node.js 22+、pnpm 11.5.2、`PATH` 中可用的 Git
 - **CLI：** Node.js 22+；CI 也会在 Ubuntu 上构建和测试
 
-Apple Silicon 桌面版可从 [GitHub Releases](https://github.com/coderWang404/vaultdesk/releases/tag/v1.2.5) 下载。CLI 尚未发布到 npm，需要从本仓库构建；Intel 用户也可从源码构建桌面版。
+Apple Silicon 桌面版可从 [GitHub Releases](https://github.com/coderWang404/vaultdesk/releases/tag/v1.2.6) 下载。CLI 尚未发布到 npm，需要从本仓库构建；Intel 用户也可从源码构建桌面版。
 
 ### 从源码运行桌面应用
 
@@ -128,7 +139,7 @@ pnpm dev
 
 ```bash
 pnpm package:mac
-# release/VaultDesk-1.2.5-<arch>.dmg
+# release/VaultDesk-1.2.6-<arch>.dmg
 ```
 
 构建产物使用 ad-hoc 签名，没有公证。第一次启动时右键点击应用并选择 **打开**，或者在 **系统设置 → 隐私与安全性** 中放行。
@@ -173,15 +184,17 @@ vaultdesk source update some-source --vault "$VAULT" --yes
 
 `source check` 查询远端提交，并把检查结果写入被 Git 忽略的 `.vault/state.json`；它不修改 Git 跟踪的 vault 内容。`source diff` 会在 vault 外缓存上游内容，并显示逐文件的 unified diff。`source update` 先预览，只有传入 `--yes` 才应用；桌面应用会把同样的预览放在确认对话框后面。
 
-手动更新插件会刷新已存储的插件目录和对应的 lock 条目。自动同步只会写入 VaultDesk 明确登记的插件目标，不接管 agent 自行安装的插件。
+`source update` 刷新 Vault 内容，默认不分发。完成后用 `source distribute <来源> --yes` 刷新共享技能主库与开启同步的登记技能目标，或登记的插件文件目标；有意修改本地来源后也使用这条命令分发。自动同步则将远程更新和受管分发放在同一来源事务中。两种方式都不会接管 agent 安装器拥有的插件目录，也不会替 agent 启用插件。
 
 ## 自动同步
 
 安装在 `/Applications/VaultDesk.app` 的 macOS 版本默认注册用户级后台任务：登录后、恢复网络后以及每小时检查所有仍登记的 vault；应用窗口关闭后仍可运行。可在「设置」中暂停、手动同步、查看活动记录并调整间隔与备份保留期。开发版和挂载 DMG 中的应用不会注册该后台任务。
 
-远程 Git 来源默认使用 `auto`，也可逐来源切换为人工审核或暂停。自动更新按来源完成 Vault 内容、`~/.agents/skills` 主库与已登记目标的同步；目标优先使用逐技能符号链接，不支持时复制。手动修改、未知归属或同名冲突会阻止该来源并保留原文件。成功后仅提交本轮改动并普通推送；推送失败保留本地提交并提示，不强推。新增上游技能等待接纳，上游删除不会自动删掉现有副本。
+远程 Git 来源默认使用 `auto`，也可逐来源切换为人工审核或暂停。技能自动更新按来源同步 Vault 内容、`~/.agents/skills` 主库与已登记目标；插件自动更新同步插件目录与明确登记的插件文件目标。技能目标优先使用逐技能符号链接，不支持时复制；`install_after_update=false` 的目标保持暂停。手动修改、未知归属或同名冲突会阻止该来源并保留原文件。成功后仅提交本轮改动并普通推送；推送失败保留本地提交并提示，不强推。新增上游技能等待接纳，上游删除不会自动删掉现有副本。
 
 CLI 可用 `source pending <来源>` 查看待接纳技能，`source adopt <来源> --path <上游相对路径> --yes` 明确接纳，`source distribute <来源> --yes` 初始化或刷新受管分发。插件目标可通过 `plugin target add|list|remove` 登记和管理。
+
+手动更新已让 `auto` 来源处于最新版本时，下次自动检查也会补发缺失或过时且未经手改的受管副本。只修复分发状态时不提交其他 Vault 改动；review/frozen 来源和暂停目标继续保留原状。
 
 ## CLI
 
@@ -191,20 +204,21 @@ vaultdesk <group> <action> [arguments] [options]
 
 | 命令组 | 操作 |
 | --- | --- |
-| `vault` | `status`、`validate`、`init`、`migrate` |
+| `vault` | `list`、`status`、`validate`、`init`、`migrate` |
 | `source` | `list`、`show`、`check`、`diff`、`update`、`auto-sync`、`mode`、`pending`、`adopt`、`distribute`、`add`、`remove`、`fork` |
 | `plugin` | `list`、`show`、`target add/list/remove` |
-| `tool` | `list`、`show`、`add` |
+| `tool` | `list`、`show`、`verify`、`add` |
 | `external` | `list`、`show`、`add`、`remove`、`adopt` |
 | `target` | `list`、`install`、`remove`、`verify`、`restore` |
 | `build` | 重建 `build/skills/`、`build/tools.json` 与 `build/external-skills.json` |
 | `presets` | `list`、`verify` |
-| `agent` | `skill` |
+| `agent` | `skill`、`catalog` |
+| `mcp` | `serve`（只读 stdio 服务） |
 | `git` | `status`、`commit`、`push` |
 
 纯查询命令不写盘。`source check` 虽不修改受管内容，仍会写入本机检查状态；修改受管内容的命令默认打印预览，传入 `--yes` 才落盘。全局选项包括 `--vault <path>`、`--json`、`--yes`、`--help` 与 `--version`。
 
-所有命令都支持 `--json`，在 stdout 返回一个信封：
+CLI 命令支持 `--json`，在 stdout 返回一个信封；`mcp serve` 则将 stdout 留给 MCP JSON-RPC 协议：
 
 ```json
 {
@@ -256,7 +270,7 @@ notes: Recorded for display only; VaultDesk never installs, starts, or registers
 | `cli` | 独立命令行工具 | 一个构建辅助脚本 |
 | `app` | 桌面或图形工具 | 一个本地编辑器 |
 
-卡片存放在 `tools/<name>.yml`。桌面 **工具** 页会显示全部卡片，**MCP** 页只筛出 `kind: mcp`。CLI 暴露同样的数据：
+卡片存放在 `tools/<name>.yml`。桌面 **工具** 页显示全部卡片；**MCP** 页包括 `kind: mcp` 和带 `mcp` 标签的卡片，涵盖插件与 CLI 形态。`tool list --kind mcp` 仅筛选独立 MCP 卡；查看全部具备 MCP 能力的工具时，应使用 catalog 的 `capabilities` 或全部工具卡：
 
 ```bash
 vaultdesk tool list --vault "$VAULT" --json
@@ -305,7 +319,7 @@ VaultDesk 提供只读 MCP server，让支持 MCP 的 agent 直接查询已登�
 
 ## 外部技能
 
-有些工具会随包提供技能目录，并在每次 setup 时改写或校验它。如果 vault 也管理同一个路径，两个写入方会互相覆盖。外部技能卡记录所有者和路径，只报告状态，从不写内容。
+有些工具会随包提供技能目录，并在 setup 或升级时改写它。如果 vault 也管理同一个路径，两个写入方可能互相覆盖。外部技能卡记录所有者和路径，只报告状态，从不写内容。单纯的只读校验不代表工具拥有该目录。
 
 ```yaml
 schema: 1
@@ -357,14 +371,14 @@ vaultdesk external adopt reverse-engineer-anything --vault "$VAULT" \
 
 ### 工具到来时如何推荐归属
 
-收录新工具或其技能之前，先检查路径和工具本身，给出默认推荐，再让用户确认。不要先写入，也不要空泛地把问题丢给用户。
+收录新工具或其技能之前，先检查路径和工具本身，沿用用户已有的归属决定。只有归属尚未确定时才给出推荐并提问；同一操作的既有授权不需要重复确认。
 
-- **工具自己管理**（随包安装，setup 或升级时改写、校验技能）：推荐外部技能卡。REA 是默认例子。
+- **工具自己管理**（安装器或更新器拥有并改写技能路径）：推荐外部技能卡。REA 是默认例子。只读的署名或完整性检查本身不意味着外部归属。
 - **应该由 VaultDesk 管理**：推荐普通 source。
 - **另一个管理器负责**：推荐保留原状；需要跟踪状态时，记一张以该管理器为 owner 的外部卡。
 - **需要独立副本**：推荐 fork 到新路径和新名称。
 
-把依据和推荐用一句话说清楚：「REA 的 setup 会重写这个技能，建议按外部托管记录，owner 为 rea-agents。确认？」用户已经说明归属时，照办并跳过提问。路径特征和标记是证据，不能代替确认。一个路径只有一个所有者。
+把依据和推荐说清楚，例如：「REA 的 setup 会重写这个技能，建议按外部托管记录，owner 为 rea-agents。」用户已确定所有者时照办。一个路径只有一个所有者。
 
 `vaultdesk build` 会写出 `build/external-skills.json`，为每张卡片记录 `observed_hash`、`observed_version` 与 `status`。Agent 读取卡片、索引或 `external show --json`，再自行安装和更新工具。
 
@@ -390,7 +404,7 @@ build/external-skills.json # 生成的外部技能观察索引
 .vault/state.json          # 本机状态，已被 gitignore
 ```
 
-VaultDesk 会在自己拥有的每个安装槽位写入 `.vault-managed` 标记。这个标记用来区分自己的副本与未托管目录；遇到未托管目录时，它会先移动到带时间戳的备份，而不是直接覆盖。
+VaultDesk 用 `.vault-managed` 标记受管技能副本与主库目录，用 `.vaultdesk-plugin-managed` 标记插件文件目标；逐技能链接记录在主库标记中。手动技能安装可备份明确选定的未托管槽位；自动分发遇到未知归属或手动修改会停止，不会覆盖。
 
 ## 架构
 
@@ -439,12 +453,12 @@ VaultDesk 会在自己拥有的每个安装槽位写入 `.vault-managed` 标记�
 - **手动操作先预览。** CLI 手动写入需要 `--yes`，应用需要确认对话框；仅选为 `auto` 的远程来源按已登记的目标自动同步。
 - **在 vault 之外拉取。** 上游数据先落到缓存，预览被接受之前不会写入 vault。
 - **GitHub 内容在 fork 前只读。** 来自 GitHub 的技能不能就地编辑。
-- **插件只存储，不执行。** 插件目录内的 hooks、脚本、命令与 MCP 服务都不会运行。VaultDesk 不生成市场清单或适配器清单。
+- **插件文件可分发，插件代码不执行。** 只管理明确登记的文件目标；VaultDesk 不运行插件目录内的 hooks、脚本、命令或 MCP 服务，也不生成市场清单或适配器清单。
 - **工具卡记录运行条件。** 不下载、不安装、不执行工具卡命令，也不向 agent 注册；用户主动验证时，可运行内置的限时 Python 依赖查询。
 - **外部技能属于它的工具。** VaultDesk 读取并计算路径 hash，报告漂移，从不写入。`adopt` 只删除 vault 自己的内容和本 vault 的标记。
 - **一个路径一个所有者。** 受管技能与外部技能不能共用路径；其他所有者的标记会阻止 `adopt`。
 - **自动同步不覆盖未托管目录。** 手动安装可在明确确认后备份旧目录；自动同步遇到未知归属或手动修改时暂停受影响来源。自动分发备份最多保留最近 3 次或 7 天。
-- **自动提交先做敏感内容拦截。** 自动更新会阻止 `.env`、`.secrets`、凭据目录、私钥、Python 缓存和高置信度 token 形态进入本轮提交，只报告文件路径和风险类型，不输出内容；已明确授权的 `ccswitch-provider` 恢复文件例外保留。
+- **自动提交先做敏感内容检查。** 检出高置信度凭据路径、私钥、Python 缓存或 token 形态时，会在提交推送前暂停来源，只报告路径和风险类型。这能降低误上传风险，但不是完整的泄密检测保证。
 - **Git 暂存是显式的。** VaultDesk 只提交自己改过的路径，从不执行 `git add -A`，并拒绝 vault 之外或 `.git` 之下的路径。
 - **校验的范围是明确的。** `target verify` 证明预期文件存在且 hash 一致，不能证明某个 agent 已经加载了技能。
 - **密钥不进入 vault。** 不要在 vault、插件记录或工具卡中存放 token、密钥或私有 URL。
@@ -471,15 +485,15 @@ CI 会运行类型检查、单元与集成测试，并在 macOS 和 Ubuntu 上�
 
 | 范围 | 状态 |
 | --- | --- |
-| 桌面应用与 CLI | 1.2.5；Apple Silicon DMG 已发布，CLI 可从源码使用 |
+| 桌面应用与 CLI | 1.2.6；Apple Silicon DMG 已发布，CLI 可从源码使用 |
 | 工具卡与 MCP 页面 | v1.2.3 加入运行环境检查和跨类别 MCP 展示；v1.2.4 默认优先使用 Miniconda base；v1.2.5 增加 agent catalog 与只读 MCP 发现入口 |
 | 外部技能记录 | 已包含在 v1.2.0 |
 | DMG | Apple Silicon 版本已发布，ad-hoc 签名，未公证 |
 | GitHub Release / Homebrew / npm | GitHub Release 已发布；Homebrew 与 npm 未发布 |
 | 来源自动同步 | 已在 macOS 安装版提供，支持逐来源自动/审核/暂停 |
-| Windows 与 Linux 桌面端 | v1.2.5 未包含 |
+| Windows 与 Linux 桌面端 | v1.2.6 未包含 |
 
-桌面应用在 1.2.5 只支持 macOS。CLI 已在 macOS 和 Ubuntu 上测试。
+桌面应用在 1.2.6 只支持 macOS。CLI 已在 macOS 和 Ubuntu 上测试。
 
 ## 参与贡献
 
@@ -489,7 +503,7 @@ CI 会运行类型检查、单元与集成测试，并在 macOS 和 Ubuntu 上�
 - [docs/PLUGINS.md](docs/PLUGINS.md)：插件识别、校验与更新规则
 - [agent-skill/vaultdesk/SKILL.md](agent-skill/vaultdesk/SKILL.md)：面向 agent 的契约
 
-保持边界不变。VaultDesk 负责存储、校验、记录与展示。它不安装或执行插件、工具、MCP 服务，不写入由工具托管的技能路径，不生成市场清单或适配器清单，也不写 agent 配置。新增一类资产时，先推荐所有者并与用户确认，再写代码。
+保持归属边界清楚。VaultDesk 存储、校验受管技能与插件文件，并分发到登记目标；agent 启用、外部工具安装及工具托管路径仍由其所有者负责。VaultDesk 不执行插件或工具命令、不生成市场清单或适配器清单，也不写 agent 配置。新增资产类别时，依据用户请求和已有授权确定归属；仅澄清尚未确定的所有者或范围。
 
 ```bash
 pnpm install

@@ -2,7 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
 import { describe, expect, it } from "vitest";
-import { addGithubPlugin, adoptPendingSkills, autoSyncVault, distributeCurrentSource, hashDirectory, initVault, listPendingSkills, setSourceUpdateMode } from "@vaultdesk/core";
+import { addGithubPlugin, adoptPendingSkills, autoSyncVault, distributeCurrentSource, hashDirectory, initVault, listPendingSkills, readVaultFile, registerPluginTarget, setSourceUpdateMode, updateSources, writeVaultFile } from "@vaultdesk/core";
 import { copyFixture, git, initGitRepo, repoRoot, tempDir } from "./helpers.js";
 
 function runCli(vaultPath: string, args: string[], env: Record<string, string> = {}) {
@@ -254,6 +254,51 @@ describe("automatic source sync", () => {
     expect(fs.readFileSync(masterFile, "utf8")).toBe(before);
   });
 
+  it("refreshes unchanged managed copies after a manual Vault-only update without committing unrelated work", async () => {
+    const ctx = setup();
+    expect((await autoSyncVault(ctx.vaultPath, ctx)).sources.find((source) => source.name === "gh-standalone")?.status).toBe("updated");
+    const masterFile = path.join(ctx.agentsSkillsDir, "gh-standalone", "SKILL.md");
+    const targetFile = path.join(ctx.target, "gh-standalone", "SKILL.md");
+    const before = fs.readFileSync(masterFile, "utf8");
+    fs.appendFileSync(path.join(ctx.upstreamSkill, "SKILL.md"), "\nVersion three.\n");
+    git(ctx.upstream, ["add", "."]);
+    git(ctx.upstream, ["commit", "-m", "v3"]);
+    await updateSources(ctx.vaultPath, { names: ["gh-standalone"], install: false, commit: false });
+    expect(fs.readFileSync(masterFile, "utf8")).toBe(before);
+    expect(fs.readFileSync(targetFile, "utf8")).toBe(before);
+    fs.writeFileSync(path.join(ctx.vaultPath, "unrelated.txt"), "keep staged work\n");
+    git(ctx.vaultPath, ["add", "unrelated.txt"]);
+    const head = git(ctx.vaultPath, ["rev-parse", "HEAD"]).trim();
+    const changes = git(ctx.vaultPath, ["status", "--porcelain"]);
+
+    const report = await autoSyncVault(ctx.vaultPath, ctx);
+    expect(report.sources.find((source) => source.name === "gh-standalone")).toMatchObject({
+      status: "current", message: expect.stringContaining("Distributed current source"),
+    });
+    expect(fs.readFileSync(masterFile, "utf8")).toContain("Version three.");
+    expect(fs.readFileSync(targetFile, "utf8")).toContain("Version three.");
+    expect(git(ctx.vaultPath, ["rev-parse", "HEAD"]).trim()).toBe(head);
+    expect(git(ctx.remote, ["rev-parse", "refs/heads/main"]).trim()).toBe(head);
+    expect(git(ctx.vaultPath, ["status", "--porcelain"])).toBe(changes);
+  });
+
+  it.each(["review-before-apply", "frozen"] as const)("does not refresh a stale distribution when the source is %s", async (mode) => {
+    const ctx = setup();
+    expect((await autoSyncVault(ctx.vaultPath, ctx)).sources.find((source) => source.name === "gh-standalone")?.status).toBe("updated");
+    const masterFile = path.join(ctx.agentsSkillsDir, "gh-standalone", "SKILL.md");
+    const before = fs.readFileSync(masterFile, "utf8");
+    fs.appendFileSync(path.join(ctx.upstreamSkill, "SKILL.md"), "\nVersion three.\n");
+    git(ctx.upstream, ["add", "."]);
+    git(ctx.upstream, ["commit", "-m", "v3"]);
+    await updateSources(ctx.vaultPath, { names: ["gh-standalone"], install: false, commit: false });
+    await setSourceUpdateMode(ctx.vaultPath, "gh-standalone", mode);
+
+    const report = await autoSyncVault(ctx.vaultPath, ctx);
+    expect(report.sources.find((source) => source.name === "gh-standalone")?.status).toBe(mode === "frozen" ? "skipped" : "current");
+    expect(fs.readFileSync(masterFile, "utf8")).toBe(before);
+    expect(fs.readFileSync(path.join(ctx.target, "gh-standalone", "SKILL.md"), "utf8")).toBe(before);
+  });
+
   it("reports a manually modified active target copy while preserving it", async () => {
     const ctx = setup();
     expect((await autoSyncVault(ctx.vaultPath, ctx)).sources.find((source) => source.name === "gh-standalone")?.status).toBe("updated");
@@ -431,6 +476,53 @@ describe("automatic source sync", () => {
     expect(adopted.status).toBe("updated");
     expect(fs.readFileSync(workingSkill, "utf8")).toContain("Updated helper");
     expect(fs.existsSync(path.join(vaultPath, "plugins", "pending-kit", "skills", "second", "SKILL.md"))).toBe(true);
+  });
+
+  it("refreshes stale plugin targets after manual update, preserving edits and paused copies", async () => {
+    const base = tempDir("auto-plugin-refresh");
+    const vaultPath = path.join(base, "vault");
+    const upstream = path.join(base, "upstream");
+    const options = { agentsSkillsDir: path.join(base, "agents"), backupRoot: path.join(base, "backups"), pendingRoot: path.join(base, "pending") };
+    await initVault(vaultPath, { name: "plugin-refresh" });
+    fs.mkdirSync(path.join(upstream, "skills", "helper"), { recursive: true });
+    fs.writeFileSync(path.join(upstream, "plugin.json"), JSON.stringify({ name: "refresh-kit", version: "1.0.0" }));
+    const upstreamFile = path.join(upstream, "skills", "helper", "SKILL.md");
+    fs.writeFileSync(upstreamFile, "---\nname: helper\ndescription: Helper\n---\n\n# Original helper\n");
+    initGitRepo(upstream);
+    await addGithubPlugin(vaultPath, { repo: "fixture/refresh-kit", remoteUrl: `file://${upstream}`, ref: "main" });
+    await registerPluginTarget(vaultPath, { id: "active-plugin", dest: path.join(base, "active"), names: ["refresh-kit"] });
+    await registerPluginTarget(vaultPath, { id: "paused-plugin", dest: path.join(base, "paused"), names: ["refresh-kit"] });
+    await distributeCurrentSource(vaultPath, "refresh-kit", options);
+    const config = readVaultFile(vaultPath);
+    config.plugin_targets!.find((target) => target.id === "paused-plugin")!.install_after_update = false;
+    writeVaultFile(vaultPath, config);
+    initGitRepo(vaultPath);
+    const activeFile = path.join(base, "active", "refresh-kit", "skills", "helper", "SKILL.md");
+    const pausedFile = path.join(base, "paused", "refresh-kit", "skills", "helper", "SKILL.md");
+    const before = fs.readFileSync(activeFile, "utf8");
+    fs.writeFileSync(upstreamFile, before.replace("Original", "Updated"));
+    git(upstream, ["add", "."]);
+    git(upstream, ["commit", "-m", "v2"]);
+    await updateSources(vaultPath, { names: ["refresh-kit"], install: false, commit: false });
+    const head = git(vaultPath, ["rev-parse", "HEAD"]).trim();
+    const changes = git(vaultPath, ["status", "--porcelain"]);
+
+    fs.appendFileSync(activeFile, "\nManual target edit.\n");
+    const blocked = await autoSyncVault(vaultPath, options);
+    expect(blocked.sources.find((source) => source.name === "refresh-kit")).toMatchObject({
+      status: "error", message: expect.stringContaining("managed copy was modified"),
+    });
+    expect(fs.readFileSync(activeFile, "utf8")).toContain("Manual target edit.");
+    fs.writeFileSync(activeFile, before);
+
+    const refreshed = await autoSyncVault(vaultPath, options);
+    expect(refreshed.sources.find((source) => source.name === "refresh-kit")).toMatchObject({
+      status: "current", message: expect.stringContaining("Distributed current source"),
+    });
+    expect(fs.readFileSync(activeFile, "utf8")).toContain("Updated helper");
+    expect(fs.readFileSync(pausedFile, "utf8")).toBe(before);
+    expect(git(vaultPath, ["rev-parse", "HEAD"]).trim()).toBe(head);
+    expect(git(vaultPath, ["status", "--porcelain"])).toBe(changes);
   });
 
   it("supports plugin target registration, first distribution, and safe removal through CLI", () => {

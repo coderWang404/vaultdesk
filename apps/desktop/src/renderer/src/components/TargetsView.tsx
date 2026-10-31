@@ -9,14 +9,15 @@ import { ActionMenu, Button, EmptyState, SectionHeader, SlotStrip, StatusMark, S
 type InstalledEntry = TargetRecord["installed"][number];
 type Filter = "all" | "attention" | "paused";
 
-function shortPath(path: string): string {
-  return path.replace(/^\/Users\/[^/]+/, "~");
+function shortPath(path: string, homePath?: string): string {
+  if (!homePath) return path;
+  return path === homePath ? "~" : path.startsWith(`${homePath}/`) ? `~${path.slice(homePath.length)}` : path;
 }
 
-function directoryLabel(dest: string, presets: ToolPreset[]): string {
-  const display = shortPath(dest);
+function directoryLabel(dest: string, presets: ToolPreset[], homePath?: string): string {
+  const display = shortPath(dest, homePath);
   if (display === "~/.agents/skills") return "共享技能目录";
-  const preset = presets.find((entry) => shortPath(entry.dest) === display);
+  const preset = presets.find((entry) => shortPath(entry.dest, homePath) === display);
   if (preset) return preset.label;
   if (display === "~/.qoder-cn/skills") return "Qoder CN";
   if (display === "~/.workbuddy/skills") return "WorkBuddy";
@@ -33,9 +34,11 @@ function slotFor(name: string, entry: InstalledEntry | undefined): { tone: Statu
   return { tone: "ok", label: `${name} · ${entry.matches === true ? "哈希一致" : "文件已分发"}` };
 }
 
-export function TargetsView({ vault, presets, onInstall, onBackups, onRemove, onReveal, onError }: {
+export function TargetsView({ vault, presets, homePath, onRefresh, onInstall, onBackups, onRemove, onReveal, onError }: {
   vault: VaultSnapshot;
   presets: ToolPreset[];
+  homePath?: string;
+  onRefresh: () => Promise<VaultSnapshot | null>;
   onInstall: (intent?: InstallIntent) => void;
   onBackups: (targetId?: string) => void;
   onRemove: (targetId: string) => void;
@@ -43,6 +46,7 @@ export function TargetsView({ vault, presets, onInstall, onBackups, onRemove, on
   onError: (message: string) => void;
 }) {
   const groupId = useId();
+  const displayPath = (path: string): string => shortPath(path, homePath);
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState<Filter>("all");
   const context = `${query}\0${filter}`;
@@ -56,7 +60,8 @@ export function TargetsView({ vault, presets, onInstall, onBackups, onRemove, on
     setVerifying(targetId);
     try {
       const result = await call<InstallVerification>("target.verify", { vaultPath: vault.path, id: targetId });
-      setVerifications((current) => ({ ...current, [targetId]: { vault, result } }));
+      const refreshed = await onRefresh();
+      if (refreshed) setVerifications((current) => ({ ...current, [targetId]: { vault: refreshed, result } }));
     } catch (error) {
       onError(errorMessage(error));
     } finally {
@@ -78,9 +83,9 @@ export function TargetsView({ vault, presets, onInstall, onBackups, onRemove, on
         const name = entry.path.split("/").at(-1) ?? entry.path;
         if (!skills.has(name)) others.set(entry.path, entry);
       }
-      return { dest, label: directoryLabel(dest, presets), targets, skills, others: [...others.values()] };
-    }).sort((a, b) => Number(shortPath(b.dest) === "~/.agents/skills") - Number(shortPath(a.dest) === "~/.agents/skills") || a.label.localeCompare(b.label) || a.dest.localeCompare(b.dest));
-  }, [vault.targets, presets]);
+      return { dest, label: directoryLabel(dest, presets, homePath), targets, skills, others: [...others.values()] };
+    }).sort((a, b) => Number(shortPath(b.dest, homePath) === "~/.agents/skills") - Number(shortPath(a.dest, homePath) === "~/.agents/skills") || a.label.localeCompare(b.label) || a.dest.localeCompare(b.dest));
+  }, [vault.targets, presets, homePath]);
 
   function verificationFor(target: TargetRecord): InstallVerification | undefined {
     const checked = verifications[target.id];
@@ -112,6 +117,16 @@ export function TargetsView({ vault, presets, onInstall, onBackups, onRemove, on
     setFolded({ context, paths });
   }
 
+  function changeQuery(value: string): void {
+    setQuery(value);
+    setFolded({ context: `${value}\0${filter}`, paths: new Set() });
+  }
+
+  function changeFilter(value: Filter): void {
+    setFilter(value);
+    setFolded({ context: `${query}\0${value}`, paths: new Set() });
+  }
+
   return (
     <div className="view targets-view">
       <SectionHeader title="安装目标" actions={<>
@@ -130,11 +145,11 @@ export function TargetsView({ vault, presets, onInstall, onBackups, onRemove, on
         <div className="toolbar targets-toolbar">
           <div className="search-box">
             <Icon name="search" size={16} />
-            <input aria-label="搜索安装目标" placeholder="搜索 agent、技能、来源或目录" value={query} onChange={(event) => setQuery(event.target.value)} />
-            {query ? <button className="search-clear" aria-label="清除目标搜索" onClick={() => setQuery("")}><Icon name="x" size={13} /></button> : null}
+            <input aria-label="搜索安装目标" placeholder="搜索 agent、技能、来源或目录" value={query} onChange={(event) => changeQuery(event.target.value)} />
+            {query ? <button className="search-clear" aria-label="清除目标搜索" onClick={() => changeQuery("")}><Icon name="x" size={13} /></button> : null}
           </div>
           <div className="segmented" role="group" aria-label="安装目标状态筛选">
-            {([["all", "全部"], ["attention", "需要处理"], ["paused", "已暂停"]] as const).map(([value, label]) => <button key={value} className={filter === value ? "is-active" : ""} aria-pressed={filter === value} onClick={() => setFilter(value)}>{label}<span className="target-filter-count">{counts[value]}</span></button>)}
+            {([["all", "全部"], ["attention", "需要处理"], ["paused", "已暂停"]] as const).map(([value, label]) => <button key={value} className={filter === value ? "is-active" : ""} aria-pressed={filter === value} onClick={() => changeFilter(value)}>{label}<span className="target-filter-count">{counts[value]}</span></button>)}
           </div>
           <Button variant="ghost" size="sm" disabled={!visibleGroups.length} aria-label={allCollapsed ? "展开全部分组" : "收起全部分组"} onClick={() => setFolded({ context, paths: allCollapsed ? new Set() : new Set(visibleGroups.map((group) => group.dest)) })}>{allCollapsed ? "展开全部分组" : "收起全部分组"}</Button>
         </div>
@@ -146,15 +161,15 @@ export function TargetsView({ vault, presets, onInstall, onBackups, onRemove, on
               const sectionId = `${groupId}-${index}`;
               const attention = group.targets.filter(needsAttention).length;
               const paused = group.targets.filter((target) => !target.installAfterUpdate).length;
-              return <section className="target-group" key={group.dest} aria-label={`${group.label} · ${shortPath(group.dest)}`}>
+              return <section className="target-group" key={group.dest} aria-label={`${group.label} · ${displayPath(group.dest)}`}>
                 <header className="target-group-head">
                   <div className="target-group-main">
                     <h2><button className="target-group-toggle" aria-label={`${expanded ? "收起" : "展开"}分组 ${group.label}`} aria-expanded={expanded} aria-controls={sectionId} onClick={() => toggleGroup(group.dest)}>
                       <Icon name={expanded ? "chevron-down" : "chevron-right"} size={16} />
-                      <span className="target-group-icon"><Icon name={shortPath(group.dest) === "~/.agents/skills" ? "vault" : "folder"} size={18} /></span>
+                      <span className="target-group-icon"><Icon name={displayPath(group.dest) === "~/.agents/skills" ? "vault" : "folder"} size={18} /></span>
                       <span>{group.label}</span>
                     </button></h2>
-                    <button className="target-group-path mono" onClick={() => onReveal(group.dest)} title={`在 Finder 中显示：${group.dest}`}><span>{shortPath(group.dest)}</span><Icon name="external" size={12} /></button>
+                    <button className="target-group-path mono" onClick={() => onReveal(group.dest)} title={`在 Finder 中显示：${group.dest}`}><span>{displayPath(group.dest)}</span><Icon name="external" size={12} /></button>
                   </div>
                   <div className="target-group-summary">
                     <span>{group.skills.size} 个技能 · {group.visible.length === group.targets.length ? group.targets.length : `${group.visible.length}/${group.targets.length}`} 条规则</span>

@@ -901,6 +901,8 @@ export function App() {
             key={activeVault.path}
             vault={activeVault}
             presets={presets}
+            homePath={info?.homePath}
+            onRefresh={() => reloadVault(activeVault.path)}
             onInstall={openInstall}
             onBackups={openBackups}
             onRemove={(id) => {

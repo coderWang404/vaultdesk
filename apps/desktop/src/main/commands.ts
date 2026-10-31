@@ -1,4 +1,5 @@
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import { clipboard, shell } from "electron";
 import {
@@ -256,6 +257,7 @@ const handlers: { [K in IpcCommand]: Handler<K> } = {
 
   "app.info": async (_payload, context) => ({
     version: context.version,
+    homePath: os.homedir(),
     platform: process.platform,
     arch: process.arch,
     electron: process.versions.electron,

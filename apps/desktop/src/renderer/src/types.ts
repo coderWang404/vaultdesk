@@ -44,6 +44,7 @@ export type ModalState =
   | { kind: "backups"; vaultPath: string; targetId?: string };
 
 export interface AppInfo {
+  homePath: string;
   version: string;
   platform: string;
   arch: string;

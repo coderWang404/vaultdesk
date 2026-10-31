@@ -584,8 +584,9 @@ async function pluginsFlow(suite: Suite): Promise<void> {
   await page.locator(".plugin-row").first().waitFor();
   equal(await page.locator(".plugin-row").count(), 5, "fixture plugin rows");
   await openSection(page, "安装目标");
-  await waitForText(page, "已暂停·保留当前副本");
-  await waitForText(page, "恢复同步前，当前副本会保持不变。");
+  const pausedTarget = page.locator(".target-card");
+  await pausedTarget.getByText("已暂停", { exact: true }).waitFor();
+  assert((await pausedTarget.getByText("已暂停", { exact: true }).getAttribute("title"))?.includes("保留当前副本"), "paused target explains preserved copy without repeating a full paragraph per rule");
   await openSection(page, "插件");
 
   await page.getByLabel("筛选插件").fill("security");
@@ -1702,7 +1703,9 @@ async function groupedTargets(suite: Suite): Promise<void> {
     defaults: { ref: "main", update_mode: "auto" },
     targets: rules,
   }, null, 2) + "\n");
-  fs.appendFileSync(path.join(qoderDest, "alpha", "SKILL.md"), "\nLOCAL-DRIFT\n", "utf8");
+  const alphaFile = path.join(qoderDest, "alpha", "SKILL.md");
+  const alphaOriginal = read(alphaFile);
+  fs.appendFileSync(alphaFile, "\nLOCAL-DRIFT\n", "utf8");
   fs.rmSync(missingDest, { recursive: true });
   const presetsFile = path.join(workspace.root, "presets.yml");
   fs.writeFileSync(presetsFile, JSON.stringify({ schema: 1, tools: [{
@@ -1762,7 +1765,15 @@ async function groupedTargets(suite: Suite): Promise<void> {
   const attentionNames = (await cards.locator("h3").allTextContents()).map((value) => value.trim()).sort();
   equal(attentionNames.join(","), "offline:delta,qoder:alpha,qoder:alpha-copy", "attention includes missing, modified and unowned slots while excluding healthy paused targets");
   equal(await cards.filter({ visible: true }).count(), 3, "filter exposes matching rows despite previous collapse");
+  fs.writeFileSync(alphaFile, alphaOriginal, "utf8");
+  const restoredAlpha = cards.filter({ has: page.getByRole("heading", { name: "qoder:alpha", exact: true }) });
+  await restoredAlpha.locator(".row-menu summary").click();
+  await restoredAlpha.getByRole("button", { name: "验证文件", exact: true }).click();
+  await waitFor(async () => (await cards.count()) === 2, "verified external repair refreshes attention filter");
+  equal((await cards.locator("h3").allTextContents()).map((value) => value.trim()).sort().join(","), "offline:delta,qoder:alpha-copy", "successful verification removes stale modified status without hiding other issues");
   await statusFilter.getByRole("button", { name: /^全部/ }).click();
+  await restoredAlpha.getByLabel("校验通过", { exact: true }).waitFor();
+  equal(await restoredAlpha.getByText("检查文件", { exact: true }).count(), 0, "fresh verification and slot status agree");
   await page.getByRole("button", { name: "收起全部分组", exact: true }).click();
   equal(await view.locator(".target-card:visible").count(), 0, "collapse all hides all rules");
   await page.getByRole("button", { name: "展开全部分组", exact: true }).click();

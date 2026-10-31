@@ -4,7 +4,7 @@ Status: release verification in progress on 2026-10-31. This patch adds a standa
 
 The packaged `Resources/cli/vaultdesk.cjs` contains the CLI's workspace dependencies and runs through Electron's bundled Node runtime with `ELECTRON_RUN_AS_NODE=1`. The installer refuses unknown, symlinked, or edited launchers and clears common Node/dynamic-library injection variables. Settings can copy an absolute-path MCP configuration for the selected Vault; the agent still registers and verifies that configuration itself.
 
-Local validation: typecheck, 174 tests, launcher/MCP regression tests, CLI and desktop E2E, and the mounted-DMG CLI/MCP smoke all passed. The DMG test runs without the source checkout, `node_modules`, or a system Node path. The release-specific artifact, CI run, installed app version, and hashes will be recorded below after publication.
+Local validation: typecheck, 179 tests, launcher/MCP regression tests, CLI E2E, and the mounted-DMG CLI/MCP smoke passed. The desktop and DMG suites are being repeated after fixing first-launch access to Settings without an open Vault. The DMG test runs without the source checkout, `node_modules`, or a system Node path. The release-specific artifact, CI run, installed app version, and hashes will be recorded below after publication.
 
 | Field | Value |
 | --- | --- |

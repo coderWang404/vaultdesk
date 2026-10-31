@@ -791,6 +791,28 @@ export function App() {
       ? vaults.find((vault) => vault.path === modal.vaultPath) ?? null
       : null;
 
+  function renderSettings(): ReactNode {
+    return (
+      <SettingsView
+        vault={activeVault}
+        settings={settings}
+        themePreference={themePreference}
+        onThemePreference={setThemePreference}
+        info={info}
+        presets={presets}
+        syncing={syncing}
+        onAutoSync={() => runAutoSync()}
+        onAdopt={(vaultPath, source) => setModal({ kind: "pending-skills", vaultPath, source })}
+        onSaved={(saved) => {
+          setSettings(saved);
+          notify("设置已保存", "ok");
+        }}
+        onReveal={reveal}
+        onError={(message) => notify(message, "danger")}
+      />
+    );
+  }
+
   function renderView(): ReactNode {
     if (!activeVault) return null;
     switch (section) {
@@ -899,25 +921,7 @@ export function App() {
           />
         );
       case "settings":
-        return (
-          <SettingsView
-            vault={activeVault}
-            settings={settings}
-            themePreference={themePreference}
-            onThemePreference={setThemePreference}
-            info={info}
-            presets={presets}
-            syncing={syncing}
-            onAutoSync={() => runAutoSync()}
-            onAdopt={(vaultPath, source) => setModal({ kind: "pending-skills", vaultPath, source })}
-            onSaved={(saved) => {
-              setSettings(saved);
-              notify("设置已保存", "ok");
-            }}
-            onReveal={reveal}
-            onError={(message) => notify(message, "danger")}
-          />
-        );
+        return renderSettings();
       default:
         return null;
     }
@@ -1013,6 +1017,15 @@ export function App() {
               ) : null}
             </div>
           </div>
+        </div>
+      ) : section === "settings" ? (
+        <div className="workspace-body">
+          <main className="content-pane" tabIndex={-1}>
+            <div className="view">
+              <Button variant="quiet" icon="vault" onClick={() => changeSection("overview")}>返回仓库首页</Button>
+            </div>
+            {renderSettings()}
+          </main>
         </div>
       ) : (
         <Welcome

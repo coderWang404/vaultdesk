@@ -107,7 +107,7 @@ export function TitleBar({
           className={checking ? "is-spinning" : ""}
           disabled={checking || !activePath}
         />
-        <IconButton icon="settings" label="设置" onClick={onSettings} disabled={!activePath} />
+        <IconButton icon="settings" label="设置" onClick={onSettings} />
       </div>
     </header>
   );

@@ -56,7 +56,7 @@ export function SettingsView({
   onReveal,
   onError,
 }: {
-  vault: VaultSnapshot;
+  vault: VaultSnapshot | null;
   settings: AppSettings;
   themePreference: ThemePreference;
   onThemePreference: (theme: ThemePreference) => void;
@@ -159,7 +159,7 @@ export function SettingsView({
   }
 
   async function copyMcpConfig(): Promise<void> {
-    if (!cli?.installed) return;
+    if (!cli?.installed || !vault) return;
     try {
       const { config } = await call<{ config: string }>("app.mcpClientConfig", { vaultPath: vault.path });
       await call("app.copyText", { text: config });
@@ -274,7 +274,7 @@ export function SettingsView({
           <Button size="sm" variant="quiet" icon="refresh" loading={syncing} onClick={() => void onAutoSync()} >
             立即检查并同步全部仓库
           </Button>
-          <div className="settings-meta">
+          {vault ? <div className="settings-meta">
             <span
               title={
                 vault.state?.last_checked_at
@@ -287,7 +287,7 @@ export function SettingsView({
             <span>
               <Icon name="vault" size={12} /> {vault.format}
             </span>
-          </div>
+          </div> : <p className="agent-skill-hint">尚未打开仓库。后台设置适用于全部已登记仓库。</p>}
         </section>
 
         <section className="panel settings-panel">
@@ -485,17 +485,18 @@ export function SettingsView({
         </div>
         <p className="agent-skill-description">
           {cliError ?? cli?.detail ?? "正在检查应用内置命令行工具。"}
-          {cli?.installed ? ` 路径：${cli.launcherPath}` : ""}
+          {cli ? ` 路径：${cli.launcherPath}` : ""}
         </p>
         <div className="about-links">
           <Button size="sm" variant="quiet" icon="terminal" loading={installingCli} disabled={!cli?.available || cli.conflict} onClick={() => void installCli()}>
             {cli?.installed ? "更新命令行工具" : "安装命令行工具"}
           </Button>
-          <Button size="sm" variant="quiet" icon="copy" disabled={!cli?.installed} onClick={() => void copyMcpConfig()}>
+          <Button size="sm" variant="quiet" icon="copy" disabled={!cli?.installed || !vault} onClick={() => void copyMcpConfig()}>
             复制 MCP 配置
           </Button>
         </div>
         {cliNotice ? <p className="agent-skill-hint" role="status">{cliNotice}</p> : null}
+        {!vault ? <p className="agent-skill-hint">先打开或新建一个 Vault，再复制该仓库的 MCP 配置。命令行工具可以先安装。</p> : null}
         <p className="agent-skill-hint">
           MCP 配置使用绝对命令路径，不依赖 agent 的 PATH。请在目标 agent 中登记并验证连接；不同客户端的配置格式可能不同。终端若找不到 <span className="mono">vaultdesk</span>，请使用上方完整路径，或将 <span className="mono">~/.local/bin</span> 加入 PATH。
         </p>
@@ -540,7 +541,7 @@ export function SettingsView({
           >
             GitHub 仓库
           </Button>
-          <Button variant="quiet" icon="file" onClick={() => onReveal(vault.path)}>
+          <Button variant="quiet" icon="file" disabled={!vault} onClick={() => { if (vault) onReveal(vault.path); }}>
             当前仓库目录
           </Button>
         </div>

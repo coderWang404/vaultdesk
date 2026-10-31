@@ -31,6 +31,7 @@ macOS desktop session; the default suites need no network.
 
 | Scenario | Coverage |
 | --- | --- |
+| First-launch settings and CLI access without a Vault | Settings and the CLI section are reachable before opening a Vault; MCP copying and reveal-current-Vault remain unavailable without a selection. |
 | Help, version, JSON envelope and usage errors | Human and JSON output, envelope shape, usage exit code, built-in presets, bundled agent skill, preset verify preview and confirmed run. |
 | Init, status, validate, imports and build | Init preview/apply, status, validation, standalone/collection/package imports, generated build output. |
 | Target install, verify, remove, restore | Preview plan, unmanaged backup, symlink replacement, marker files, drift verification, reinstall, unregister, re-register, backup restore. |
@@ -54,8 +55,11 @@ macOS desktop session; the default suites need no network.
 | GitHub import, check, diff, guarded update, fork | Import dialog, source row state, diff view, update confirmation, install refresh, fork into a local skill. |
 | Install, backup, verify, restore, remove and re-register target | Full target lifecycle through the UI, including unmanaged and symlink slots, backups, drift, restore and orphaned backups. |
 | Cross-vault search, settings validation and persistence | `Cmd+K` palette across two vaults, keyboard selection, jump to skill, settings validation and restart persistence. |
-| Boot auto-check honors the 24h interval | Recent timestamp skips the boot check; a 25-hour-old timestamp triggers it and refreshes state. |
-| Auto-check runs once per vault per session | Two authenticated remotes: boot vault A, first activation of B, no repeat when switching back, manual check still reaches the server, roving tab keyboard navigation, titlebar close. |
+| Manual source check and automatic update mode | Source checking and explicit update modes remain separate operations. |
+| All registered vaults sync and keyboard tabs | Sync includes registered Vaults, including those without an open tab; tab navigation remains keyboard accessible. |
+| Headless background worker startup and disable | The worker starts independently of the GUI and respects the background-sync setting. |
+| Closed GUI window reopens | Single-instance handoff reopens the GUI without duplicating the worker. |
+| Pending skill adoption from activity | Newly discovered upstream skills can be reviewed and adopted from recorded activity. |
 | Slow check, offline warning and journal recovery | Slow authenticated check, offline failure message, persisted source error, recovery banner lifecycle, no rollback of working files. |
 | Custom tool preset under a sandboxed HOME | Custom preset file, verification badge, bundled agent skill panel, verify-command preview and confirmed run with output, preset chip destination, install into a sandboxed `~`. |
 | Tool cards and the MCP view | Read-only tool cards, kind labels, install/connect copy, related-skill jump, `--kind` counts, MCP page filtering, MCP search routing and v1 empty state. |
@@ -78,6 +82,9 @@ The packaged-app scenario:
    skill and target counts, validates the vault, checks the Settings agent-skill
    panel path, edits a skill, confirms the file on disk and in `git status`,
    exits, and confirms the edit persists.
+4. Runs the bundled CLI with Electron's Node runtime and only `/usr/bin:/bin`
+   on PATH, verifies the version and bundled skill, and exchanges real MCP
+   `initialize` and `tools/list` messages without workspace dependencies.
 
 The scenario requires a valid `codesign --verify --deep --strict` bundle
 signature and, for ad-hoc builds, the VaultDesk identifier. A Developer ID build
@@ -110,7 +117,7 @@ instead of pretending to be a signed release.
 | Browser quarantine and `/Applications` install | A locally built DMG has no quarantine xattr. The test copies into a temporary install directory rather than `/Applications`, so the first-launch Gatekeeper prompt for a downloaded DMG is not reproduced. |
 | iCloud Drive, SMB/NFS or other network filesystems | No reproducible share is available. An external APFS disk image covers a non-home mount, but not iCloud eviction or network latency/failure semantics. |
 | macOS version and CPU matrix | Verified on the host macOS arm64 version only. No Intel build and no macOS 13/14/15 matrix are run. |
-| Wall-clock 24-hour checks, sleep/wake and periodic scheduling | The product checks once per vault per app session, with a 24-hour boot gate; there is no periodic timer or sleep/wake handler. The gate is tested by rewriting persisted timestamps, not by waiting 24 hours. |
+| Full-hour waits and real login/network recovery | Worker startup, explicit synchronization and settings are exercised, but the suite does not wait a full hour or log the macOS user out. Real login and network-recovery timing require installed-app observation. |
 | Automatic recovery from a crash | No automatic rollback exists by design. The SIGKILL scenario proves journal and lock survival plus status reporting, but not resuming the interrupted import or reconciling partial files; that remains an operator decision. |
 | Real SSH daemon, proxy, custom CA or TLS interception | Transport tests use loopback HTTP and a rewritten SSH command. Enterprise proxy and certificate behavior is not covered. |
 | VoiceOver and manual accessibility | Coverage is axe-core WCAG A/AA checks plus keyboard focus tests. No human screen-reader session is recorded. |

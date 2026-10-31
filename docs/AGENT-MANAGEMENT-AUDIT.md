@@ -16,6 +16,7 @@ The catalog is a registry view, not a scan of every tool installed on the comput
 ## Defects addressed
 
 - Added a unified agent catalog and five read-only MCP queries instead of requiring agents to infer the inventory from unrelated pages.
+- Bundled the CLI and MCP runtime in the DMG, with a guarded launcher installer accessible from Settings before any Vault is opened; conflicts show the exact existing path.
 - Added explicit plugin target controls and clearer separation of file distribution, runtime prerequisites, and agent activation.
 - Detect modified plugin targets even when upstream has no new commit.
 - Refresh intact but outdated managed masters and active targets after an update that changed only Vault contents. Respect review/frozen source modes and paused targets, and preserve manual edits.

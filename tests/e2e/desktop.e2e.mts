@@ -2244,6 +2244,39 @@ async function rendererUxRegression(suite: Suite): Promise<void> {
   console.log("      source health, keyboard details/tab close, 125% zoom, reduced motion and invalid IPC errors OK");
 }
 
+async function firstLaunchSettings(suite: Suite): Promise<void> {
+  const workspace = suite.workspace("first-launch-settings");
+  const sandboxHome = path.join(workspace.root, "home");
+  fs.mkdirSync(sandboxHome, { recursive: true });
+  const launched = await suite.launch({ workspace, initialVault: null, extraEnv: { HOME: sandboxHome } });
+  const page = launched.page;
+  await waitForText(page, "还没有最近仓库");
+  const settings = page.getByRole("button", { name: "设置", exact: true });
+  equal(await settings.isEnabled(), true, "settings is available before opening a Vault");
+  await settings.click();
+  await page.getByRole("heading", { name: "命令行与 MCP", exact: true }).waitFor();
+  await page.getByRole("button", { name: "安装命令行工具", exact: true }).waitFor();
+  await waitForText(page, "命令行工具可以先安装");
+  equal(await page.getByRole("button", { name: "复制 MCP 配置", exact: true }).isDisabled(), true, "MCP config cannot be copied without a Vault");
+  equal(await page.getByRole("button", { name: "当前仓库目录", exact: true }).isDisabled(), true, "no current Vault directory is revealed");
+  await page.getByRole("button", { name: "返回仓库首页", exact: true }).click();
+  await waitForText(page, "还没有最近仓库");
+
+  const vaultPath = path.join(workspace.root, "v2-basic");
+  copyFixture("v2-basic", vaultPath);
+  setDialogChoice(workspace, vaultPath);
+  await page.locator(".welcome-actions").getByRole("button", { name: "打开仓库", exact: true }).click();
+  await page.locator(".vault-tab").filter({ hasText: "v2-basic" }).waitFor();
+  await page.locator(".titlebar-actions").getByRole("button", { name: "设置", exact: true }).click();
+  await page.getByRole("heading", { name: "命令行与 MCP", exact: true }).waitFor();
+  equal(await page.getByRole("button", { name: "当前仓库目录", exact: true }).isEnabled(), true, "Vault-specific actions become available after opening a Vault");
+  await page.getByRole("button", { name: "关闭 v2-basic", exact: true }).click();
+  await page.getByRole("heading", { name: "命令行与 MCP", exact: true }).waitFor();
+  await waitForText(page, "命令行工具可以先安装");
+  equal(await page.getByRole("button", { name: "复制 MCP 配置", exact: true }).isDisabled(), true, "closing the last Vault does not retain a stale MCP selection");
+  console.log("      first-launch settings and CLI entry are reachable; Vault-dependent actions stay guarded");
+}
+
 async function main(): Promise<void> {
   const results: boolean[] = [];
   const run = async (name: string, body: (suite: Suite) => Promise<void>): Promise<void> => {
@@ -2251,6 +2284,7 @@ async function main(): Promise<void> {
     if (only && !name.toLowerCase().includes(only)) return;
     results.push(await scenario(name, body));
   };
+  await run("first-launch settings and CLI access without a Vault", firstLaunchSettings);
   await run("v1 read-only open, validation, guard, recents", v1ReadOnly);
   await run("migration blocked when dirty, then applied to vault-v2", migration);
   await run("create vault, local imports, edit, explicit commit and push", writableFlow);

@@ -101,20 +101,33 @@ export function SkillsView({
   }, [skills, sourceByName]);
   const issuesBySource = useMemo(() => {
     const result = new Map<string, number>();
-    const skillRoots = vault.skills.map((skill) => ({ sourceName: skill.sourceName, root: skill.relativePath }));
+    const rootsBySource = new Map<string, string[]>();
+    for (const skill of skills) {
+      const roots = rootsBySource.get(skill.sourceName) ?? [];
+      roots.push(skill.relativePath);
+      rootsBySource.set(skill.sourceName, roots);
+    }
+    const metadataBySource = new Map(vault.sources.map((source) => [source.name, source.metadataPath]));
+    // Preserve the existing per-group semantics (a path can legitimately be
+    // reported for more than one source when source roots overlap), while doing
+    // the work once per snapshot instead of once for every rendered group.
     for (const issue of vault.issues) {
       const issuePath = issue.path;
       if (!issuePath) continue;
-      const metadataOwner = vault.sources.find((source) => source.metadataPath === issuePath)?.name;
-      if (metadataOwner) {
-        result.set(metadataOwner, (result.get(metadataOwner) ?? 0) + 1);
-        continue;
+      for (const [sourceName, roots] of rootsBySource) {
+        const metadataPath = metadataBySource.get(sourceName);
+        const matchesMetadata = metadataPath === issuePath;
+        const matchesSkill = !matchesMetadata && roots.some((root) => issuePath === root || issuePath.startsWith(`${root}/`));
+        if (matchesMetadata || matchesSkill) result.set(sourceName, (result.get(sourceName) ?? 0) + 1);
       }
-      const owner = skillRoots.find(({ root }) => issuePath === root || issuePath.startsWith(`${root}/`))?.sourceName;
-      if (owner) result.set(owner, (result.get(owner) ?? 0) + 1);
+      for (const [sourceName, metadataPath] of metadataBySource) {
+        if (!rootsBySource.has(sourceName) && metadataPath === issuePath) {
+          result.set(sourceName, (result.get(sourceName) ?? 0) + 1);
+        }
+      }
     }
     return result;
-  }, [vault.issues, vault.skills, vault.sources]);
+  }, [vault.issues, skills, vault.sources]);
 
   const externalGroups = useMemo(() => {
     const byOwner = new Map<string, ExternalSkillRecord[]>();

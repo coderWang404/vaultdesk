@@ -4,9 +4,40 @@ import type { ToolPreset } from "@vaultdesk/schema";
 import type { InstallIntent } from "../../types";
 import { call, errorMessage } from "../../api";
 import { Icon } from "../icons";
-import { Button, Callout, Field, Modal, StatusPill } from "../ui";
+import { Button, Callout, ErrorBoundary, Field, Modal, StatusPill } from "../ui";
 
-export function InstallModal({
+// Keep the picker responsive when a Vault contains hundreds or thousands of
+// skills. Selection actions still operate on the complete filtered set.
+const MAX_RENDERED_PICKER_SKILLS = 240;
+
+export function InstallModal(props: {
+  vault: VaultSnapshot;
+  intent: InstallIntent;
+  presets: ToolPreset[];
+  onClose: () => void;
+  onDone: (message: string) => void;
+}) {
+  return (
+    <ErrorBoundary
+      fallback={() => (
+        <Modal
+          title="批量安装暂不可用"
+          subtitle="技能列表过大或渲染失败，已保护当前窗口。"
+          onClose={props.onClose}
+          footer={<Button variant="primary" onClick={props.onClose}>关闭</Button>}
+        >
+          <Callout tone="danger" title="请核对安装结果">
+            <p>安装窗口渲染失败，界面已保护。请关闭后刷新仓库状态；如果已点击确认安装，请先查看活动记录再重试。</p>
+          </Callout>
+        </Modal>
+      )}
+    >
+      <InstallModalContent {...props} />
+    </ErrorBoundary>
+  );
+}
+
+function InstallModalContent({
   vault,
   intent,
   presets,
@@ -30,8 +61,15 @@ export function InstallModal({
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [query, setQuery] = useState("");
-  const availableSkills = useMemo(() => vault.skills.filter((skill) => intent.mode !== "add" || !target?.skills.includes(skill.name)), [vault.skills, intent.mode, target]);
-  const validScope = (!fixedTarget || Boolean(target)) && names.length > 0 && names.every((name) => vault.skills.some((skill) => skill.name === name));
+  const [renderLimit, setRenderLimit] = useState(MAX_RENDERED_PICKER_SKILLS);
+  const targetSkillNames = useMemo(() => new Set(target?.skills ?? []), [target?.skills]);
+  const vaultSkillNames = useMemo(() => new Set(vault.skills.map((skill) => skill.name)), [vault.skills]);
+  const availableSkills = useMemo(
+    () => vault.skills.filter((skill) => intent.mode !== "add" || !targetSkillNames.has(skill.name)),
+    [vault.skills, intent.mode, targetSkillNames],
+  );
+  const selectedNames = useMemo(() => new Set(names), [names]);
+  const validScope = (!fixedTarget || Boolean(target)) && names.length > 0 && names.every((name) => vaultSkillNames.has(name));
   const canSubmit = vault.format === "v2" && validScope;
   const title = intent.mode === "reinstall" ? `重新安装到 ${intent.targetId}` : intent.mode === "add" ? `添加技能到 ${intent.targetId}` : intent.mode === "skills" && names.length === 1 ? `安装 ${names[0]}` : "安装技能";
   const actionLabel = intent.mode === "reinstall" ? "确认重新安装" : intent.mode === "add" ? "确认添加" : "确认安装";
@@ -43,14 +81,27 @@ export function InstallModal({
 
   const grouped = useMemo(() => {
     const map = new Map<string, typeof vault.skills>();
+    const needle = query.trim().toLowerCase();
     for (const skill of availableSkills) {
-      if (query.trim() && !`${skill.name} ${skill.sourceName} ${skill.description}`.toLowerCase().includes(query.trim().toLowerCase())) continue;
+      if (needle && !`${skill.name} ${skill.sourceName} ${skill.description}`.toLowerCase().includes(needle)) continue;
       const list = map.get(skill.sourceName) ?? [];
       list.push(skill);
       map.set(skill.sourceName, list);
     }
     return [...map.entries()].sort(([a], [b]) => a.localeCompare(b));
   }, [availableSkills, query]);
+
+  const renderedGroups = useMemo(() => {
+    let remaining = renderLimit;
+    return grouped.flatMap(([sourceName, skills]) => {
+      if (remaining <= 0) return [];
+      const visible = skills.slice(0, remaining);
+      remaining -= visible.length;
+      return visible.length > 0 ? [[sourceName, visible] as const] : [];
+    });
+  }, [grouped, renderLimit]);
+  const matchingSkillCount = grouped.reduce((total, [, skills]) => total + skills.length, 0);
+  const renderedSkillCount = renderedGroups.reduce((total, [, skills]) => total + skills.length, 0);
 
   function resetPreview(): void {
     setPlan(null);
@@ -60,9 +111,12 @@ export function InstallModal({
 
   function toggleSkill(name: string): void {
     resetPreview();
-    setNames((current) =>
-      current.includes(name) ? current.filter((entry) => entry !== name) : [...current, name],
-    );
+    setNames((current) => {
+      const next = new Set(current);
+      if (next.has(name)) next.delete(name);
+      else next.add(name);
+      return [...next];
+    });
   }
 
   function applyPreset(preset: ToolPreset): void {
@@ -222,7 +276,11 @@ export function InstallModal({
               className="text-link"
               onClick={() => {
                 resetPreview();
-                setNames((current) => [...new Set([...current, ...grouped.flatMap(([, skills]) => skills.map((skill) => skill.name))])]);
+                const needle = query.trim().toLowerCase();
+                const matchingNames = availableSkills
+                  .filter((skill) => !needle || `${skill.name} ${skill.sourceName} ${skill.description}`.toLowerCase().includes(needle))
+                  .map((skill) => skill.name);
+                setNames((current) => [...new Set([...current, ...matchingNames])]);
               }}
             >
               {query.trim() ? "全选结果" : "全选"}
@@ -238,18 +296,18 @@ export function InstallModal({
             </button>
           </div>
         </div>
-        <div className="picker-search"><input className="input" type="search" aria-label="搜索可安装技能" placeholder="搜索技能或来源" value={query} onChange={(event) => setQuery(event.target.value)} /></div>
-        <div className="picker-groups">
+        <div className="picker-search"><input className="input" type="search" aria-label="搜索可安装技能" placeholder="搜索技能或来源" value={query} onChange={(event) => { setQuery(event.target.value); setRenderLimit(MAX_RENDERED_PICKER_SKILLS); }} /></div>
+        <div className="picker-groups" aria-busy={busy}>
           {grouped.length === 0 ? <p className="muted-small">{availableSkills.length === 0 ? "所有技能都已登记到此目标。" : "没有匹配的技能。"}</p> : null}
-          {grouped.map(([sourceName, skills]) => (
+          {renderedGroups.map(([sourceName, skills]) => (
             <div className="picker-group" key={sourceName}>
               <span className="picker-group-name">{sourceName}</span>
               <div className="picker-chips">
                 {skills.map((skill) => (
-                  <label className={`picker-chip ${names.includes(skill.name) ? "is-active" : ""}`} key={skill.name}>
+                  <label className={`picker-chip ${selectedNames.has(skill.name) ? "is-active" : ""}`} key={`${sourceName}:${skill.name}`}>
                     <input
                       type="checkbox"
-                      checked={names.includes(skill.name)}
+                      checked={selectedNames.has(skill.name)}
                       onChange={() => toggleSkill(skill.name)}
                     />
                     <span>{skill.name}</span>
@@ -258,6 +316,14 @@ export function InstallModal({
               </div>
             </div>
           ))}
+          {matchingSkillCount > renderedSkillCount ? (
+            <div className="picker-limit-notice">
+              <span>已显示 {renderedSkillCount} / {matchingSkillCount} 项。使用搜索定位技能，或全选当前结果。</span>
+              <button className="text-link" onClick={() => setRenderLimit((current) => current + MAX_RENDERED_PICKER_SKILLS)}>
+                再显示 {Math.min(MAX_RENDERED_PICKER_SKILLS, matchingSkillCount - renderedSkillCount)} 项
+              </button>
+            </div>
+          ) : null}
         </div>
       </div>}
       </fieldset>

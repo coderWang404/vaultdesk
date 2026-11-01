@@ -3646,6 +3646,7 @@ kbd {
   max-height: 220px;
   overflow-y: auto;
   padding: 8px 11px;
+  contain: content;
 }
 
 .picker-group + .picker-group {
@@ -3688,6 +3689,18 @@ kbd {
   position: absolute;
   opacity: 0;
   pointer-events: none;
+}
+
+.picker-limit-notice {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid var(--line);
+  color: var(--ink-muted);
+  font-size: 11px;
 }
 
 .plan-rows {
@@ -5811,4 +5824,34 @@ kbd {
 
 .appearance-panel + .settings-columns {
   margin-top: 16px;
+}
+
+.renderer-error-screen {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  padding: 32px;
+  background: var(--paper);
+  color: var(--ink);
+}
+
+.renderer-error-card {
+  width: min(520px, 100%);
+  padding: 28px;
+  border: 1px solid var(--line-strong);
+  border-radius: 16px;
+  background: var(--paper-raised);
+  box-shadow: var(--shadow-lg);
+  text-align: center;
+}
+
+.renderer-error-card h1 {
+  margin-top: 8px;
+  font-size: 22px;
+}
+
+.renderer-error-card p {
+  margin: 12px 0 20px;
+  color: var(--ink-muted);
+  line-height: 1.6;
 }

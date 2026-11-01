@@ -77,6 +77,10 @@ export function SkillsView({
     });
   }, [vault.externalSkills, typeFilter, onlyInstalled, query]);
 
+  const sourceByName = useMemo(
+    () => new Map(vault.sources.map((source) => [source.name, source])),
+    [vault.sources],
+  );
   const groups = useMemo(() => {
     const bySource = new Map<string, SkillRecord[]>();
     for (const skill of skills) {
@@ -87,14 +91,30 @@ export function SkillsView({
     return [...bySource.entries()]
       .map(([sourceName, members]) => ({
         sourceName,
-        source: vault.sources.find((entry) => entry.name === sourceName),
+        source: sourceByName.get(sourceName),
         skills: [...members].sort((a, b) => {
           if (a.isEntrypoint !== b.isEntrypoint) return a.isEntrypoint ? -1 : 1;
           return a.name.localeCompare(b.name);
         }),
       }))
       .sort((a, b) => a.sourceName.localeCompare(b.sourceName));
-  }, [skills, vault.sources]);
+  }, [skills, sourceByName]);
+  const issuesBySource = useMemo(() => {
+    const result = new Map<string, number>();
+    const skillRoots = vault.skills.map((skill) => ({ sourceName: skill.sourceName, root: skill.relativePath }));
+    for (const issue of vault.issues) {
+      const issuePath = issue.path;
+      if (!issuePath) continue;
+      const metadataOwner = vault.sources.find((source) => source.metadataPath === issuePath)?.name;
+      if (metadataOwner) {
+        result.set(metadataOwner, (result.get(metadataOwner) ?? 0) + 1);
+        continue;
+      }
+      const owner = skillRoots.find(({ root }) => issuePath === root || issuePath.startsWith(`${root}/`))?.sourceName;
+      if (owner) result.set(owner, (result.get(owner) ?? 0) + 1);
+    }
+    return result;
+  }, [vault.issues, vault.skills, vault.sources]);
 
   const externalGroups = useMemo(() => {
     const byOwner = new Map<string, ExternalSkillRecord[]>();
@@ -209,13 +229,7 @@ export function SkillsView({
             <SourceGroup
               key={group.sourceName}
               group={group}
-              issues={vault.issues.filter((issue) => {
-                if (!issue.path) return false;
-                if (issue.path === group.source?.metadataPath) return true;
-                return group.skills.some(
-                  (skill) => issue.path === skill.relativePath || issue.path?.startsWith(`${skill.relativePath}/`),
-                );
-              }).length}
+              issues={issuesBySource.get(group.sourceName) ?? 0}
               selection={{ selected, onSelect, onEditor, onFork }}
             />
           ))}

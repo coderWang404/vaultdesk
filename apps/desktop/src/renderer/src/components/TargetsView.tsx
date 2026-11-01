@@ -92,21 +92,45 @@ export function TargetsView({ vault, presets, homePath, onRefresh, onInstall, on
     return checked?.vault === vault ? checked.result : undefined;
   }
 
-  function needsAttention(target: TargetRecord): boolean {
-    if (!target.exists || verificationFor(target)?.filesInPlace === false) return true;
-    const installed = new Map(target.installed.map((entry) => [entry.path.split("/").at(-1), entry]));
-    return target.skills.some((name) => slotFor(name, installed.get(name)).tone === "warn");
-  }
-
-  const counts = { all: vault.targets.length, attention: vault.targets.filter(needsAttention).length, paused: vault.targets.filter((target) => !target.installAfterUpdate).length };
+  // Cache attention and source lookups for this immutable snapshot. Previously
+  // each filter/count/render pass rebuilt the same maps and scanned all skills
+  // for every target, which became quadratic with large target sets.
+  const attentionById = useMemo(() => {
+    const result = new Map<string, boolean>();
+    for (const target of vault.targets) {
+      const checked = verifications[target.id];
+      if (!target.exists || (checked?.vault === vault && checked.result.filesInPlace === false)) {
+        result.set(target.id, true);
+        continue;
+      }
+      const installed = new Map(target.installed.map((entry) => [entry.path.split("/").at(-1), entry]));
+      result.set(target.id, target.skills.some((name) => slotFor(name, installed.get(name)).tone === "warn"));
+    }
+    return result;
+  }, [vault, verifications]);
+  const skillSourcesByName = useMemo(() => {
+    const result = new Map<string, string[]>();
+    for (const skill of vault.skills) {
+      const sources = result.get(skill.name) ?? [];
+      if (!sources.includes(skill.sourceName)) sources.push(skill.sourceName);
+      result.set(skill.name, sources);
+    }
+    return result;
+  }, [vault.skills]);
+  const needsAttention = (target: TargetRecord): boolean => attentionById.get(target.id) ?? true;
+  const counts = useMemo(() => ({
+    all: vault.targets.length,
+    attention: vault.targets.reduce((count, target) => count + (needsAttention(target) ? 1 : 0), 0),
+    paused: vault.targets.filter((target) => !target.installAfterUpdate).length,
+  }), [vault.targets, attentionById]);
   const needle = query.trim().toLowerCase();
-  const visibleGroups = groups.map((group) => ({ ...group, visible: group.targets.filter((target) => {
+  const visibleGroups = useMemo(() => groups.map((group) => ({ ...group, visible: group.targets.filter((target) => {
     if (filter === "attention" && !needsAttention(target)) return false;
     if (filter === "paused" && target.installAfterUpdate) return false;
     return !needle || [group.label, target.id, target.dest, target.expandedDest, ...target.skills,
-      ...vault.skills.filter((skill) => target.skills.includes(skill.name)).map((skill) => skill.sourceName),
+      ...target.skills.flatMap((name) => skillSourcesByName.get(name) ?? []),
     ].join(" ").toLowerCase().includes(needle);
-  }) })).filter((group) => group.visible.length > 0);
+  }) })).filter((group) => group.visible.length > 0), [groups, filter, needle, skillSourcesByName, attentionById]);
   const visibleCount = visibleGroups.reduce((sum, group) => sum + group.visible.length, 0);
   const allCollapsed = visibleGroups.length > 0 && visibleGroups.every((group) => collapsed.has(group.dest));
 

@@ -1,4 +1,4 @@
-import { useEffect, useId, useLayoutEffect, useRef, type ButtonHTMLAttributes, type ReactNode, type RefObject } from "react";
+import { Component, useEffect, useId, useLayoutEffect, useRef, type ButtonHTMLAttributes, type ReactNode, type RefObject } from "react";
 import { Icon, type IconName } from "./icons";
 
 const FOCUSABLE =
@@ -6,6 +6,32 @@ const FOCUSABLE =
 const dialogStack: HTMLElement[] = [];
 let activeActionMenu: HTMLDetailsElement | null = null;
 let actionMenuCount = 0;
+
+interface ErrorBoundaryProps {
+  children: ReactNode;
+  fallback: (error: Error) => ReactNode;
+}
+
+interface ErrorBoundaryState {
+  error: Error | null;
+}
+
+/** Keep a broken modal from taking down the whole renderer. */
+export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
+  state: ErrorBoundaryState = { error: null };
+
+  static getDerivedStateFromError(error: Error): ErrorBoundaryState {
+    return { error };
+  }
+
+  componentDidCatch(error: Error): void {
+    console.error("VaultDesk renderer boundary caught an error", error);
+  }
+
+  render(): ReactNode {
+    return this.state.error ? this.props.fallback(this.state.error) : this.props.children;
+  }
+}
 
 function closeActiveActionMenu(restoreFocus = false): void {
   const menu = activeActionMenu;

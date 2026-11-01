@@ -2097,7 +2097,7 @@ async function desktopScale(suite: Suite): Promise<void> {
   const init = runCli(["vault", "init", vaultPath, "--git", "--name", "scale-vault", "--yes"], { workspace });
   equal(init.status, 0, `scale vault init failed: ${init.stderr}`);
   const sourceRoot = path.join(workspace.root, "scale-source");
-  for (let index = 0; index < 120; index += 1) {
+  for (let index = 0; index < 300; index += 1) {
     const name = `scale-skill-${String(index).padStart(3, "0")}`;
     writeSkill(path.join(sourceRoot, name), name, `Scale skill ${index}.`, `Body for ${name}.`);
   }
@@ -2109,17 +2109,37 @@ async function desktopScale(suite: Suite): Promise<void> {
   const page = launched.page;
   await openSection(page, "技能");
   await waitFor(
-    async () => (await page.locator(".skill-table-row").count()) === 120,
-    "120 skills rendered",
+    async () => (await page.locator(".skill-table-row").count()) === 300,
+    "300 skills rendered",
     30_000,
   );
   const renderMs = Date.now() - started;
-  assert(renderMs < 20_000, `120-skill render took ${renderMs}ms`);
-  await page.getByLabel("搜索技能", { exact: true }).fill("scale-skill-119");
+  assert(renderMs < 20_000, `300-skill render took ${renderMs}ms`);
+  await page.getByLabel("搜索技能", { exact: true }).fill("scale-skill-299");
   await waitFor(async () => (await page.locator(".skill-table-row").count()) === 1, "scale search filters to one");
-  await page.locator(".skill-table-row").filter({ hasText: "scale-skill-119" }).waitFor();
+  await page.locator(".skill-table-row").filter({ hasText: "scale-skill-299" }).waitFor();
   await page.getByLabel("清除筛选").click();
-  await waitFor(async () => (await page.locator(".skill-table-row").count()) === 120, "cleared search restores rows");
+  await waitFor(async () => (await page.locator(".skill-table-row").count()) === 300, "cleared search restores rows");
+
+  // Batch selection must stay responsive and keep the modal mounted when the
+  // catalog is large. This is the regression path reported by users.
+  const rendererErrors: string[] = [];
+  page.on("pageerror", (error) => rendererErrors.push(error.message));
+  await openSection(page, "安装目标");
+  await page.getByRole("button", { name: "安装到目录" }).click();
+  const batchInstall = await dialog(page);
+  await batchInstall.getByLabel("安装目标目录").fill(path.join(workspace.root, "batch-install"));
+  await batchInstall.getByLabel("目标 ID").fill("batch-install");
+  await batchInstall.getByRole("button", { name: "全选" }).click();
+  await waitFor(async () => (await batchInstall.getByText("已选 300 项").isVisible()), "all 300 skills selected");
+  equal(await batchInstall.locator(".picker-chip input:checked").count(), 240, "only the bounded picker window is mounted initially");
+  assert(await batchInstall.getByText(/已显示 240 \/ 300 项/).isVisible(), "picker caps initial DOM work");
+  await batchInstall.getByRole("button", { name: "再显示 60 项" }).click();
+  equal(await batchInstall.locator(".picker-chip input").count(), 300, "picker can reveal the full catalog on demand");
+  equal(await page.getByRole("dialog").count(), 1, "batch picker stays mounted after selecting all skills");
+  equal(rendererErrors.length, 0, `batch picker renderer errors: ${rendererErrors.join(" | ")}`);
+  await batchInstall.getByRole("button", { name: "取消" }).click();
+  await batchInstall.waitFor({ state: "hidden" });
 
   await page.keyboard.press("Meta+k");
   const palette = await dialog(page);
@@ -2128,7 +2148,7 @@ async function desktopScale(suite: Suite): Promise<void> {
   await page.keyboard.press("Enter");
   await palette.waitFor({ state: "hidden" });
   await page.locator(".skill-table-row.is-selected").filter({ hasText: "scale-skill-077" }).waitFor();
-  console.log(`      120 skills rendered in ${renderMs}ms, local filter and palette search OK`);
+  console.log(`      300 skills rendered in ${renderMs}ms, local filter and palette search OK`);
 }
 
 async function presetInstall(suite: Suite): Promise<void> {
@@ -2548,7 +2568,7 @@ async function main(): Promise<void> {
   await run("pending skill adoption from activity", adoptPendingSkillFromActivity);
   await run("slow check, offline warning and journal recovery banner", slowOfflineAndRecovery);
   await run("custom tool preset installs under a sandboxed HOME", presetInstall);
-  await run("120-skill vault renders and searches in the desktop UI", desktopScale);
+  await run("300-skill vault renders and searches in the desktop UI", desktopScale);
   await run("axe accessibility audit, focus trap and focus restore", accessibilityAndKeyboard);
   await run("renderer UX regression: source health, keyboard and zoom", rendererUxRegression);
   if (results.some((value) => !value)) process.exitCode = 1;

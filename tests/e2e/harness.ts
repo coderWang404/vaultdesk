@@ -224,6 +224,8 @@ export async function launchApp(options: {
   settings?: Record<string, unknown>;
   extraEnv?: Record<string, string>;
   label?: string;
+  /** Keep the Electron window hidden so E2E does not interrupt the user's desktop. */
+  visible?: boolean;
 }): Promise<LaunchedApp> {
   const { workspace } = options;
   if (options.settings) writeSettings(workspace, options.settings);
@@ -243,6 +245,7 @@ export async function launchApp(options: {
   env.VAULTDESK_BACKUP_DIR = workspace.backups;
   env.VAULTDESK_LOCK_DIR = workspace.locks;
   env.VAULTDESK_TEST_DIRECTORY_FILE = workspace.dialogFile;
+  env.VAULTDESK_HEADLESS = options.visible === false || options.visible === undefined ? "1" : "0";
   env.GIT_TERMINAL_PROMPT = "0";
   Object.assign(env, configureGitUrlRewrite(workspace), options.extraEnv ?? {});
 

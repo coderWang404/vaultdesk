@@ -79,6 +79,39 @@ export function ToolsView({
     });
   }, [cards, query]);
 
+  const managedSkillByName = useMemo(
+    () => new Map(vault.skills.map((skill) => [skill.name, skill])),
+    [vault.skills],
+  );
+  const externalSkillByName = useMemo(
+    () => new Map(vault.externalSkills.map((skill) => [skill.name, skill])),
+    [vault.externalSkills],
+  );
+  const targetsBySkill = useMemo(() => {
+    const result = new Map<string, VaultSnapshot["targets"]>();
+    for (const target of vault.targets) {
+      for (const skillName of target.skills) {
+        const targets = result.get(skillName) ?? [];
+        targets.push(target);
+        result.set(skillName, targets);
+      }
+    }
+    return result;
+  }, [vault.targets]);
+  const managedInstallCountBySkill = useMemo(() => {
+    const result = new Map<string, number>();
+    for (const [skillName, targets] of targetsBySkill) {
+      const present = targets.filter((target) => {
+        const installed = target.installed.some((entry) =>
+          entry.targetId === target.id && entry.managedByThisVault && entry.managed,
+        );
+        return installed;
+      }).length;
+      result.set(skillName, present);
+    }
+    return result;
+  }, [targetsBySkill]);
+
   return (
     <div className="view tools-view">
       <SectionHeader title={isMcp ? "MCP" : "工具"} />
@@ -323,11 +356,10 @@ export function ToolsView({
                   <span className="tool-section-label">相关技能</span>
                   <div className="tool-related-list">
                     {tool.related_skills.map((skillName) => {
-                      const managed = vault.skills.find((skill) => skill.name === skillName);
-                      const external = vault.externalSkills.find((skill) => skill.name === skillName);
-                      const targets = managed ? vault.targets.filter((target) => target.skills.includes(skillName)) : [];
-                      const present = managed ? targets.filter((target) => managed.installed.some((entry) =>
-                        entry.targetId === target.id && entry.managedByThisVault && entry.managed)).length : 0;
+                      const managed = managedSkillByName.get(skillName);
+                      const external = externalSkillByName.get(skillName);
+                      const targets = managed ? (targetsBySkill.get(skillName) ?? []) : [];
+                      const present = managed ? (managedInstallCountBySkill.get(skillName) ?? 0) : 0;
                       const missing = targets.length - present;
                       return (
                         <div className="tool-related-row" key={skillName}>

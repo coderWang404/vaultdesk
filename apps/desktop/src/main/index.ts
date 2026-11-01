@@ -27,6 +27,7 @@ const dirname = __dirname;
 const isDev = Boolean(process.env.ELECTRON_RENDERER_URL);
 const isSmoke = process.env.VAULTDESK_SMOKE === "1";
 const isBackgroundWorker = process.argv.includes("--vaultdesk-background-worker");
+const keepWindowHidden = process.env.VAULTDESK_HEADLESS === "1";
 
 function resolveAgentSkillDir(): string {
   const override = process.env.VAULTDESK_AGENT_SKILL_DIR;
@@ -194,7 +195,8 @@ function createWindow(): BrowserWindow {
   hardenWebContents(window);
 
   window.once("ready-to-show", () => {
-    window.show();
+    if (keepWindowHidden) return;
+    window.showInactive();
   });
 
   window.on("closed", () => {

@@ -8,7 +8,7 @@
 | 批量安装稳定性 | 通过 | 300 个技能全选；初始只挂载 240 个 checkbox，按需展开至 300；无 pageerror，渲染约 0.7–1.1 秒 |
 | 桌面 E2E | 通过 | 全部场景通过；headless 默认不显示窗口；双主题、键盘与 axe 扫描零严重违规 |
 | DMG 与 CLI/MCP | 通过 | hdiutil verify、挂载包启动编辑持久化、独立 CLI 与 MCP stdio tools/list |
-| DMG | 通过 | release/VaultDesk-1.2.11-arm64.dmg，124,927,590 bytes，SHA-256 fe45b4f4ed38be0d05c3ea78740d7a750600afc59a1e2938cc61b2ad6ecc52e4 |
+| DMG | 通过 | release/VaultDesk-1.2.11-arm64.dmg，124,927,595 bytes，SHA-256 fcf75ce4eb70cc9deb64a0f6b75371f62924a0af048a2826fc776c8a54341ef0 |
 | GitHub CI | 通过 | 41268633957，macOS、Ubuntu、Desktop smoke/DMG 三个 job 全部通过 |
 | 签名 | 通过 | Ad-hoc 签名；未公证 |
 

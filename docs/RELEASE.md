@@ -1,6 +1,6 @@
 # VaultDesk v1.2.11 release
 
-Status: ready for publication and local installation on 2026-11-01. Commit `ba4b4821d0f904e8eb0cb6dcadad90d0f0bd72db` adds bounded batch skill rendering, O(1) selection/index lookups, renderer error recovery, and hidden-window E2E execution.
+Status: published and installed on 2026-11-01. Commit `a8f4733` adds bounded batch skill rendering, O(1) selection/index lookups, renderer error recovery, and hidden-window E2E execution.
 
 Validation: 30 test files / 188 tests, desktop typecheck, full desktop E2E with 300-skill batch selection and zero axe violations, mounted DMG launch/edit/persistence, and bundled CLI/MCP stdio acceptance passed. GitHub CI run `41268633957` passed all three jobs.
 
@@ -8,8 +8,8 @@ Validation: 30 test files / 188 tests, desktop typecheck, full desktop E2E with 
 | --- | --- |
 | File | release/VaultDesk-1.2.11-arm64.dmg |
 | Platform | macOS Apple Silicon |
-| Size | 124,927,590 bytes |
-| SHA-256 | fe45b4f4ed38be0d05c3ea78740d7a750600afc59a1e2938cc61b2ad6ecc52e4 |
+| Size | 124,927,595 bytes |
+| SHA-256 | fcf75ce4eb70cc9deb64a0f6b75371f62924a0af048a2826fc776c8a54341ef0 |
 | app.asar SHA-256 | c45c8630d19d696e076474560a68c152df892ccb3357d57ca0d958260890044b |
 | CLI SHA-256 | 890ef91f6104d42a3c16741898e7917eef5f18f2c65d70234077a6355bb5080a |
 | Signing | Ad-hoc, not notarized |

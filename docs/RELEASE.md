@@ -1,6 +1,6 @@
 # VaultDesk v1.2.10 release
 
-Status: ready for publication after local validation. This patch clarifies the boundary between external tool cards and VaultDesk-managed plugin sources. REA remains a `tools/rea.yml` tool card: `kind: plugin` means its upstream agent-plugin distribution form, while `cli` and `mcp` tags expose its capabilities. The desktop UI now calls it “Tool suite”, shows those capabilities, and states that VaultDesk records official setup without installing or enabling the tool.
+Status: published and installed on 2026-11-01. Tag v1.2.10 points to 4f858aa27abd2adb1cacbea6f32197d16e729f93. GitHub CI 41262440911 passed all three jobs. This patch clarifies the boundary between external tool cards and VaultDesk-managed plugin sources. REA remains a `tools/rea.yml` tool card: `kind: plugin` means its upstream agent-plugin distribution form, while `cli` and `mcp` tags expose its capabilities. The desktop UI now calls it “Tool suite”, shows those capabilities, and states that VaultDesk records official setup without installing or enabling the tool.
 
 Validation: 188 tests in 30 files, desktop typecheck, production build, desktop E2E with zero axe violations, mounted DMG launch/edit/persistence, and bundled CLI/MCP stdio acceptance passed.
 

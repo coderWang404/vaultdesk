@@ -260,7 +260,7 @@ export function Overview({
                 icon: "terminal",
                 value: vault.counts.tools,
                 label: "工具",
-                title: "插件分发 · MCP · CLI · 桌面应用",
+                title: "工具套件 · MCP · CLI · 桌面应用",
               },
               { icon: "server", value: mcpCount, label: "MCP", title: "具备 MCP 能力的工具卡（含插件形态）" },
               {

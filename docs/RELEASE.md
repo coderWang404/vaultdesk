@@ -1,3 +1,19 @@
+# VaultDesk v1.2.10 release
+
+Status: ready for publication after local validation. This patch clarifies the boundary between external tool cards and VaultDesk-managed plugin sources. REA remains a `tools/rea.yml` tool card: `kind: plugin` means its upstream agent-plugin distribution form, while `cli` and `mcp` tags expose its capabilities. The desktop UI now calls it “Tool suite”, shows those capabilities, and states that VaultDesk records official setup without installing or enabling the tool.
+
+Validation: 188 tests in 30 files, desktop typecheck, production build, desktop E2E with zero axe violations, mounted DMG launch/edit/persistence, and bundled CLI/MCP stdio acceptance passed.
+
+| Field | Value |
+| --- | --- |
+| File | release/VaultDesk-1.2.10-arm64.dmg |
+| Platform | macOS Apple Silicon |
+| Size | 124,919,328 bytes |
+| SHA-256 | bf764c069654adf6e7868b9b1f99df2bb52255d61f2ed2fc67a7c44b4d5fd22d |
+| app.asar SHA-256 | 54204ff94976e96d7f16a2b1a7353b816c3b42e107f9c76885c406b356b10ac9 |
+| CLI SHA-256 | 26ac6288d2d042c26a3770826d5ec12c45ce5ec0cf351192f96b655e46b26e94 |
+| Signing | Ad-hoc, not notarized |
+
 # VaultDesk v1.2.9 release
 
 Status: published and installed on 2026-10-31. Tag v1.2.9 points to f34851dadc6e3f8ee537e756c520a9d523c76e1d. CI 41203860175 passed all three jobs, and the public DMG download matched the tested artifact byte for byte.

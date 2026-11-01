@@ -124,7 +124,7 @@ export function sourceShapeLabel(source: SourceRecord): string {
 export function toolKindLabel(kind: ToolRecord["kind"]): string {
   switch (kind) {
     case "plugin":
-      return "插件分发";
+      return "工具套件";
     case "mcp":
       return "MCP 服务";
     case "cli":

@@ -873,6 +873,7 @@ async function toolsFlow(suite: Suite): Promise<void> {
     "related_skills:",
     "  - plain-skill",
     "tags:",
+    "  - cli",
     "  - mcp",
     "checks:",
     "  - id: node-runtime",
@@ -995,7 +996,8 @@ async function toolsFlow(suite: Suite): Promise<void> {
   equal(await page.locator(".tool-card").count(), 2, "MCP page includes tagged plugin capability");
   const hybrid = page.locator(".tool-card").filter({ hasText: "Hybrid Plugin" });
   const hybridText = await hybrid.innerText();
-  assert(hybridText.includes("插件分发形态安装"), "MCP page explains plugin distribution form");
+  assert(hybridText.includes("能力：CLI、MCP"), "MCP-capable suite exposes CLI and MCP capabilities");
+  assert(hybridText.includes("此工具以工具套件形式提供，同时提供 CLI、MCP 能力；技能文件分发与 agent 接入需要分别验证。"), "MCP page explains tool suite integration form");
   assert(hybridText.includes("需在对应 agent 验证"), "MCP integration is not reported as enabled");
   assert(hybridText.includes("Vault 受管") && hybridText.includes("未分发"), "related skill shows target distribution gap");
   equal(await hybrid.getByLabel("Hybrid Plugin Node 绝对路径").count(), 1, "node check offers interpreter path");

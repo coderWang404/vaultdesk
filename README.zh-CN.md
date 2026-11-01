@@ -18,7 +18,7 @@
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-Apache--2.0-blue.svg" alt="许可证：Apache-2.0"></a>
   <img src="https://img.shields.io/badge/platform-macOS%2013%2B-lightgrey.svg" alt="平台：macOS 13+">
   <img src="https://img.shields.io/badge/node-22%2B-339933.svg" alt="Node.js 22+">
-  <img src="https://img.shields.io/badge/version-1.2.9-brightgreen.svg" alt="版本 1.2.9">
+  <img src="https://img.shields.io/badge/version-1.2.10-brightgreen.svg" alt="版本 1.2.10">
 </p>
 
 <p align="center">
@@ -26,7 +26,7 @@
 </p>
 
 > [!NOTE]
-> VaultDesk 1.2.9 已在 [GitHub Releases](https://github.com/coderWang404/vaultdesk/releases/tag/v1.2.9) 提供 Apple Silicon DMG。构建采用 ad-hoc 签名，未公证；CLI 随应用内置，不依赖源码目录或额外 Node.js。
+> VaultDesk 1.2.10 已在 [GitHub Releases](https://github.com/coderWang404/vaultdesk/releases/tag/v1.2.10) 提供 Apple Silicon DMG。构建采用 ad-hoc 签名，未公证；CLI 随应用内置，不依赖源码目录或额外 Node.js。
 
 ## 目录
 
@@ -123,7 +123,7 @@ VaultDesk 面向同时使用多个编码 agent、并且维护自己技能库的�
 - **构建：** Node.js 22+、pnpm 11.5.2、`PATH` 中可用的 Git
 - **源码 CLI：** Node.js 22+；CI 也会在 Ubuntu 上构建和测试
 
-Apple Silicon 桌面版可从 [GitHub Releases](https://github.com/coderWang404/vaultdesk/releases/tag/v1.2.9) 下载。先把 **VaultDesk.app** 拖入 **Applications**，再打开安装后的应用；在“设置 → 命令行与 MCP”点击“安装命令行工具”，未打开 Vault 时也可安装。它会把随应用提供的 CLI 安全安装到 `~/.local/bin/vaultdesk`，无需源码或额外 Node.js。若终端找不到 `vaultdesk`，可使用 `~/.local/bin/vaultdesk` 完整路径，或将 `~/.local/bin` 加入 PATH。MCP 客户端可在选定 Vault 后复制设置中的绝对路径配置。Intel 用户也可从源码构建桌面版。
+Apple Silicon 桌面版可从 [GitHub Releases](https://github.com/coderWang404/vaultdesk/releases/tag/v1.2.10) 下载。先把 **VaultDesk.app** 拖入 **Applications**，再打开安装后的应用；在“设置 → 命令行与 MCP”点击“安装命令行工具”，未打开 Vault 时也可安装。它会把随应用提供的 CLI 安全安装到 `~/.local/bin/vaultdesk`，无需源码或额外 Node.js。若终端找不到 `vaultdesk`，可使用 `~/.local/bin/vaultdesk` 完整路径，或将 `~/.local/bin` 加入 PATH。MCP 客户端可在选定 Vault 后复制设置中的绝对路径配置。Intel 用户也可从源码构建桌面版。
 
 ### 从源码运行桌面应用
 
@@ -139,7 +139,7 @@ pnpm dev
 
 ```bash
 pnpm package:mac
-# release/VaultDesk-1.2.9-<arch>.dmg
+# release/VaultDesk-1.2.10-<arch>.dmg
 ```
 
 构建产物使用 ad-hoc 签名，没有公证。第一次启动时右键点击应用并选择 **打开**，或者在 **系统设置 → 隐私与安全性** 中放行。
@@ -243,6 +243,13 @@ CLI 命令支持 `--json`，在 stdout 返回一个信封；`mcp serve` 则将 s
 ## 工具卡与 MCP
 
 工具卡记录一个外部工具。它不是 source，VaultDesk 也不会安装它。
+
+REA 是一张外部工具卡，不是 VaultDesk 的插件记录。它的 `kind: plugin` 只表示
+这个多工具套件在上游以 agent 插件形态分发，并不表示 VaultDesk 正在分发插件文件。
+REA 的 CLI 和 MCP 能力分别通过 `cli`、`mcp` 标签声明；随工具提供的
+`reverse-engineer-anything` 技能则单独记录为由 `rea-agents` 管理的外部技能。
+`plugins/` 目录和「插件」页面只用于收录完整导入 VaultDesk 的插件根目录，以及明确登记
+的 `plugin_targets`，与工具卡不是同一类记录。
 
 ```yaml
 schema: 1
@@ -486,15 +493,15 @@ CI 会运行类型检查、单元与集成测试，并在 macOS 和 Ubuntu 上�
 
 | 范围 | 状态 |
 | --- | --- |
-| 桌面应用与 CLI | 1.2.9；Apple Silicon DMG 已发布，CLI 随应用提供并可从设置安装 |
+| 桌面应用与 CLI | 1.2.10；Apple Silicon DMG 已发布，CLI 随应用提供并可从设置安装 |
 | 工具卡与 MCP 页面 | v1.2.3 加入运行环境检查和跨类别 MCP 展示；v1.2.4 默认优先使用 Miniconda base；v1.2.5 增加 agent catalog 与只读 MCP 发现入口 |
 | 外部技能记录 | 已包含在 v1.2.0 |
 | DMG | Apple Silicon 版本已发布，ad-hoc 签名，未公证 |
 | GitHub Release / Homebrew / npm | GitHub Release 已发布；Homebrew 与 npm 未发布 |
 | 来源自动同步 | 已在 macOS 安装版提供，支持逐来源自动/审核/暂停 |
-| Windows 与 Linux 桌面端 | v1.2.9 未包含 |
+| Windows 与 Linux 桌面端 | v1.2.10 未包含 |
 
-桌面应用在 1.2.9 只支持 macOS。源码 CLI 已在 macOS 和 Ubuntu 上测试；DMG 内置 CLI 使用 Electron 自带 Node 运行时。
+桌面应用在 1.2.10 只支持 macOS。源码 CLI 已在 macOS 和 Ubuntu 上测试；DMG 内置 CLI 使用 Electron 自带 Node 运行时。
 
 ## 参与贡献
 

@@ -140,6 +140,10 @@ export function ToolsView({
             const nodePath = nodePaths[selectionKey]?.trim() ?? "";
             const hasPythonChecks = tool.checks.some((check) => check.kind === "python" || check.kind === "python-package");
             const hasNodeChecks = tool.checks.some((check) => check.kind === "node");
+            const hasCliCapability = tool.kind === "cli" || tool.tags.some((tag) => tag.toLowerCase() === "cli");
+            const capabilities = [hasCliCapability ? "CLI" : null, hasMcpCapability(tool) ? "MCP" : null].filter(
+              (value): value is string => Boolean(value),
+            );
             const state = readiness[readinessKey(vault.path, tool.name, profile || undefined, pythonPath || undefined, nodePath || undefined)];
             const status = readinessPresentation(tool.checks.length > 0, state);
             const checkedAt = readinessCheckedAt(state?.report);
@@ -167,8 +171,15 @@ export function ToolsView({
               <p className="tool-summary clamp-2" title={tool.summary}>
                 {tool.summary}
               </p>
+              {capabilities.length > 0 ? (
+                <p className="tool-readiness-hint">
+                  能力：{capabilities.join("、")}。VaultDesk 只记录官方安装与运行方式，不会自动安装、注册或启用工具。
+                </p>
+              ) : null}
               {isMcp && tool.kind !== "mcp" ? (
-                <p className="tool-readiness-hint">此工具以{toolKindLabel(tool.kind)}形态安装，同时提供 MCP 能力；技能文件分发不会自动完成 MCP 连接。</p>
+                <p className="tool-readiness-hint">
+                  此工具以{toolKindLabel(tool.kind)}形式提供，同时提供 {capabilities.length > 0 ? capabilities.join("、") : "MCP"} 能力；技能文件分发与 agent 接入需要分别验证。
+                </p>
               ) : null}
 
               <section className="tool-readiness" aria-label={tool.title + "运行环境"}>
@@ -336,7 +347,7 @@ export function ToolsView({
                 </section>
               ) : null}
               {tool.kind === "plugin" || hasMcpCapability(tool) ? (
-                <p className="tool-integration-status"><StatusPill tone="warn">需在对应 agent 验证</StatusPill>工具依赖与技能文件检查不能证明插件或 MCP 已接入。</p>
+                <p className="tool-integration-status"><StatusPill tone="warn">需在对应 agent 验证</StatusPill>工具依赖与技能文件检查不能证明工具已在 agent 中接入或启用。</p>
               ) : null}
 
               {tool.notes ? (

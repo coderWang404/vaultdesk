@@ -1,6 +1,6 @@
 # VaultDesk v1.2.12 release
 
-Status: local verification complete; commit `d025aff` contains the skills-first distribution workflow. The GitHub CI run is in progress before publication.
+Status: published and installed on 2026-11-02. Commit `d025aff` contains the skills-first distribution workflow. GitHub CI run `41400137641` passed all three jobs; the public DMG and SHA-256 asset were uploaded to the release.
 
 The Skills page is now the primary distribution entry point: select one skill, several skills, or the current filtered results, then choose an existing target or create a new one. Source groups remain visible and externally managed skills stay read-only. “Distribution management” is dedicated to registered-target verification, backups, sync state and removal; its empty state links directly to skill selection. Overview and inspector actions now lead into the same workflow.
 

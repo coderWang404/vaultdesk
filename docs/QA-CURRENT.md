@@ -10,8 +10,8 @@
 | DMG | 通过 | release/VaultDesk-1.2.13-arm64.dmg，124,948,435 bytes，SHA-256 7eaa3d1f2f4932cfbbfbb9cbd2d7aa356849d97c73e41b137b3f0aa6d05cb7ee |
 | DMG 应用、CLI、MCP | 通过 | 挂载校验、隐藏窗口启动、编辑持久化、独立 CLI 及 MCP stdio tools/list |
 | 桌面干扰 | 通过 | 桌面自动化以隐藏窗口运行，不抢用户焦点 |
-| GitHub CI 与公开发布 | 待完成 | 等待提交后 CI 与 GitHub Release |
-| 正式安装 | 待完成 | `/Applications/VaultDesk.app` 尚未替换 |
+| GitHub CI 与公开发布 | 通过 | 41421794367 三个 job 全部通过；[v1.2.13 Release](https://github.com/coderWang404/vaultdesk/releases/tag/v1.2.13) 回下载 DMG 与本地产物逐字节一致 |
+| 正式安装 | 通过 | `/Applications/VaultDesk.app`、CLI 与 LaunchAgent 均为 1.2.13；`app.asar` 哈希一致；单 GUI/worker；旧版移至废纸篓 |
 
 # v1.2.12 本地发布 QA 记录
 

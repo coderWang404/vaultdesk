@@ -1,6 +1,6 @@
 # VaultDesk v1.2.13 release
 
-Status: local validation complete; GitHub CI, public release and installed-app replacement are pending.
+Status: published and installed on 2026-11-02. Commit `14232f34507a62f493ebedead35004dff93b66a9` is tagged `v1.2.13`; GitHub CI run `41421794367` passed all three jobs. The public DMG and SHA-256 file are available from the [GitHub Release](https://github.com/coderWang404/vaultdesk/releases/tag/v1.2.13); the DMG was downloaded again and matched the tested artifact byte-for-byte.
 
 The global “Distribution management” destination has been removed. Registered target verification, backup, sync and removal now live inside the Skills section under “Distribution targets”. Selecting a skill through global search from that area returns to the skill library before opening its details. Target records and distribution behavior are unchanged.
 
@@ -15,6 +15,8 @@ Validation: workspace typecheck, 188 tests across 30 files, CLI E2E, all 22 desk
 | app.asar SHA-256 | 4f2dd05f73ef4cd18bfb0a8771a458e5dce4fef2b790a85548277163017a1971 |
 | CLI SHA-256 | 4af16ad911f2519071eb81f9be30dfa341b4e219aef8de2e5ba154fa7b41bcbd |
 | Signing | Ad-hoc, not notarized |
+
+The installed `/Applications/VaultDesk.app`, bundled CLI and LaunchAgent report v1.2.13. Installed `app.asar` matches the tested DMG hash; exactly one GUI process and one background worker are running. The previous app was moved to Trash.
 
 # VaultDesk v1.2.12 release
 

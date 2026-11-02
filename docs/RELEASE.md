@@ -1,3 +1,21 @@
+# VaultDesk v1.2.12 release
+
+Status: local verification complete; commit `d025aff` contains the skills-first distribution workflow. The GitHub CI run is in progress before publication.
+
+The Skills page is now the primary distribution entry point: select one skill, several skills, or the current filtered results, then choose an existing target or create a new one. Source groups remain visible and externally managed skills stay read-only. “Distribution management” is dedicated to registered-target verification, backups, sync state and removal; its empty state links directly to skill selection. Overview and inspector actions now lead into the same workflow.
+
+Validation: 30 test files / 188 tests, workspace typecheck, all 22 desktop E2E scenarios, batch selection with 300 skills, zero axe violations, and mounted-DMG app/CLI/MCP acceptance passed. Desktop test windows stay hidden so the user's desktop remains available.
+
+| Field | Value |
+| --- | --- |
+| File | release/VaultDesk-1.2.12-arm64.dmg |
+| Platform | macOS Apple Silicon |
+| Size | 124,943,513 bytes |
+| SHA-256 | f10cc24807a0426240ab29b27f6aa50fc6ff17cee6a19af42ee070974cc99a0d |
+| app.asar SHA-256 | 1ec4798b849a3228ad97cddf85d6fe0e5d3d3eb845e271b715328dbfcee8412c |
+| CLI SHA-256 | d51cd59e72f1e0cc39824aca3a6ad46e44ab72dc080c12416d8816ba528bb563 |
+| Signing | Ad-hoc, not notarized |
+
 # VaultDesk v1.2.11 release
 
 Status: published and installed on 2026-11-01. Commit `a8f4733` adds bounded batch skill rendering, O(1) selection/index lookups, renderer error recovery, and hidden-window E2E execution.

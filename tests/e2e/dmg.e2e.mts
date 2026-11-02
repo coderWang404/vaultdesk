@@ -11,6 +11,7 @@ import {
   git,
   initGitRepo,
   openSection,
+  openSkillsPane,
   read,
   repoRoot,
   waitFor,
@@ -238,9 +239,9 @@ async function exerciseApp(appPath: string): Promise<void> {
 
   await openSection(page, "来源");
   equal(await page.locator(".source-row").count(), 3, "packaged source count");
-  await openSection(page, "技能");
+  await openSkillsPane(page, "library");
   equal(await page.locator(".skill-table-row").count(), 4, "packaged skill count");
-  await openSection(page, "分发管理");
+  await openSkillsPane(page, "distribution");
   await waitForText(page, "fixture-agents");
   await openSection(page, "设置");
   const agentPanel = page.locator(".agent-skill-panel");
@@ -258,7 +259,7 @@ async function exerciseApp(appPath: string): Promise<void> {
   await validation.locator(".modal-footer").getByRole("button", { name: "关闭" }).click();
   await validation.waitFor({ state: "hidden" });
 
-  await openSection(page, "技能");
+  await openSkillsPane(page, "library");
   const localNotesRow = page.locator(".skill-table-row").filter({ hasText: "local-notes" });
   await localNotesRow.locator(".row-menu summary").click();
   await localNotesRow.getByRole("button", { name: "编辑技能" }).click();

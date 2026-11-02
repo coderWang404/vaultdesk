@@ -1,3 +1,21 @@
+# VaultDesk v1.2.13 release
+
+Status: local validation complete; GitHub CI, public release and installed-app replacement are pending.
+
+The global “Distribution management” destination has been removed. Registered target verification, backup, sync and removal now live inside the Skills section under “Distribution targets”. Selecting a skill through global search from that area returns to the skill library before opening its details. Target records and distribution behavior are unchanged.
+
+Validation: workspace typecheck, 188 tests across 30 files, CLI E2E, all 22 desktop E2E scenarios, 300-skill batch selection, zero axe violations, and mounted-DMG app/CLI/MCP acceptance passed. E2E windows remained hidden.
+
+| Field | Value |
+| --- | --- |
+| File | release/VaultDesk-1.2.13-arm64.dmg |
+| Platform | macOS Apple Silicon |
+| Size | 124,948,435 bytes |
+| SHA-256 | 7eaa3d1f2f4932cfbbfbb9cbd2d7aa356849d97c73e41b137b3f0aa6d05cb7ee |
+| app.asar SHA-256 | 4f2dd05f73ef4cd18bfb0a8771a458e5dce4fef2b790a85548277163017a1971 |
+| CLI SHA-256 | 4af16ad911f2519071eb81f9be30dfa341b4e219aef8de2e5ba154fa7b41bcbd |
+| Signing | Ad-hoc, not notarized |
+
 # VaultDesk v1.2.12 release
 
 Status: published and installed on 2026-11-02. Tag `v1.2.12` points to `d025affbc91df1a74167ae7deb8f0c45d97d56c9`. GitHub CI run `41400137641` passed all three jobs; the public DMG and SHA-256 asset were uploaded to the [GitHub Release](https://github.com/coderWang404/vaultdesk/releases/tag/v1.2.12), downloaded again and matched the tested package byte-for-byte.

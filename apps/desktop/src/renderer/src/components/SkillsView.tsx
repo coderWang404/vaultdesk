@@ -1,10 +1,13 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { ExternalSkillRecord, SkillRecord, VaultSnapshot } from "@vaultdesk/core";
+import type { ToolPreset } from "@vaultdesk/schema";
 import { externalStatusLabel, externalStatusTone, originLabel } from "../format";
 import { Icon } from "./icons";
 import { ActionMenu, Button, EmptyState, SectionHeader, StatusMark, StatusPill } from "./ui";
+import { TargetsView } from "./TargetsView";
 
 type TypeFilter = "all" | "standalone" | "suite" | "collection" | "external";
+type SkillsPane = "library" | "distribution";
 
 const TYPE_LABELS: Record<Exclude<TypeFilter, "all">, string> = {
   standalone: "单技能",
@@ -30,6 +33,8 @@ export function SkillsView({
   onSelectExternal,
   onImport,
   onInstall,
+  distribution,
+  onEnterDistribution,
   onEditor,
   onFork,
 }: {
@@ -39,17 +44,41 @@ export function SkillsView({
   onSelectExternal: (skill: ExternalSkillRecord) => void;
   onImport: () => void;
   onInstall: (names: string[]) => void;
+  distribution: {
+    presets: ToolPreset[];
+    homePath?: string;
+    onRefresh: () => Promise<VaultSnapshot | null>;
+    onBackups: (targetId?: string) => void;
+    onRemove: (targetId: string) => void;
+    onReveal: (path: string) => void;
+    onError: (message: string) => void;
+  };
+  onEnterDistribution: () => void;
   onEditor: (skill: SkillRecord) => void;
   onFork: (skill: SkillRecord) => void;
 }) {
+  const [pane, setPane] = useState<SkillsPane>("library");
   const [query, setQuery] = useState("");
   const [typeFilter, setTypeFilter] = useState<TypeFilter>("all");
   const [onlyInstalled, setOnlyInstalled] = useState(false);
   const [selectedForInstall, setSelectedForInstall] = useState<Set<string>>(new Set());
+  const previousSelected = useRef(selected);
+
+  useEffect(() => {
+    const changed = previousSelected.current !== selected;
+    previousSelected.current = selected;
+    if (changed && selected && pane !== "library") setPane("library");
+  }, [selected, pane]);
   const startInstall = (names: string[]): void => {
     setSelectedForInstall(new Set());
     onInstall(names);
   };
+
+  function switchPane(next: SkillsPane): void {
+    if (next === pane) return;
+    if (next === "distribution") onEnterDistribution();
+    setPane(next);
+  }
 
   const skills = useMemo(() => {
     if (typeFilter === "external") return [];
@@ -158,15 +187,40 @@ export function SkillsView({
         description="受管技能由 VaultDesk 分发；外部技能只读观察。文件已分发不代表运行依赖就绪。"
         actions={
           <div className="section-actions">
-            {selectedForInstall.size > 0 ? (
-              <Button variant="primary" icon="download" onClick={() => startInstall([...selectedForInstall])}>
-                分发已选 · {selectedForInstall.size}
-              </Button>
-            ) : null}
-            <Button variant="quiet" icon="plus" onClick={onImport}>导入技能</Button>
+            {pane === "library" ? <>
+              {selectedForInstall.size > 0 ? (
+                <Button variant="primary" icon="download" onClick={() => startInstall([...selectedForInstall])}>
+                  分发已选 · {selectedForInstall.size}
+                </Button>
+              ) : null}
+              <Button variant="quiet" icon="plus" onClick={onImport}>导入技能</Button>
+            </> : null}
           </div>
         }
       />
+
+      <div className="segmented skills-pane-tabs" role="group" aria-label="技能模块区域">
+        <button className={pane === "library" ? "is-active" : ""} aria-pressed={pane === "library"} onClick={() => switchPane("library")}>
+          技能库 <span>{vault.counts.skills}</span>
+        </button>
+        <button className={pane === "distribution" ? "is-active" : ""} aria-pressed={pane === "distribution"} onClick={() => switchPane("distribution")}>
+          分发目标 <span>{vault.counts.targets}</span>
+        </button>
+      </div>
+
+      {pane === "distribution" ? (
+        <TargetsView
+          vault={vault}
+          presets={distribution.presets}
+          homePath={distribution.homePath}
+          onRefresh={distribution.onRefresh}
+          onBackups={distribution.onBackups}
+          onRemove={distribution.onRemove}
+          onReveal={distribution.onReveal}
+          onError={distribution.onError}
+          onGoSkills={() => switchPane("library")}
+        />
+      ) : <div className="skills-library-panel">
 
       <div className="toolbar skills-toolbar">
         <div className="search-box">
@@ -288,6 +342,7 @@ export function SkillsView({
           ))}
         </div>
       )}
+      </div>}
     </div>
   );
 }

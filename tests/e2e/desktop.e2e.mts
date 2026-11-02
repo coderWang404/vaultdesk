@@ -16,6 +16,7 @@ import {
   launchApp,
   makeUpstreamRepo,
   openSection,
+  openSkillsPane,
   read,
   readJson,
   repoRoot,
@@ -125,7 +126,7 @@ async function v1ReadOnly(suite: Suite): Promise<void> {
     equal(await launched.page.locator(".source-row").count(), 4, "v1 source count");
     equal(await launched.page.getByText("4 个来源").count(), 1, "v1 source toolbar");
 
-    await openSection(launched.page, "技能");
+    await openSkillsPane(launched.page, "library");
     await launched.page.getByLabel("搜索技能").waitFor();
     equal(await launched.page.locator(".skill-table-row").count(), 6, "v1 skill count");
     const typeFilter = launched.page.getByRole("group", { name: "技能类型筛选" });
@@ -134,9 +135,9 @@ async function v1ReadOnly(suite: Suite): Promise<void> {
     equal(await typeFilter.getByRole("button", { name: "单技能" }).getAttribute("aria-pressed"), "true", "selected skill filter state");
     await typeFilter.getByRole("button", { name: "全部" }).click();
 
-    await openSection(launched.page, "分发管理");
+    await openSkillsPane(launched.page, "distribution");
     await waitForText(launched.page, "fixture-agents");
-    await openSection(launched.page, "技能");
+    await openSkillsPane(launched.page, "library");
     await launched.page.getByRole("button", { name: "分发到…" }).first().click();
     await waitForText(launched.page, "v1 仓库以只读方式打开。先完成迁移，再执行写入操作。");
     equal(await launched.page.getByRole("dialog").count(), 0, "v1 install dialog must not open");
@@ -381,7 +382,7 @@ async function githubFlow(suite: Suite): Promise<void> {
     await cleanDiff.locator(".modal-header").getByRole("button", { name: "关闭" }).click();
     await cleanDiff.waitFor({ state: "hidden" });
 
-    await openSection(page, "技能");
+    await openSkillsPane(page, "library");
     equal(await page.getByRole("button", { name: "编辑 alpha" }).count(), 0, "GitHub skill is not directly editable");
     const alphaRow = page.locator(".skill-table-row").filter({ hasText: "alpha" }).first();
     await alphaRow.locator(".row-menu summary").click();
@@ -584,7 +585,7 @@ async function pluginsFlow(suite: Suite): Promise<void> {
   await openSection(page, "插件");
   await page.locator(".plugin-row").first().waitFor();
   equal(await page.locator(".plugin-row").count(), 5, "fixture plugin rows");
-  await openSection(page, "分发管理");
+  await openSkillsPane(page, "distribution");
   const pausedTarget = page.locator(".target-card");
   await pausedTarget.getByText("已暂停", { exact: true }).waitFor();
   assert((await pausedTarget.getByText("已暂停", { exact: true }).getAttribute("title"))?.includes("保留当前副本"), "paused target explains preserved copy without repeating a full paragraph per rule");
@@ -647,7 +648,7 @@ async function pluginsFlow(suite: Suite): Promise<void> {
   await waitForText(page, "已移除目标 local-agent-plugin");
   assert(fs.existsSync(path.join(pluginTargetDest, "local-tools")), "removing registration keeps plugin copy");
 
-  await openSection(page, "技能");
+  await openSkillsPane(page, "library");
   equal(await page.locator(".skill-table-row").count(), 1, "plugin skills stay out of the installable skills list");
 
   await page.keyboard.press("Meta+k");
@@ -1112,7 +1113,7 @@ async function externalFlow(suite: Suite): Promise<void> {
   equal(await stat.locator("strong").innerText(), "1", "overview external count");
   assert((await stat.getAttribute("title")) === "由对应工具自己管理", "overview external hint");
 
-  await openSection(page, "技能");
+  await openSkillsPane(page, "library");
   await waitForText(page, "外部托管");
   const group = page.locator(".skill-group").filter({ hasText: "rea-agents" });
   await group.waitFor();
@@ -1408,7 +1409,7 @@ async function adoptPendingSkillFromActivity(suite: Suite): Promise<void> {
   assert(fs.existsSync(path.join(vaultPath, "packages/adopt-repo/skills/gamma/SKILL.md")), "new skill adopted in vault");
   assert(fs.existsSync(path.join(agentsSkills, "gamma", "SKILL.md")), "new skill distributed to sandboxed master");
   assert(git(remote, ["log", "-1", "--pretty=%s"]).includes("adopt skills"), "adoption pushed to Vault remote");
-  await openSection(page, "技能");
+  await openSkillsPane(page, "library");
   await page.locator(".skill-table-row").filter({ hasText: "gamma" }).waitFor();
   console.log("      activity exposes exact pending path and adoption updates Vault, master and Git remote");
 }
@@ -1432,9 +1433,9 @@ async function installFlow(suite: Suite): Promise<void> {
   const page = launched.page;
   await importLocalSkill(page, path.join(workspace.root, "imports", "bundle"));
 
-  await openSection(page, "分发管理");
-  await waitForText(page, "还没有分发目标");
-  await page.getByRole("button", { name: "前往技能选择" }).click();
+  await openSkillsPane(page, "distribution");
+  await waitForText(page, "还没有登记目标目录");
+  await page.getByRole("button", { name: "选择技能并分发" }).click();
   await page.getByLabel("选择分发：alpha").waitFor();
 
   await page.getByLabel("选择分发：alpha").check();
@@ -1453,7 +1454,7 @@ async function installFlow(suite: Suite): Promise<void> {
   await install.locator(".modal-footer").getByRole("button", { name: "完成" }).click();
   await install.waitFor({ state: "hidden" });
 
-  await openSection(page, "分发管理");
+  await openSkillsPane(page, "distribution");
   const card = page.locator(".target-card").filter({ hasText: "agent-skills" });
   await card.waitFor({ state: "visible", timeout: 30_000 });
   assert(fs.existsSync(path.join(dest, "alpha", ".vault-managed")), "alpha installed with marker");
@@ -1477,7 +1478,7 @@ async function installFlow(suite: Suite): Promise<void> {
   await card.getByRole("button", { name: "验证文件" }).click();
   await waitForText(page, "0 缺失 · 1 修改", 30_000);
 
-  await openSection(page, "技能");
+  await openSkillsPane(page, "library");
   await page.getByLabel("选择分发：alpha").check();
   await page.getByRole("button", { name: "分发已选 · 1" }).click();
   const reinstall = await dialog(page);
@@ -1488,7 +1489,7 @@ async function installFlow(suite: Suite): Promise<void> {
   await waitForText(page, "校验通过 ·", 60_000);
   await reinstall.locator(".modal-footer").getByRole("button", { name: "完成" }).click();
   await reinstall.waitFor({ state: "hidden" });
-  await openSection(page, "分发管理");
+  await openSkillsPane(page, "distribution");
   await waitFor(() => !read(path.join(dest, "alpha", "SKILL.md")).includes("LOCAL-DRIFT"), "managed reinstall replaced drift");
   await waitFor(async () => (await card.locator(".target-check").count()) === 0, "reinstall refresh clears the previous snapshot's file verification");
 
@@ -1544,7 +1545,7 @@ async function installFlow(suite: Suite): Promise<void> {
   await orphanBackups.locator(".modal-footer").getByRole("button", { name: "关闭" }).click();
   await orphanBackups.waitFor({ state: "hidden" });
 
-  await openSection(page, "技能");
+  await openSkillsPane(page, "library");
   await page.getByLabel("选择分发：alpha").check();
   await page.getByLabel("选择分发：beta").check();
   await page.getByRole("button", { name: "分发已选 · 2" }).click();
@@ -1557,7 +1558,7 @@ async function installFlow(suite: Suite): Promise<void> {
   await waitForText(page, "校验通过 ·", 60_000);
   await reregister.locator(".modal-footer").getByRole("button", { name: "完成" }).click();
   await reregister.waitFor({ state: "hidden" });
-  await openSection(page, "分发管理");
+  await openSkillsPane(page, "distribution");
   await card.waitFor({ state: "visible", timeout: 30_000 });
 
   await card.locator(".row-menu summary").click();
@@ -1606,10 +1607,10 @@ async function contextualInstall(suite: Suite): Promise<void> {
   equal(targets().find((t) => t.id === "cli-exact")?.skills.join(","), "alpha", "CLI exact selection does not expand its source");
   const launched = await suite.launch({ workspace, initialVault: vaultPath });
   const page = launched.page;
-  await openSection(page, "分发管理");
+  await openSkillsPane(page, "distribution");
   const single = page.locator(".target-card").filter({ has: page.getByRole("heading", { name: "single", exact: true }) });
   const multi = page.locator(".target-card").filter({ has: page.getByRole("heading", { name: "multi", exact: true }) });
-  await openSection(page, "技能");
+  await openSkillsPane(page, "library");
   await page.getByLabel("选择分发：beta").check();
   await page.getByRole("button", { name: "分发已选 · 1" }).click();
   const reinstall = await dialog(page);
@@ -1666,7 +1667,7 @@ async function contextualInstall(suite: Suite): Promise<void> {
   equal(targets().find((t) => t.id === "single")?.skills.join(","), "beta,gamma", "add preserves prior mapping");
   equal(targets().find((t) => t.id === "single")?.installAfterUpdate, false, "add also preserves pause");
 
-  await openSection(page, "技能");
+  await openSkillsPane(page, "library");
   await page.locator(".skill-table-row").filter({ hasText: "Alpha in a same-named source." }).click();
   await page.locator(".inspector").getByRole("button", { name: "分发到…", exact: true }).click();
   const detail = page.getByRole("dialog", { name: "分发 alpha", exact: true });
@@ -1737,7 +1738,10 @@ async function groupedTargets(suite: Suite): Promise<void> {
 
   const launched = await suite.launch({ workspace, initialVault: vaultPath, extraEnv: { VAULTDESK_PRESETS_FILE: presetsFile } });
   const page = launched.page;
-  await openSection(page, "分发管理");
+  const globalNavigation = page.getByRole("navigation", { name: "页面" });
+  equal(await globalNavigation.getByRole("button", { name: /分发管理/ }).count(), 0, "target maintenance is not a global navigation destination");
+  await openSkillsPane(page, "distribution");
+  equal((await globalNavigation.locator(".nav-item.is-active").innerText()).trim().split(/\s+/)[0], "技能", "target maintenance stays inside the Skills navigation module");
   const view = page.locator(".targets-view");
   const groups = view.locator(".target-group");
   const cards = view.locator(".target-card");
@@ -1932,7 +1936,7 @@ async function writableFlow(suite: Suite): Promise<void> {
     await waitForText(page, "0 个错误");
     await validation.locator(".modal-footer").getByRole("button", { name: "关闭" }).click();
 
-    await openSection(page, "技能");
+    await openSkillsPane(page, "library");
     equal(await page.locator(".skill-table-row").count(), 5, "imported skill count");
     const editableAlpha = page.locator(".skill-table-row").filter({ hasText: "alpha" }).first();
     await editableAlpha.locator(".row-menu summary").click();
@@ -2127,7 +2131,7 @@ async function desktopScale(suite: Suite): Promise<void> {
   const started = Date.now();
   const launched = await suite.launch({ workspace, initialVault: vaultPath });
   const page = launched.page;
-  await openSection(page, "技能");
+  await openSkillsPane(page, "library");
   await waitFor(
     async () => (await page.locator(".skill-table-row").count()) === 300,
     "300 skills rendered",
@@ -2145,7 +2149,7 @@ async function desktopScale(suite: Suite): Promise<void> {
   // catalog is large. This is the regression path reported by users.
   const rendererErrors: string[] = [];
   page.on("pageerror", (error) => rendererErrors.push(error.message));
-  await openSection(page, "技能");
+  await openSkillsPane(page, "library");
   await page.getByRole("button", { name: "选择当前结果" }).click();
   await page.getByRole("button", { name: "分发已选 · 300" }).click();
   const batchInstall = await dialog(page);
@@ -2231,7 +2235,7 @@ async function presetInstall(suite: Suite): Promise<void> {
   await verifyModal.locator(".modal-footer").getByRole("button", { name: "关闭" }).click();
   await verifyModal.waitFor({ state: "hidden" });
 
-  await openSection(page, "技能");
+  await openSkillsPane(page, "library");
   await page.getByRole("button", { name: "分发到…" }).first().click();
   const install = await dialog(page);
   await install.locator(".preset-chip").filter({ hasText: "E2E Tool" }).click();
@@ -2331,15 +2335,25 @@ async function accessibilityAndKeyboard(suite: Suite): Promise<void> {
   });
   await page.evaluate(fs.readFileSync(axeSourcePath, "utf8"));
   const scans = [await auditPage(page, "overview")];
-  for (const section of ["来源", "技能", "插件", "MCP", "工具", "分发管理", "Git", "设置"]) {
+  for (const section of ["来源", "技能", "插件", "MCP", "工具", "Git", "设置"]) {
     await openSection(page, section);
     scans.push(await auditPage(page, section));
+    if (section === "技能") {
+      await openSkillsPane(page, "distribution");
+      scans.push(await auditPage(page, "技能内分发目标"));
+      await openSkillsPane(page, "library");
+    }
   }
   await page.emulateMedia({ colorScheme: "dark" });
   await page.waitForFunction(() => document.documentElement.dataset.theme === "dark");
-  for (const section of ["总览", "来源", "技能", "插件", "MCP", "工具", "分发管理", "Git", "设置"]) {
+  for (const section of ["总览", "来源", "技能", "插件", "MCP", "工具", "Git", "设置"]) {
     await openSection(page, section);
     scans.push(await auditPage(page, section + " 深色"));
+    if (section === "技能") {
+      await openSkillsPane(page, "distribution");
+      scans.push(await auditPage(page, "技能内分发目标 深色"));
+      await openSkillsPane(page, "library");
+    }
   }
   await page.emulateMedia({ colorScheme: "light" });
   await openSection(page, "总览");
@@ -2456,7 +2470,17 @@ async function rendererUxRegression(suite: Suite): Promise<void> {
   await page.keyboard.press("Enter");
   equal((await page.locator(".inspector h2").innerText()).trim(), "gh-pack", "source keyboard details");
 
-  await openSection(page, "技能");
+  await openSkillsPane(page, "distribution");
+  await page.keyboard.press("Meta+k");
+  const skillsPalette = await dialog(page);
+  await skillsPalette.getByLabel("搜索技能、插件、MCP 与工具卡").fill("gh-pack-alpha");
+  await skillsPalette.locator(".palette-hit").filter({ hasText: "gh-pack-alpha" }).first().click();
+  await skillsPalette.waitFor({ state: "hidden" });
+  await page.locator(".skills-library-panel").waitFor({ state: "visible" });
+  await page.locator(".inspector h2").filter({ hasText: "gh-pack-alpha" }).waitFor();
+  equal(await page.locator(".targets-view").count(), 0, "opening a skill from global search returns from distribution pane to the skill library");
+
+  await openSkillsPane(page, "library");
   await app.evaluate(({ BrowserWindow }) => {
     const win = BrowserWindow.getAllWindows()[0];
     win?.setSize(1100, 700);

@@ -24,7 +24,6 @@ import { SettingsView } from "./components/SettingsView";
 import { Sidebar } from "./components/Sidebar";
 import { SkillsView } from "./components/SkillsView";
 import { SourcesView } from "./components/SourcesView";
-import { TargetsView } from "./components/TargetsView";
 import { TitleBar } from "./components/TitleBar";
 import { ToolsView } from "./components/ToolsView";
 import { Welcome } from "./components/Welcome";
@@ -861,6 +860,19 @@ export function App() {
             onSelectExternal={selectExternalSkill}
             onImport={openImport}
             onInstall={(names) => openInstall({ mode: "skills", names })}
+            distribution={{
+              presets,
+              homePath: info?.homePath,
+              onRefresh: () => reloadVault(activeVault.path),
+              onBackups: openBackups,
+              onRemove: (id) => {
+                if (!guardWritable()) return;
+                setTargetToRemove(id);
+              },
+              onReveal: reveal,
+              onError: (message) => notify(message, "danger"),
+            }}
+            onEnterDistribution={() => setSelection(EMPTY_SELECTION)}
             onEditor={openEditor}
             onFork={openFork}
           />
@@ -895,24 +907,6 @@ export function App() {
             onCopy={copyText}
             onOpen={openExternal}
             onSkill={openRelatedSkill}
-          />
-        );
-      case "targets":
-        return (
-          <TargetsView
-            key={activeVault.path}
-            vault={activeVault}
-            presets={presets}
-            homePath={info?.homePath}
-            onRefresh={() => reloadVault(activeVault.path)}
-            onBackups={openBackups}
-            onRemove={(id) => {
-              if (!guardWritable()) return;
-              setTargetToRemove(id);
-            }}
-            onReveal={reveal}
-            onError={(message) => notify(message, "danger")}
-            onGoSkills={() => changeSection("skills")}
           />
         );
       case "git":

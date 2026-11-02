@@ -7,7 +7,6 @@ export type Section =
   | "plugins"
   | "mcp"
   | "tools"
-  | "targets"
   | "git"
   | "settings";
 

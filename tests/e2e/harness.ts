@@ -314,6 +314,14 @@ export async function openSection(page: Page, label: string): Promise<void> {
   await page.waitForTimeout(150);
 }
 
+export async function openSkillsPane(page: Page, pane: "library" | "distribution"): Promise<void> {
+  await openSection(page, "技能");
+  const group = page.getByRole("group", { name: "技能模块区域" });
+  const button = group.getByRole("button", { name: pane === "library" ? /^技能库/ : /^分发目标/ });
+  await button.click();
+  await waitFor(() => button.getAttribute("aria-pressed").then((value) => value === "true"), `skills ${pane} pane selected`);
+}
+
 export async function dialog(page: Page): Promise<ReturnType<Page["getByRole"]>> {
   const value = page.getByRole("dialog");
   await value.waitFor({ state: "visible" });

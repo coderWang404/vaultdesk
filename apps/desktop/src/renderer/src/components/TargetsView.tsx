@@ -152,10 +152,16 @@ export function TargetsView({ vault, presets, homePath, onRefresh, onBackups, on
 
   return (
     <div className="view targets-view">
-      <SectionHeader title="分发管理" description="管理已登记目录的校验、备份与同步；新分发请到技能页选择技能。" actions={<Button icon="backup" onClick={() => onBackups()}>备份</Button>} />
+      <header className="section-header targets-section-header">
+        <div>
+          <h2>已分发到的目录</h2>
+          <p>检查技能在各 agent 目录中的分发、校验、备份和同步状态。</p>
+        </div>
+        <div className="section-actions"><Button icon="backup" onClick={() => onBackups()}>备份</Button></div>
+      </header>
       {vault.targets.length === 0 ? (
-        <EmptyState icon="target" title="还没有分发目标" action={<Button size="sm" variant="primary" icon="skill" onClick={onGoSkills}>前往技能选择</Button>}>
-          选择要使用的技能后，再从分发流程中选择已有目录或新建目标。
+        <EmptyState icon="target" title="还没有登记目标目录" action={<Button size="sm" variant="primary" icon="skill" onClick={onGoSkills}>选择技能并分发</Button>}>
+          从技能库发起分发时，可以选择现有目录或新建目标。
         </EmptyState>
       ) : <>
         <div className="targets-overview">

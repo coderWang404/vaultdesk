@@ -10,6 +10,13 @@ import { Button, Callout, ErrorBoundary, Field, Modal, StatusPill } from "../ui"
 // skills. Selection actions still operate on the complete filtered set.
 const MAX_RENDERED_PICKER_SKILLS = 240;
 
+function uniqueTargetId(existing: VaultSnapshot["targets"], base = "agents-shared"): string {
+  if (!existing.some((target) => target.id === base)) return base;
+  let index = 2;
+  while (existing.some((target) => target.id === `${base}-${index}`)) index += 1;
+  return `${base}-${index}`;
+}
+
 export function InstallModal(props: {
   vault: VaultSnapshot;
   intent: InstallIntent;
@@ -21,13 +28,13 @@ export function InstallModal(props: {
     <ErrorBoundary
       fallback={() => (
         <Modal
-          title="批量安装暂不可用"
+          title="批量分发暂不可用"
           subtitle="技能列表过大或渲染失败，已保护当前窗口。"
           onClose={props.onClose}
           footer={<Button variant="primary" onClick={props.onClose}>关闭</Button>}
         >
-          <Callout tone="danger" title="请核对安装结果">
-            <p>安装窗口渲染失败，界面已保护。请关闭后刷新仓库状态；如果已点击确认安装，请先查看活动记录再重试。</p>
+          <Callout tone="danger" title="请核对分发结果">
+            <p>分发窗口渲染失败，界面已保护。请关闭后刷新仓库状态；如果已点击确认分发，请先查看活动记录再重试。</p>
           </Callout>
         </Modal>
       )}
@@ -55,7 +62,8 @@ function InstallModalContent({
   const fixedSkills = intent.mode === "reinstall" || intent.mode === "skills";
   const [names, setNames] = useState<string[]>(intent.mode === "skills" ? intent.names : intent.mode === "reinstall" ? target?.skills ?? [] : []);
   const [dest, setDest] = useState(target?.dest ?? "~/.agents/skills");
-  const [id, setId] = useState(target?.id ?? "agents-shared");
+  const [id, setId] = useState(target?.id ?? uniqueTargetId(vault.targets));
+  const [destinationChoice, setDestinationChoice] = useState(intent.mode === "skills" && vault.targets.length > 0 ? "" : "new");
   const [plan, setPlan] = useState<InstallPlan | null>(null);
   const [result, setResult] = useState<InstallResult | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -69,13 +77,15 @@ function InstallModalContent({
     [vault.skills, intent.mode, targetSkillNames],
   );
   const selectedNames = useMemo(() => new Set(names), [names]);
+  const chosenTarget = destinationChoice === "new" ? undefined : vault.targets.find((entry) => entry.id === destinationChoice);
   const validScope = (!fixedTarget || Boolean(target)) && names.length > 0 && names.every((name) => vaultSkillNames.has(name));
-  const canSubmit = vault.format === "v2" && validScope;
-  const title = intent.mode === "reinstall" ? `重新安装到 ${intent.targetId}` : intent.mode === "add" ? `添加技能到 ${intent.targetId}` : intent.mode === "skills" && names.length === 1 ? `安装 ${names[0]}` : "安装技能";
-  const actionLabel = intent.mode === "reinstall" ? "确认重新安装" : intent.mode === "add" ? "确认添加" : "确认安装";
+  const destinationReady = intent.mode !== "skills" || (destinationChoice === "new" ? Boolean(dest.trim() && id.trim()) : Boolean(chosenTarget));
+  const canSubmit = vault.format === "v2" && validScope && destinationReady;
+  const title = intent.mode === "reinstall" ? `重新分发到 ${intent.targetId}` : intent.mode === "add" ? `向 ${intent.targetId} 追加技能` : intent.mode === "skills" ? names.length === 1 ? `分发 ${names[0]}` : `分发 ${names.length} 个技能` : "分发技能";
+  const actionLabel = intent.mode === "reinstall" ? "确认重新分发" : intent.mode === "add" ? "确认追加" : chosenTarget ? "确认分发到目标" : "确认分发";
   function close(): void {
     if (busy) return;
-    if (result) onDone(`已${intent.mode === "reinstall" ? "重新安装" : "安装"} ${result.installed} 个技能到 ${result.targetId}`);
+    if (result) onDone(`已${intent.mode === "reinstall" ? "重新分发" : "分发"} ${result.installed} 个技能到 ${result.targetId}`);
     else onClose();
   }
 
@@ -121,9 +131,16 @@ function InstallModalContent({
 
   function applyPreset(preset: ToolPreset): void {
     resetPreview();
+    const existing = vault.targets.find((entry) => entry.dest === preset.dest);
+    setDestinationChoice(existing?.id ?? "new");
     setDest(preset.dest);
-    const guess = preset.dest.split("/").filter(Boolean).at(-2) ?? preset.id;
-    setId(`${guess}-skills`.replace(/[^a-z0-9-]+/gi, "-").toLowerCase());
+    if (existing) {
+      setId(existing.id);
+    } else {
+      const guess = preset.dest.split("/").filter(Boolean).at(-2) ?? preset.id;
+      const base = `${guess}-skills`.replace(/[^a-z0-9-]+/gi, "-").toLowerCase();
+      setId(uniqueTargetId(vault.targets, base));
+    }
   }
 
   async function preview(): Promise<void> {
@@ -175,7 +192,7 @@ function InstallModalContent({
   return (
     <Modal
       title={title}
-      subtitle={intent.mode === "reinstall" ? "将此目标已登记的技能重新写入原目录。请先预览替换内容。" : intent.mode === "add" ? "只选择要新增到此目标的技能。" : "选择安装目录，预览后确认写入。"}
+      subtitle={intent.mode === "reinstall" ? "将此目标已登记的技能重新写入原目录。请先预览替换内容。" : intent.mode === "add" ? "只选择要追加到此目标的技能。" : intent.mode === "skills" ? "选择已登记目标，或新建目录；预览后确认分发。" : "选择技能和目标目录，预览后确认分发。"}
       onClose={close}
       width={fixedSkills ? "default" : "wide"}
       dismissable={!busy}
@@ -209,28 +226,83 @@ function InstallModalContent({
     >
       {vault.format !== "v2" ? (
         <Callout tone="warn" title="v1 仓库只读">
-          <p>安装需要 v2 元数据。先迁移仓库。</p>
+          <p>技能分发需要 v2 元数据。先迁移仓库。</p>
         </Callout>
       ) : null}
 
       {error ? (
-        <Callout tone="danger" title="安装失败">
+        <Callout tone="danger" title="分发失败">
           <p>{error}</p>
         </Callout>
       ) : null}
 
-      {fixedTarget && !target ? <Callout tone="danger" title="安装目标已不存在"><p>请关闭此窗口，刷新后重新选择目标。</p></Callout> : null}
+      {fixedTarget && !target ? <Callout tone="danger" title="分发目标已不存在"><p>请关闭此窗口，刷新后重新选择目标。</p></Callout> : null}
       {target ? (
-        <section className="install-context" aria-label="安装目标信息">
+        <section className="install-context" aria-label="分发目标信息">
           <div className="install-context-head"><strong>{target.id}</strong><StatusPill tone={target.installAfterUpdate ? "accent" : "muted"}>{target.installAfterUpdate ? "自动同步已开启" : "自动同步已暂停"}</StatusPill></div>
           <p className="mono">{target.expandedDest}</p>
-          <p className="muted-small">{intent.mode === "reinstall" ? `本次仅重新安装已登记的 ${names.length} 个技能。` : `已登记 ${target.skills.length} 个技能，请选择新增项。`}{!target.installAfterUpdate ? " 完成后仍保持暂停。" : ""}</p>
+          <p className="muted-small">{intent.mode === "reinstall" ? `本次仅重新分发已登记的 ${names.length} 个技能。` : `已登记 ${target.skills.length} 个技能，请选择要追加的技能。`}{!target.installAfterUpdate ? " 完成后仍保持暂停。" : ""}</p>
         </section>
       ) : null}
 
       <fieldset className="install-fields" disabled={busy || Boolean(result)}>
-      {!fixedTarget ? <div className="install-form">
-        <Field label="安装目标目录" hint="绝对路径或 ~/ 开头，不能位于仓库内。">
+      {intent.mode === "skills" && vault.targets.length > 0 ? (
+        <section className="install-destination-picker" aria-label="选择分发目标">
+          <div className="install-destination-heading">
+            <h3>分发到</h3>
+            <span>{vault.targets.length} 个已登记目标</span>
+          </div>
+          <div className="install-destination-options">
+            {!destinationChoice ? (
+              <div className="install-destination-placeholder" role="status">
+                <Icon name="target" size={16} />
+                <span><strong>请选择一个分发目标</strong><small>选已有目标以追加技能，或新建一个目录。</small></span>
+              </div>
+            ) : null}
+            {vault.targets.map((entry) => (
+              <label className={`install-destination-option ${destinationChoice === entry.id ? "is-selected" : ""}`} key={entry.id}>
+                <input
+                  type="radio"
+                  name="install-destination"
+                  value={entry.id}
+                  checked={destinationChoice === entry.id}
+                  onChange={() => {
+                    resetPreview();
+                    setDestinationChoice(entry.id);
+                    setDest(entry.dest);
+                    setId(entry.id);
+                  }}
+                />
+                <span className="install-destination-option-main">
+                  <strong>{entry.id}</strong>
+                  <span className="mono">{entry.expandedDest}</span>
+                </span>
+                <StatusPill tone={entry.installAfterUpdate ? "accent" : "muted"}>{entry.installAfterUpdate ? "自动同步" : "已暂停"}</StatusPill>
+              </label>
+            ))}
+            <label className={`install-destination-option is-new ${destinationChoice === "new" ? "is-selected" : ""}`}>
+              <input
+                type="radio"
+                name="install-destination"
+                value="new"
+                checked={destinationChoice === "new"}
+                onChange={() => {
+                  resetPreview();
+                  setDestinationChoice("new");
+                  setDest("~/.agents/skills");
+                  setId(uniqueTargetId(vault.targets));
+                }}
+              />
+              <span className="install-destination-option-main">
+                <strong>新建分发目标</strong>
+                <span>指定新目录并登记目标规则</span>
+              </span>
+            </label>
+          </div>
+        </section>
+      ) : null}
+      {!fixedTarget && (intent.mode !== "skills" || destinationChoice === "new") ? <div className="install-form">
+        <Field label="分发目标目录" hint="绝对路径或 ~/ 开头，不能位于仓库内。">
           <input
             className="input mono"
             value={dest}
@@ -261,10 +333,17 @@ function InstallModalContent({
           </div>
         </Field>
       </div> : null}
+      {intent.mode === "skills" && chosenTarget ? (
+        <section className="install-context" aria-label="所选分发目标">
+          <div className="install-context-head"><strong>追加到 {chosenTarget.id}</strong><StatusPill tone={chosenTarget.installAfterUpdate ? "accent" : "muted"}>{chosenTarget.installAfterUpdate ? "自动同步已开启" : "自动同步已暂停"}</StatusPill></div>
+          <p className="mono">{chosenTarget.expandedDest}</p>
+          <p className="muted-small">已有技能会在预览中标明替换操作；目标的同步设置保持不变。</p>
+        </section>
+      ) : null}
 
       {fixedSkills ? (
-        <section className="install-scope" aria-label="本次安装的技能">
-          <h3>本次{intent.mode === "reinstall" ? "重新安装" : "安装"} · {names.length} 个技能</h3>
+        <section className="install-scope" aria-label="本次分发的技能">
+          <h3>本次{intent.mode === "reinstall" ? "重新分发" : "分发"} · {names.length} 个技能</h3>
           <ul>{names.map((name) => <li key={name}><Icon name="skill" size={16} /><span>{name}</span></li>)}</ul>
           {!validScope ? <p className="muted-small">有技能已不存在，请关闭后刷新仓库。</p> : null}
         </section>
@@ -296,7 +375,7 @@ function InstallModalContent({
             </button>
           </div>
         </div>
-        <div className="picker-search"><input className="input" type="search" aria-label="搜索可安装技能" placeholder="搜索技能或来源" value={query} onChange={(event) => { setQuery(event.target.value); setRenderLimit(MAX_RENDERED_PICKER_SKILLS); }} /></div>
+        <div className="picker-search"><input className="input" type="search" aria-label="搜索可分发技能" placeholder="搜索技能或来源" value={query} onChange={(event) => { setQuery(event.target.value); setRenderLimit(MAX_RENDERED_PICKER_SKILLS); }} /></div>
         <div className="picker-groups" aria-busy={busy}>
           {grouped.length === 0 ? <p className="muted-small">{availableSkills.length === 0 ? "所有技能都已登记到此目标。" : "没有匹配的技能。"}</p> : null}
           {renderedGroups.map(([sourceName, skills]) => (
@@ -332,7 +411,7 @@ function InstallModalContent({
         <div className="install-plan">
           <div className="panel-head">
             <div>
-              <span className="eyebrow">安装计划</span>
+              <span className="eyebrow">分发计划</span>
               <h3>
                 {plan.slots.length} 个技能 · {result ? "已写入" : "等待确认"}
               </h3>

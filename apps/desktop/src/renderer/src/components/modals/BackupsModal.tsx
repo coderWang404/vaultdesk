@@ -98,7 +98,7 @@ export function BackupsModal({
 
   return (
     <Modal
-      title="安装备份"
+      title="分发备份"
       subtitle="替换或备份受管目录时留下的快照。"
       onClose={onClose}
       width="wide"
@@ -111,7 +111,7 @@ export function BackupsModal({
     >
       <div className="backups-body">
         {targets.length > 0 ? (
-          <div className="segmented backups-filter" role="group" aria-label="按安装目标筛选">
+          <div className="segmented backups-filter" role="group" aria-label="按分发目标筛选">
             <button className={scope === "" ? "is-active" : ""} onClick={() => setScope("")}>
               全部目标
             </button>

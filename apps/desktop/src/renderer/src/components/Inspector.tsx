@@ -272,7 +272,7 @@ function SourceInspector({
           </>
         ) : null}
         <Button size="sm" variant="ghost" icon="download" onClick={() => onInstall({ mode: "skills", names: source.skills.map((skill) => skill.name) })}>
-          安装技能
+          分发所含技能
         </Button>
         <Button size="sm" variant="ghost" icon="backup" onClick={() => onBackups()}>
           备份
@@ -421,7 +421,7 @@ function SkillInspector({
           </Button>
         )}
         <Button size="sm" variant="ghost" icon="download" onClick={() => onInstall({ mode: "skills", names: [skill.name] })}>
-          安装
+          分发到…
         </Button>
         <Button size="sm" variant="ghost" icon="backup" onClick={() => onBackups()}>
           备份
@@ -987,7 +987,7 @@ function PluginInspector({
             ))}
           </div>
         )}
-        <p className="muted-small">不进入 build 或安装计划。</p>
+        <p className="muted-small">不进入 build 或分发计划。</p>
       </div>
 
       {issues.length > 0 ? (

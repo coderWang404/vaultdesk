@@ -75,7 +75,7 @@ export function Overview({
               </Button>
             ) : (
               <Button variant="primary" icon="download" onClick={onInstall}>
-                安装技能
+                选择要分发的技能
               </Button>
             )}
           </>
@@ -89,7 +89,7 @@ export function Overview({
           </div>
           {vault.format === "v1" ? (
             <div className="quiet-state">
-              <div><strong>迁移到新版仓库</strong><p>迁移后即可管理来源、安装与更新。</p></div>
+              <div><strong>迁移到新版仓库</strong><p>迁移后即可管理来源、分发与更新。</p></div>
               <Button size="sm" onClick={onMigration}>查看迁移方案</Button>
             </div>
           ) : errors.length > 0 ? (
@@ -119,8 +119,8 @@ export function Overview({
             </div>
           ) : vault.counts.targets === 0 ? (
             <div className="quiet-state">
-              <div><strong>配置安装目标</strong><p>为技能选择使用位置，完成后即可安装。</p></div>
-              <Button size="sm" onClick={onInstall}>选择安装目录</Button>
+              <div><strong>选择要分发的技能</strong><p>从技能列表选择单项或批量分发，并指定已有目标或新目录。</p></div>
+              <Button size="sm" onClick={onInstall}>前往技能列表</Button>
             </div>
           ) : (
             <div className="quiet-state">
@@ -152,7 +152,7 @@ export function Overview({
           <Callout tone="warn" title="上次操作未正常结束">
             <p>
               {vault.operation.kind} 停在「{vault.operation.steps.find((step) => step.status === "running")?.label ?? "未知步骤"}」。
-              不会自动回滚，请用 Git 状态与安装备份核对后继续。
+              不会自动回滚，请用 Git 状态与分发备份核对后继续。
             </p>
           </Callout>
         ) : null}
@@ -272,14 +272,14 @@ export function Overview({
             ]}
           />
           <StatGroup
-            label="安装"
+            label="分发"
             cells={[
-              { icon: "target", value: vault.counts.targets, label: "目标", title: "安装规则" },
+              { icon: "target", value: vault.counts.targets, label: "目标", title: "分发规则" },
               {
                 icon: "download",
                 value: vault.counts.managedInstalls,
                 label: "受管",
-                title: "目标目录里的受管安装",
+                title: "目标目录里的受管分发",
               },
               {
                 icon: "refresh",

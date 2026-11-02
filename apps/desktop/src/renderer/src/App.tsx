@@ -829,7 +829,7 @@ export function App() {
             onMigration={() => setModal({ kind: "migration", vaultPath: activeVault.path })}
             onDiff={(source) => setModal({ kind: "diff", vaultPath: activeVault.path, source })}
             onUpdate={openUpdate}
-            onInstall={() => openInstall()}
+            onInstall={() => changeSection("skills")}
             onImport={openImport}
           />
         );
@@ -854,11 +854,13 @@ export function App() {
       case "skills":
         return (
           <SkillsView
+            key={activeVault.path}
             vault={activeVault}
             selected={selection.kind === "skill" || selection.kind === "external" ? selection.name : null}
             onSelect={selectSkill}
             onSelectExternal={selectExternalSkill}
             onImport={openImport}
+            onInstall={(names) => openInstall({ mode: "skills", names })}
             onEditor={openEditor}
             onFork={openFork}
           />
@@ -903,7 +905,6 @@ export function App() {
             presets={presets}
             homePath={info?.homePath}
             onRefresh={() => reloadVault(activeVault.path)}
-            onInstall={openInstall}
             onBackups={openBackups}
             onRemove={(id) => {
               if (!guardWritable()) return;
@@ -911,6 +912,7 @@ export function App() {
             }}
             onReveal={reveal}
             onError={(message) => notify(message, "danger")}
+            onGoSkills={() => changeSection("skills")}
           />
         );
       case "git":
@@ -1211,13 +1213,13 @@ export function App() {
 
       {targetToRemove ? (
         <ConfirmDialog
-          title={`注销安装目标 ${targetToRemove}？`}
+          title={`注销分发目标 ${targetToRemove}？`}
           message={
             <>
-              从 <strong>{activeVault?.name}</strong> 的 vault.yml 中移除这个安装目标。
+              从 <strong>{activeVault?.name}</strong> 的 vault.yml 中移除这个分发目标。
             </>
           }
-          detail="这个仓库安装的受管目录会移动到备份目录，不会直接删除；未受管目录保持原样。"
+          detail="这个仓库分发的受管目录会移动到备份目录，不会直接删除；未受管目录保持原样。"
           confirmLabel="注销目标"
           danger
           busy={removingTarget}

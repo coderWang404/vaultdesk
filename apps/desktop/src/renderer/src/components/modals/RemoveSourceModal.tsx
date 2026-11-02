@@ -57,7 +57,7 @@ export function RemoveSourceModal({
   return (
     <Modal
       title={`移除来源 · ${source}`}
-      subtitle="移除元数据，并清理安装目标与 lock 中的引用。已安装文件不会被自动删除。"
+      subtitle="移除元数据，并清理分发目标与 lock 中的引用。已分发文件不会被自动删除。"
       onClose={onClose}
       dismissable={!busy}
       footer={
@@ -94,7 +94,7 @@ export function RemoveSourceModal({
             {installedOnly.length > 0 ? (
               <Callout tone="danger" title="目标目录中的副本不会被删除">
                 <p>
-                  {installedOnly.length} 个技能已安装到
+                  {installedOnly.length} 个技能已分发到
                   {[...new Set(installedOnly.flatMap((skill) => skill.installed.map((entry) => entry.targetId)))].join(
                     "、",
                   )}

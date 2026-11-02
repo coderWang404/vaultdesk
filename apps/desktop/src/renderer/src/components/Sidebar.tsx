@@ -11,7 +11,7 @@ const NAV: { id: Section; label: string; icon: IconName }[] = [
   { id: "plugins", label: "插件", icon: "sparkle" },
   { id: "mcp", label: "MCP", icon: "server" },
   { id: "tools", label: "工具", icon: "terminal" },
-  { id: "targets", label: "安装目标", icon: "target" },
+  { id: "targets", label: "分发管理", icon: "target" },
   { id: "git", label: "Git", icon: "git" },
   { id: "settings", label: "设置", icon: "settings" },
 ];

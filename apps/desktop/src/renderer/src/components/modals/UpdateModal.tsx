@@ -85,7 +85,7 @@ export function UpdateModal({
   return (
     <Modal
       title={source ? `应用更新 · ${source}` : "应用上游更新"}
-      subtitle="先抓取到缓存，确认后写入仓库并按选项构建、安装。"
+      subtitle="先抓取到缓存，确认后写入仓库并按选项构建、同步到登记目标。"
       onClose={onClose}
       width="xwide"
       dismissable={!applying}
@@ -217,7 +217,7 @@ export function UpdateModal({
               <Toggle
                 checked={install}
                 onChange={setInstall}
-                label="更新后重新安装到登记目标"
+                label="更新后同步到登记目标"
                 hint="只处理 vault.yml 中标记 install_after_update 的目标。"
               />
               <Toggle

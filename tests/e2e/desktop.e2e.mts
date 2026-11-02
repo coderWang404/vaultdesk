@@ -134,9 +134,10 @@ async function v1ReadOnly(suite: Suite): Promise<void> {
     equal(await typeFilter.getByRole("button", { name: "单技能" }).getAttribute("aria-pressed"), "true", "selected skill filter state");
     await typeFilter.getByRole("button", { name: "全部" }).click();
 
-    await openSection(launched.page, "安装目标");
+    await openSection(launched.page, "分发管理");
     await waitForText(launched.page, "fixture-agents");
-    await launched.page.getByRole("button", { name: "安装到目录" }).click();
+    await openSection(launched.page, "技能");
+    await launched.page.getByRole("button", { name: "分发到…" }).first().click();
     await waitForText(launched.page, "v1 仓库以只读方式打开。先完成迁移，再执行写入操作。");
     equal(await launched.page.getByRole("dialog").count(), 0, "v1 install dialog must not open");
 
@@ -583,7 +584,7 @@ async function pluginsFlow(suite: Suite): Promise<void> {
   await openSection(page, "插件");
   await page.locator(".plugin-row").first().waitFor();
   equal(await page.locator(".plugin-row").count(), 5, "fixture plugin rows");
-  await openSection(page, "安装目标");
+  await openSection(page, "分发管理");
   const pausedTarget = page.locator(".target-card");
   await pausedTarget.getByText("已暂停", { exact: true }).waitFor();
   assert((await pausedTarget.getByText("已暂停", { exact: true }).getAttribute("title"))?.includes("保留当前副本"), "paused target explains preserved copy without repeating a full paragraph per rule");
@@ -1431,22 +1432,28 @@ async function installFlow(suite: Suite): Promise<void> {
   const page = launched.page;
   await importLocalSkill(page, path.join(workspace.root, "imports", "bundle"));
 
-  await openSection(page, "安装目标");
-  await page.getByRole("button", { name: "安装到目录" }).click();
+  await openSection(page, "分发管理");
+  await waitForText(page, "还没有分发目标");
+  await page.getByRole("button", { name: "前往技能选择" }).click();
+  await page.getByLabel("选择分发：alpha").waitFor();
+
+  await page.getByLabel("选择分发：alpha").check();
+  await page.getByLabel("选择分发：beta").check();
+  await page.getByRole("button", { name: "分发已选 · 2" }).click();
   const install = await dialog(page);
-  await install.getByLabel("安装目标目录").fill(dest);
+  await install.getByLabel("分发目标目录").fill(dest);
   await install.getByLabel("目标 ID").fill("agent-skills");
-  await install.getByRole("button", { name: "全选" }).click();
   await install.getByRole("button", { name: "预览计划" }).click();
-  await waitForText(page, "安装计划", 30_000);
+  await waitForText(page, "分发计划", 30_000);
   await waitForText(page, "未受管");
   await waitForText(page, "符号链接");
-  await install.getByRole("button", { name: "确认安装" }).click();
+  await install.getByRole("button", { name: "确认分发" }).click();
   await waitForText(page, "校验通过 ·", 60_000);
   await waitForText(page, "已备份 1 个目录。");
   await install.locator(".modal-footer").getByRole("button", { name: "完成" }).click();
   await install.waitFor({ state: "hidden" });
 
+  await openSection(page, "分发管理");
   const card = page.locator(".target-card").filter({ hasText: "agent-skills" });
   await card.waitFor({ state: "visible", timeout: 30_000 });
   assert(fs.existsSync(path.join(dest, "alpha", ".vault-managed")), "alpha installed with marker");
@@ -1470,23 +1477,27 @@ async function installFlow(suite: Suite): Promise<void> {
   await card.getByRole("button", { name: "验证文件" }).click();
   await waitForText(page, "0 缺失 · 1 修改", 30_000);
 
-  await card.getByRole("button", { name: "重新安装", exact: true }).click();
+  await openSection(page, "技能");
+  await page.getByLabel("选择分发：alpha").check();
+  await page.getByRole("button", { name: "分发已选 · 1" }).click();
   const reinstall = await dialog(page);
+  await reinstall.getByRole("radio", { name: /agent-skills/ }).check();
   await reinstall.getByRole("button", { name: "预览计划" }).click();
   await waitForText(page, "受管");
-  await reinstall.getByRole("button", { name: "确认重新安装" }).click();
+  await reinstall.getByRole("button", { name: "确认分发到目标" }).click();
   await waitForText(page, "校验通过 ·", 60_000);
   await reinstall.locator(".modal-footer").getByRole("button", { name: "完成" }).click();
   await reinstall.waitFor({ state: "hidden" });
+  await openSection(page, "分发管理");
   await waitFor(() => !read(path.join(dest, "alpha", "SKILL.md")).includes("LOCAL-DRIFT"), "managed reinstall replaced drift");
   await waitFor(async () => (await card.locator(".target-check").count()) === 0, "reinstall refresh clears the previous snapshot's file verification");
 
   await card.locator(".row-menu summary").click();
   await card.getByRole("button", { name: "查看备份" }).click();
   const backups = await dialog(page);
-  await waitForText(page, "安装备份");
+  await waitForText(page, "分发备份");
   await backups.locator(".backup-entry").first().waitFor({ state: "visible", timeout: 30_000 });
-  await backups.getByRole("group", { name: "按安装目标筛选" }).getByRole("button", { name: "全部目标" }).click();
+  await backups.getByRole("group", { name: "按分发目标筛选" }).getByRole("button", { name: "全部目标" }).click();
   const registeredBackups = backups.locator(".backup-group").filter({ hasText: "agent-skills" });
   await registeredBackups.waitFor({ state: "visible", timeout: 30_000 });
   equal((await registeredBackups.locator("h3").innerText()).trim(), "agent-skills", "all-target backup group owner");
@@ -1514,7 +1525,7 @@ async function installFlow(suite: Suite): Promise<void> {
   await card.locator(".row-menu summary").click();
   await card.getByRole("button", { name: "移除目标" }).click();
   const removeConfirm = page.getByRole("dialog").last();
-  await waitForText(page, "注销安装目标 agent-skills？");
+  await waitForText(page, "注销分发目标 agent-skills？");
   await removeConfirm.getByRole("button", { name: "注销目标" }).click();
   await waitForText(page, "已注销目标 agent-skills", 30_000);
   await waitFor(async () => (await page.locator(".target-card").count()) === 0, "target card removed");
@@ -1533,17 +1544,20 @@ async function installFlow(suite: Suite): Promise<void> {
   await orphanBackups.locator(".modal-footer").getByRole("button", { name: "关闭" }).click();
   await orphanBackups.waitFor({ state: "hidden" });
 
-  await page.getByRole("button", { name: "安装到目录" }).click();
+  await openSection(page, "技能");
+  await page.getByLabel("选择分发：alpha").check();
+  await page.getByLabel("选择分发：beta").check();
+  await page.getByRole("button", { name: "分发已选 · 2" }).click();
   const reregister = await dialog(page);
-  await reregister.getByLabel("安装目标目录").fill(dest);
+  await reregister.getByLabel("分发目标目录").fill(dest);
   await reregister.getByLabel("目标 ID").fill("agent-skills");
-  await reregister.getByRole("button", { name: "全选" }).click();
   await reregister.getByRole("button", { name: "预览计划" }).click();
-  await waitForText(page, "安装计划", 30_000);
-  await reregister.getByRole("button", { name: "确认安装" }).click();
+  await waitForText(page, "分发计划", 30_000);
+  await reregister.getByRole("button", { name: "确认分发" }).click();
   await waitForText(page, "校验通过 ·", 60_000);
   await reregister.locator(".modal-footer").getByRole("button", { name: "完成" }).click();
   await reregister.waitFor({ state: "hidden" });
+  await openSection(page, "分发管理");
   await card.waitFor({ state: "visible", timeout: 30_000 });
 
   await card.locator(".row-menu summary").click();
@@ -1592,17 +1606,19 @@ async function contextualInstall(suite: Suite): Promise<void> {
   equal(targets().find((t) => t.id === "cli-exact")?.skills.join(","), "alpha", "CLI exact selection does not expand its source");
   const launched = await suite.launch({ workspace, initialVault: vaultPath });
   const page = launched.page;
-  await openSection(page, "安装目标");
+  await openSection(page, "分发管理");
   const single = page.locator(".target-card").filter({ has: page.getByRole("heading", { name: "single", exact: true }) });
   const multi = page.locator(".target-card").filter({ has: page.getByRole("heading", { name: "multi", exact: true }) });
-  await single.getByRole("button", { name: "重新安装", exact: true }).click();
+  await openSection(page, "技能");
+  await page.getByLabel("选择分发：beta").check();
+  await page.getByRole("button", { name: "分发已选 · 1" }).click();
   const reinstall = await dialog(page);
-  equal(await reinstall.locator(".install-skill-picker").count(), 0, "reinstall has no full catalog");
-  equal(await reinstall.getByLabel("安装目标目录").count(), 0, "reinstall cannot redirect destination");
-  equal(await reinstall.getByLabel("目标 ID").count(), 0, "reinstall cannot change target identity");
-  equal(await reinstall.locator(".preset-chip").count(), 0, "reinstall has no destination presets");
-  equal((await reinstall.locator(".install-scope li").allTextContents()).join(","), "beta", "only registered skill is shown");
-  await reinstall.getByText("完成后仍保持暂停。", { exact: false }).waitFor();
+  await reinstall.getByRole("radio", { name: /single/ }).check();
+  equal(await reinstall.locator(".install-skill-picker").count(), 0, "skill distribution has no full catalog");
+  equal(await reinstall.getByLabel("分发目标目录").count(), 0, "existing target keeps its destination");
+  equal(await reinstall.getByLabel("目标 ID").count(), 0, "existing target keeps its identity");
+  equal((await reinstall.locator(".install-scope li").allTextContents()).join(","), "beta", "only selected skill is shown");
+  await reinstall.getByText("目标的同步设置保持不变。", { exact: false }).waitFor();
   await page.setViewportSize({ width: 1000, height: 760 });
   await page.evaluate(fs.readFileSync(axeSourcePath, "utf8"));
   const artifacts = path.join(repoRoot, "tests/e2e/artifacts");
@@ -1617,30 +1633,33 @@ async function contextualInstall(suite: Suite): Promise<void> {
   await reinstall.getByRole("button", { name: "预览计划" }).click();
   await reinstall.locator(".plan-row").waitFor();
   equal(await reinstall.locator(".plan-row").count(), 1, "preview stays within selected target");
-  await reinstall.getByRole("button", { name: "确认重新安装" }).click();
+  await reinstall.getByRole("button", { name: "确认分发到目标" }).click();
   await reinstall.getByText("校验通过 ·", { exact: false }).waitFor();
   await reinstall.getByRole("button", { name: "完成", exact: true }).click();
   await reinstall.waitFor({ state: "hidden" });
   equal(targets().find((t) => t.id === "single")?.installAfterUpdate, false, "reinstall preserves pause");
 
-  await multi.getByRole("button", { name: "重新安装", exact: true }).click();
+  await page.getByLabel("选择分发：alpha").check();
+  await page.getByLabel("选择分发：beta").check();
+  await page.getByRole("button", { name: "分发已选 · 2" }).click();
   const multiple = await dialog(page);
-  equal((await multiple.locator(".install-scope li").allTextContents()).join(","), "alpha,beta", "legacy source selector resolves to its registered skills");
-  equal(await multiple.locator(".install-skill-picker").count(), 0, "multi-skill reinstall remains scoped");
+  await multiple.getByRole("radio", { name: /multi/ }).check();
+  equal((await multiple.locator(".install-scope li").allTextContents()).join(","), "alpha,beta", "multi-skill distribution remains scoped");
+  equal(await multiple.locator(".install-skill-picker").count(), 0, "selected distribution has no full catalog");
+  await multiple.getByRole("button", { name: "预览计划" }).click();
+  await multiple.locator(".plan-row").first().waitFor();
+  equal(await multiple.locator(".plan-row").count(), 2, "multi-skill target preview includes both skills");
   await multiple.getByRole("button", { name: "取消", exact: true }).click();
 
-  await single.locator(".row-menu summary").click();
-  await single.getByRole("button", { name: "添加技能", exact: true }).click();
+  await page.getByLabel("选择分发：gamma").check();
+  await page.getByRole("button", { name: "分发已选 · 1" }).click();
   const adding = await dialog(page);
-  equal(await adding.getByRole("checkbox", { name: "beta", exact: true }).count(), 0, "already registered skills are excluded from add picker");
-  await adding.getByLabel("搜索可安装技能").fill("gamma");
-  equal(await adding.locator(".picker-chip").count(), 1, "new skill picker can be searched");
-  await adding.locator(".picker-chip").filter({ hasText: "gamma" }).click();
+  await adding.getByRole("radio", { name: /single/ }).check();
   await adding.screenshot({ path: path.join(artifacts, "target-add-skills.png") });
   await adding.getByRole("button", { name: "预览计划" }).click();
   await adding.locator(".plan-row").waitFor();
   equal((await adding.locator(".plan-row .mono").allTextContents()).join(","), "gamma", "add preview includes only the new skill");
-  await adding.getByRole("button", { name: "确认添加", exact: true }).click();
+  await adding.getByRole("button", { name: "确认分发到目标" }).click();
   await adding.getByText("校验通过 ·", { exact: false }).waitFor();
   await adding.getByRole("button", { name: "完成", exact: true }).click();
   await adding.waitFor({ state: "hidden" });
@@ -1649,18 +1668,19 @@ async function contextualInstall(suite: Suite): Promise<void> {
 
   await openSection(page, "技能");
   await page.locator(".skill-table-row").filter({ hasText: "Alpha in a same-named source." }).click();
-  await page.locator(".inspector").getByRole("button", { name: "安装", exact: true }).click();
-  const detail = page.getByRole("dialog", { name: "安装 alpha", exact: true });
+  await page.locator(".inspector").getByRole("button", { name: "分发到…", exact: true }).click();
+  const detail = page.getByRole("dialog", { name: "分发 alpha", exact: true });
   await detail.waitFor({ state: "visible" });
-  equal((await detail.locator(".install-scope li").allTextContents()).join(","), "alpha", "skill detail installs only current skill");
+  equal((await detail.locator(".install-scope li").allTextContents()).join(","), "alpha", "skill detail distributes only current skill");
   equal(await detail.locator(".install-skill-picker").count(), 0, "skill detail does not show all skills");
+  await detail.getByRole("radio", { name: /新建分发目标/ }).check();
   const detailDest = path.join(workspace.root, "detail");
-  await detail.getByLabel("安装目标目录").fill(detailDest);
+  await detail.getByLabel("分发目标目录").fill(detailDest);
   await detail.getByLabel("目标 ID").fill("detail");
   await detail.getByRole("button", { name: "预览计划" }).click();
   await detail.locator(".plan-row").waitFor();
   equal((await detail.locator(".plan-row .mono").allTextContents()).join(","), "alpha", "same-named source does not expand selection");
-  await detail.getByRole("button", { name: "确认安装", exact: true }).click();
+  await detail.getByRole("button", { name: "确认分发", exact: true }).click();
   await detail.getByText("校验通过 ·", { exact: false }).waitFor();
   await detail.getByRole("button", { name: "完成", exact: true }).click();
   await detail.waitFor({ state: "hidden" });
@@ -1717,16 +1737,16 @@ async function groupedTargets(suite: Suite): Promise<void> {
 
   const launched = await suite.launch({ workspace, initialVault: vaultPath, extraEnv: { VAULTDESK_PRESETS_FILE: presetsFile } });
   const page = launched.page;
-  await openSection(page, "安装目标");
+  await openSection(page, "分发管理");
   const view = page.locator(".targets-view");
   const groups = view.locator(".target-group");
   const cards = view.locator(".target-card");
-  const search = page.getByLabel("搜索安装目标", { exact: true });
+  const search = page.getByLabel("搜索分发目标", { exact: true });
   const qoder = groups.filter({ has: page.locator(".target-group-path").filter({ hasText: "/.qoder/skills" }) });
   equal(await groups.count(), 3, "targets sharing a canonical destination form one group");
   equal(await cards.count(), 5, "grouping preserves every target rule");
   const overview = (await view.locator(".targets-overview p").first().innerText()).replace(/\s+/g, " ");
-  equal(overview, "3 个目录 · 5 条安装规则 · 4 个技能", "overview counts unique skills across destinations and overlapping rules");
+  equal(overview, "3 个目录 · 5 条分发规则 · 4 个技能", "overview counts unique skills across destinations and overlapping rules");
   equal(await qoder.count(), 1, "one Qoder destination group");
   equal(await qoder.locator(".target-group-path").count(), 1, "shared destination path appears once in its group");
   equal(await qoder.locator(".target-card").count(), 3, "three independent rules remain in the shared group");
@@ -1755,7 +1775,7 @@ async function groupedTargets(suite: Suite): Promise<void> {
   equal((await cards.locator("h3").innerText()).trim(), "desktop:gamma", "destination search retains its rule");
   await search.fill("");
 
-  const statusFilter = view.getByRole("group", { name: "安装目标状态筛选", exact: true });
+  const statusFilter = view.getByRole("group", { name: "分发目标状态筛选", exact: true });
   const paused = statusFilter.getByRole("button", { name: /^已暂停/ });
   await paused.click();
   equal(await paused.getAttribute("aria-pressed"), "true", "pause filter announces selection");
@@ -2125,17 +2145,14 @@ async function desktopScale(suite: Suite): Promise<void> {
   // catalog is large. This is the regression path reported by users.
   const rendererErrors: string[] = [];
   page.on("pageerror", (error) => rendererErrors.push(error.message));
-  await openSection(page, "安装目标");
-  await page.getByRole("button", { name: "安装到目录" }).click();
+  await openSection(page, "技能");
+  await page.getByRole("button", { name: "选择当前结果" }).click();
+  await page.getByRole("button", { name: "分发已选 · 300" }).click();
   const batchInstall = await dialog(page);
-  await batchInstall.getByLabel("安装目标目录").fill(path.join(workspace.root, "batch-install"));
+  await batchInstall.getByLabel("分发目标目录").fill(path.join(workspace.root, "batch-install"));
   await batchInstall.getByLabel("目标 ID").fill("batch-install");
-  await batchInstall.getByRole("button", { name: "全选" }).click();
-  await waitFor(async () => (await batchInstall.getByText("已选 300 项").isVisible()), "all 300 skills selected");
-  equal(await batchInstall.locator(".picker-chip input:checked").count(), 240, "only the bounded picker window is mounted initially");
-  assert(await batchInstall.getByText(/已显示 240 \/ 300 项/).isVisible(), "picker caps initial DOM work");
-  await batchInstall.getByRole("button", { name: "再显示 60 项" }).click();
-  equal(await batchInstall.locator(".picker-chip input").count(), 300, "picker can reveal the full catalog on demand");
+  await waitFor(async () => (await batchInstall.getByText("本次分发 · 300 个技能").isVisible()), "all 300 skills selected");
+  equal(await batchInstall.locator(".install-scope li").count(), 300, "batch scope contains full selected set");
   equal(await page.getByRole("dialog").count(), 1, "batch picker stays mounted after selecting all skills");
   equal(rendererErrors.length, 0, `batch picker renderer errors: ${rendererErrors.join(" | ")}`);
   await batchInstall.getByRole("button", { name: "取消" }).click();
@@ -2214,16 +2231,15 @@ async function presetInstall(suite: Suite): Promise<void> {
   await verifyModal.locator(".modal-footer").getByRole("button", { name: "关闭" }).click();
   await verifyModal.waitFor({ state: "hidden" });
 
-  await openSection(page, "安装目标");
-  await page.getByRole("button", { name: "安装到目录" }).click();
+  await openSection(page, "技能");
+  await page.getByRole("button", { name: "分发到…" }).first().click();
   const install = await dialog(page);
   await install.locator(".preset-chip").filter({ hasText: "E2E Tool" }).click();
-  equal(await install.getByLabel("安装目标目录").inputValue(), "~/e2e-skills", "preset fills destination");
+  equal(await install.getByLabel("分发目标目录").inputValue(), "~/e2e-skills", "preset fills destination");
   await install.getByLabel("目标 ID").fill("e2e-tool");
-  await install.getByRole("button", { name: "全选" }).click();
   await install.getByRole("button", { name: "预览计划" }).click();
-  await waitForText(page, "安装计划", 30_000);
-  await install.getByRole("button", { name: "确认安装" }).click();
+  await waitForText(page, "分发计划", 30_000);
+  await install.getByRole("button", { name: "确认分发" }).click();
   await waitForText(page, "校验通过 ·", 60_000);
   await install.locator(".modal-footer").getByRole("button", { name: "完成" }).click();
   await install.waitFor({ state: "hidden" });
@@ -2315,20 +2331,20 @@ async function accessibilityAndKeyboard(suite: Suite): Promise<void> {
   });
   await page.evaluate(fs.readFileSync(axeSourcePath, "utf8"));
   const scans = [await auditPage(page, "overview")];
-  for (const section of ["来源", "技能", "插件", "MCP", "工具", "安装目标", "Git", "设置"]) {
+  for (const section of ["来源", "技能", "插件", "MCP", "工具", "分发管理", "Git", "设置"]) {
     await openSection(page, section);
     scans.push(await auditPage(page, section));
   }
   await page.emulateMedia({ colorScheme: "dark" });
   await page.waitForFunction(() => document.documentElement.dataset.theme === "dark");
-  for (const section of ["总览", "来源", "技能", "插件", "MCP", "工具", "安装目标", "Git", "设置"]) {
+  for (const section of ["总览", "来源", "技能", "插件", "MCP", "工具", "分发管理", "Git", "设置"]) {
     await openSection(page, section);
     scans.push(await auditPage(page, section + " 深色"));
   }
   await page.emulateMedia({ colorScheme: "light" });
   await openSection(page, "总览");
 
-  const installButton = page.getByRole("button", { name: "安装技能" });
+  const installButton = page.getByRole("button", { name: "选择要分发的技能" });
   await installButton.focus();
   await page.keyboard.press("Meta+k");
   const palette = await dialog(page);
@@ -2347,13 +2363,17 @@ async function accessibilityAndKeyboard(suite: Suite): Promise<void> {
   await palette.waitFor({ state: "hidden" });
   equal(
     await page.evaluate(() => document.activeElement?.textContent?.trim()),
-    "安装技能",
+    "选择要分发的技能",
     "palette restores focus to its trigger",
   );
 
   await installButton.click();
+  await page.locator('.nav-item.is-active').filter({ hasText: "技能" }).waitFor();
+  const skillInstallButton = page.getByRole("button", { name: "分发到…", exact: true }).first();
+  await skillInstallButton.focus();
+  await skillInstallButton.click();
   const install = await dialog(page);
-  await waitForText(page, "安装技能");
+  await waitForText(page, "分发");
   scans.push(await auditPage(page, "安装弹窗"));
   assert(await focusInside(page, ".modal"), "install dialog receives initial focus");
   for (let index = 0; index < 6; index += 1) {
@@ -2366,7 +2386,7 @@ async function accessibilityAndKeyboard(suite: Suite): Promise<void> {
   await install.waitFor({ state: "hidden" });
   equal(
     await page.evaluate(() => document.activeElement?.textContent?.trim()),
-    "安装技能",
+    "分发到…",
     "dialog restores focus to its trigger",
   );
   console.log(`      axe scans ${scans.join("/")} violations (none serious), palette and dialog focus trap OK`);
@@ -2554,9 +2574,9 @@ async function main(): Promise<void> {
   await run("migration blocked when dirty, then applied to vault-v2", migration);
   await run("create vault, local imports, edit, explicit commit and push", writableFlow);
   await run("GitHub import, check, diff, guarded update, fork", githubFlow);
-  await run("install, backup, verify, restore, remove and re-register target", installFlow);
-  await run("contextual target reinstall, add and skill detail install", contextualInstall);
-  await run("grouped installation targets, search, filters and keyboard", groupedTargets);
+  await run("distribute, backup, verify, restore, remove and re-register target", installFlow);
+  await run("contextual skill distribution, pause preservation and detail distribution", contextualInstall);
+  await run("grouped distribution targets, search, filters and keyboard", groupedTargets);
   await run("cross-vault search, settings validation and persistence", searchAndSettings);
   await run("plugin page, filters, search and imports", pluginsFlow);
   await run("tool page, filters, copy and search routing", toolsFlow);

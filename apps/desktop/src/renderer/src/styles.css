@@ -2330,7 +2330,148 @@ kbd {
 
 .skill-table-grouped .skill-table-head,
 .skill-table-grouped .skill-table-row {
-  grid-template-columns: minmax(0, 1fr) 96px 155px 70px;
+  grid-template-columns: minmax(0, 1fr) 96px minmax(110px, 155px) minmax(220px, auto);
+}
+
+.skill-select-control {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 24px;
+  min-height: 28px;
+  cursor: pointer;
+}
+
+.skill-select-control input {
+  width: 15px;
+  height: 15px;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+
+.skill-row-actions {
+  gap: 5px;
+  flex-wrap: wrap;
+}
+
+.skill-row-actions .btn {
+  white-space: nowrap;
+}
+
+.install-destination-picker {
+  margin-bottom: 14px;
+}
+
+.install-destination-heading {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+
+.install-destination-heading h3 {
+  margin: 0;
+  font-size: 14px;
+}
+
+.install-destination-heading > span {
+  color: var(--ink-muted);
+  font-size: 12px;
+}
+
+.install-destination-options {
+  display: grid;
+  gap: 7px;
+  max-height: 230px;
+  overflow: auto;
+  padding: 1px 2px 1px 1px;
+}
+
+.install-destination-placeholder {
+  display: flex;
+  align-items: flex-start;
+  gap: 11px;
+  padding: 10px 12px;
+  color: var(--ink-muted);
+  border: 1px dashed var(--line-strong);
+  border-radius: 9px;
+  background: var(--paper);
+}
+
+.install-destination-placeholder > span {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.install-destination-placeholder strong {
+  color: var(--ink);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.install-destination-placeholder small {
+  color: var(--ink-muted);
+  font-size: 12px;
+}
+
+.install-destination-option {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  min-width: 0;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: var(--paper-raised);
+  cursor: pointer;
+  transition: border-color 120ms ease, background 120ms ease;
+}
+
+.install-destination-option:hover,
+.install-destination-option.is-selected {
+  border-color: var(--accent);
+  background: var(--surface-hover);
+}
+
+.install-destination-option input {
+  flex: 0 0 auto;
+  accent-color: var(--accent);
+}
+
+.install-destination-option-main {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+  flex: 1;
+}
+
+.install-destination-option-main strong,
+.install-destination-option-main span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.install-destination-option-main strong {
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.install-destination-option-main span {
+  color: var(--ink-muted);
+  font-size: 12px;
+}
+
+.install-destination-option.is-placeholder {
+  cursor: default;
+  border-style: dashed;
+}
+
+.install-destination-option.is-placeholder:hover {
+  border-color: var(--line);
+  background: var(--paper-raised);
 }
 
 .skill-table-grouped .skill-table-row:first-of-type {

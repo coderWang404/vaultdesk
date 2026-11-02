@@ -369,7 +369,7 @@ export function ToolsView({
                           <span className="tool-related-meta">
                             {managed ? (targets.length === 0
                               ? "Vault 受管 · 未登记分发目标"
-                              : `Vault 受管 · 已登记 ${targets.length} 个目标 · 目录/链接已发现 ${present} 个${missing ? ` · ${missing} 个未分发` : ""} · 状态需到安装目标页核验`)
+                              : `Vault 受管 · 已登记 ${targets.length} 个目标 · 目录/链接已发现 ${present} 个${missing ? ` · ${missing} 个未分发` : ""} · 状态需到分发管理页核验`)
                               : external ? `${external.owner} 外部工具托管 · Vault 只读观察` : "未找到关联技能记录"}
                           </span>
                         </div>

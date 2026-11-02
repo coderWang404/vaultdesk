@@ -218,6 +218,7 @@ async function exerciseApp(appPath: string): Promise<void> {
     VAULTDESK_BACKUP_DIR: workspace.backups,
     VAULTDESK_LOCK_DIR: workspace.locks,
     GIT_TERMINAL_PROMPT: "0",
+    VAULTDESK_HEADLESS: "1",
   });
 
   app = await electron.launch({
@@ -239,7 +240,7 @@ async function exerciseApp(appPath: string): Promise<void> {
   equal(await page.locator(".source-row").count(), 3, "packaged source count");
   await openSection(page, "技能");
   equal(await page.locator(".skill-table-row").count(), 4, "packaged skill count");
-  await openSection(page, "安装目标");
+  await openSection(page, "分发管理");
   await waitForText(page, "fixture-agents");
   await openSection(page, "设置");
   const agentPanel = page.locator(".agent-skill-panel");

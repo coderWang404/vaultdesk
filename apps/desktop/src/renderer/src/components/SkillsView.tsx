@@ -29,6 +29,7 @@ export function SkillsView({
   onSelect,
   onSelectExternal,
   onImport,
+  onInstall,
   onEditor,
   onFork,
 }: {
@@ -37,12 +38,18 @@ export function SkillsView({
   onSelect: (skill: SkillRecord) => void;
   onSelectExternal: (skill: ExternalSkillRecord) => void;
   onImport: () => void;
+  onInstall: (names: string[]) => void;
   onEditor: (skill: SkillRecord) => void;
   onFork: (skill: SkillRecord) => void;
 }) {
   const [query, setQuery] = useState("");
   const [typeFilter, setTypeFilter] = useState<TypeFilter>("all");
   const [onlyInstalled, setOnlyInstalled] = useState(false);
+  const [selectedForInstall, setSelectedForInstall] = useState<Set<string>>(new Set());
+  const startInstall = (names: string[]): void => {
+    setSelectedForInstall(new Set());
+    onInstall(names);
+  };
 
   const skills = useMemo(() => {
     if (typeFilter === "external") return [];
@@ -150,9 +157,14 @@ export function SkillsView({
         title="技能"
         description="受管技能由 VaultDesk 分发；外部技能只读观察。文件已分发不代表运行依赖就绪。"
         actions={
-          <Button variant="primary" icon="plus" onClick={onImport}>
-            导入技能
-          </Button>
+          <div className="section-actions">
+            {selectedForInstall.size > 0 ? (
+              <Button variant="primary" icon="download" onClick={() => startInstall([...selectedForInstall])}>
+                分发已选 · {selectedForInstall.size}
+              </Button>
+            ) : null}
+            <Button variant="quiet" icon="plus" onClick={onImport}>导入技能</Button>
+          </div>
         }
       />
 
@@ -194,10 +206,30 @@ export function SkillsView({
           aria-pressed={onlyInstalled}
           onClick={() => setOnlyInstalled((value) => !value)}
         >
-          只看已安装
+          只看已分发
         </button>
+        {skills.length > 0 ? (
+          <button
+            className="text-link"
+            onClick={() => setSelectedForInstall((current) => {
+              const next = new Set(current);
+              const allSelected = skills.every((skill) => next.has(skill.name));
+              for (const skill of skills) {
+                if (allSelected) next.delete(skill.name);
+                else next.add(skill.name);
+              }
+              return next;
+            })}
+          >
+            {skills.every((skill) => selectedForInstall.has(skill.name)) ? "取消选择结果" : "选择当前结果"}
+          </button>
+        ) : null}
+        {selectedForInstall.size > 0 ? (
+          <button className="text-link" onClick={() => setSelectedForInstall(new Set())}>清除选择</button>
+        ) : null}
         <span className="toolbar-count">
           {skills.length + externalSkills.length} 个技能 · {groups.length} 个来源
+          {selectedForInstall.size > 0 ? ` · 已选 ${selectedForInstall.size}` : ""}
           {externalSkills.length > 0 ? ` · ${externalSkills.length} 个外部` : ""}
         </span>
       </div>
@@ -213,7 +245,7 @@ export function SkillsView({
               </Button>
             }
           >
-            导入本地目录或 GitHub 来源，建立可检查、可安装的技能记录。
+            导入本地目录或 GitHub 来源，建立可检查、可分发的技能记录。
           </EmptyState>
         ) : (
           <EmptyState
@@ -233,7 +265,7 @@ export function SkillsView({
               </Button>
             }
           >
-            试试其他关键词，或清除类型与安装状态筛选。
+            试试其他关键词，或清除类型与分发状态筛选。
           </EmptyState>
         )
       ) : (
@@ -243,7 +275,7 @@ export function SkillsView({
               key={group.sourceName}
               group={group}
               issues={issuesBySource.get(group.sourceName) ?? 0}
-              selection={{ selected, onSelect, onEditor, onFork }}
+              selection={{ selected, onSelect, onInstall: startInstall, selectedForInstall, setSelectedForInstall, onEditor, onFork }}
             />
           ))}
           {externalGroups.map((group) => (
@@ -349,6 +381,9 @@ function SourceGroup({
   selection: {
     selected: string | null;
     onSelect: (skill: SkillRecord) => void;
+    onInstall: (names: string[]) => void;
+    selectedForInstall: Set<string>;
+    setSelectedForInstall: (next: Set<string>) => void;
     onEditor: (skill: SkillRecord) => void;
     onFork: (skill: SkillRecord) => void;
   };
@@ -377,7 +412,7 @@ function SourceGroup({
           <span>技能</span>
           <span>角色</span>
           <span>文件分发</span>
-          <span />
+          <span>操作</span>
         </div>
         {group.skills.map((skill) => (
           <div
@@ -386,6 +421,20 @@ function SourceGroup({
             onClick={() => selection.onSelect(skill)}
           >
             <div className="skill-cell-main">
+              <label className="skill-select-control" onClick={(event) => event.stopPropagation()}>
+                <input
+                  type="checkbox"
+                  aria-label={`选择分发：${skill.name}`}
+                  checked={selection.selectedForInstall.has(skill.name)}
+                  onChange={() => {
+                    const next = new Set(selection.selectedForInstall);
+                    if (next.has(skill.name)) next.delete(skill.name);
+                    else next.add(skill.name);
+                    selection.setSelectedForInstall(next);
+                  }}
+                />
+                <span className="sr-only">选择分发</span>
+              </label>
               <div>
                 <strong>{skill.name}</strong>
                 <p className="clamp-1" title={skill.description ?? undefined}>
@@ -411,8 +460,11 @@ function SourceGroup({
               )}
             </div>
             <div className="skill-row-actions" onClick={(event) => event.stopPropagation()}>
-              <Button className="row-action-primary" size="sm" variant="quiet" onClick={() => selection.onSelect(skill)} aria-pressed={selection.selected === skill.name} aria-label={"查看详情：" + skill.name}>
-                查看详情
+              <Button className="row-action-primary" size="sm" variant="quiet" icon="download" onClick={() => selection.onInstall([skill.name])}>
+                分发到…
+              </Button>
+              <Button className="row-action-primary" size="sm" variant="ghost" onClick={() => selection.onSelect(skill)} aria-pressed={selection.selected === skill.name} aria-label={"查看详情：" + skill.name}>
+                详情
               </Button>
               <ActionMenu label={"更多技能操作：" + skill.name}>
                 {skill.origin === "github" ? (

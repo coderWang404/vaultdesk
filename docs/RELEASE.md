@@ -1,10 +1,12 @@
 # VaultDesk v1.2.12 release
 
-Status: published and installed on 2026-11-02. Commit `d025aff` contains the skills-first distribution workflow. GitHub CI run `41400137641` passed all three jobs; the public DMG and SHA-256 asset were uploaded to the release.
+Status: published and installed on 2026-11-02. Tag `v1.2.12` points to `d025affbc91df1a74167ae7deb8f0c45d97d56c9`. GitHub CI run `41400137641` passed all three jobs; the public DMG and SHA-256 asset were uploaded to the [GitHub Release](https://github.com/coderWang404/vaultdesk/releases/tag/v1.2.12), downloaded again and matched the tested package byte-for-byte.
 
 The Skills page is now the primary distribution entry point: select one skill, several skills, or the current filtered results, then choose an existing target or create a new one. Source groups remain visible and externally managed skills stay read-only. “Distribution management” is dedicated to registered-target verification, backups, sync state and removal; its empty state links directly to skill selection. Overview and inspector actions now lead into the same workflow.
 
 Validation: 30 test files / 188 tests, workspace typecheck, all 22 desktop E2E scenarios, batch selection with 300 skills, zero axe violations, and mounted-DMG app/CLI/MCP acceptance passed. Desktop test windows stay hidden so the user's desktop remains available.
+
+The installed `/Applications/VaultDesk.app`, bundled CLI and LaunchAgent report v1.2.12. Installed `app.asar` matches the tested DMG hash; exactly one GUI process and one background worker are running. The previous app was moved to Trash.
 
 | Field | Value |
 | --- | --- |

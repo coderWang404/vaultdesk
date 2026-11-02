@@ -11,7 +11,8 @@
 | DMG | 通过 | release/VaultDesk-1.2.12-arm64.dmg，124,943,513 bytes，SHA-256 f10cc24807a0426240ab29b27f6aa50fc6ff17cee6a19af42ee070974cc99a0d |
 | DMG CLI/MCP | 通过 | 挂载与镜像校验、隐藏窗口启动、修改持久化、独立 CLI 及 MCP stdio tools/list |
 | 签名 | 通过 | Ad-hoc 签名；未公证 |
-| GitHub CI | 通过 | 41400137641，Ubuntu、macOS 与 Desktop smoke/DMG 三个 job 全部通过；v1.2.12 已公开发布 |
+| GitHub CI 与公开发布 | 通过 | 41400137641 三个 job 全部通过；[v1.2.12 Release](https://github.com/coderWang404/vaultdesk/releases/tag/v1.2.12) 回下载 DMG 与本地产物逐字节一致 |
+| 正式安装 | 通过 | /Applications/VaultDesk.app、CLI 与 LaunchAgent 均为 1.2.12；app.asar 哈希一致；单 GUI/worker；旧版移至废纸篓 |
 
 # v1.2.11 发布 QA 记录
 

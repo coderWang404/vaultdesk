@@ -580,12 +580,22 @@ function sensitivePathReason(relative: string): string | undefined {
   return undefined;
 }
 
-function sensitiveContentReason(content: string): string | undefined {
+function sensitiveContentReason(content: string, relative: string): string | undefined {
   if (/-----BEGIN (?:[A-Z0-9 ]+ )?PRIVATE KEY-----/.test(content)) return "private key material";
   if (/\b(?:AKIA|ASIA)[A-Z0-9]{16}\b/.test(content)) return "AWS access key pattern";
   if (/\b(?:gh[pousr]_[A-Za-z0-9_]{20,}|github_pat_[A-Za-z0-9_]{20,})\b/.test(content)) return "GitHub token pattern";
   if (/\bBearer\s+[A-Za-z0-9._~+/-]{20,}=*/i.test(content)) return "bearer token pattern";
-  if (/\b(?:api[_-]?key|access[_-]?key|client[_-]?secret|password|token)\s*[:=]\s*["']?[A-Za-z0-9_./+=-]{20,}/i.test(content)) return "credential assignment pattern";
+  // Inspect complete literal values, not prefixes of expressions such as
+  // api_key = backend_openai.read_openai_api_key(...).
+  const assignments = /\b(?:api[_-]?key|access[_-]?key|client[_-]?secret|password|token)\b["']?[ \t]*[:=][ \t]*(?:(["'])([A-Za-z0-9_./+=-]{20,})\1|([A-Za-z0-9_./+=-]{20,})(?=[ \t]*(?:[,;#}]|$)))/gim;
+  const sourceCode = /\.(?:[cm]?[jt]sx?|py|rb|go|rs|java|swift|kt|cs|php)$/i.test(relative);
+  for (const match of content.matchAll(assignments)) {
+    if (match[1]) return "credential assignment pattern";
+    const value = match[3];
+    if (!value) continue;
+    if (sourceCode && /^[A-Za-z_$][\w$]*(?:\.[A-Za-z_$][\w$]*)*$/.test(value)) continue;
+    return "credential assignment pattern";
+  }
   return undefined;
 }
 
@@ -606,7 +616,7 @@ function scanCommitFiles(vaultPath: string, files: string[]): void {
     } catch {
       continue;
     }
-    const contentReason = sensitiveContentReason(content);
+    const contentReason = sensitiveContentReason(content, relative);
     if (contentReason) findings.push({ path: relative, reason: contentReason });
   }
   if (findings.length > 0) {

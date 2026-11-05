@@ -4,7 +4,7 @@ export function PatchView({ patch }: { patch?: string }) {
   }
   const lines = patch.split("\n");
   return (
-    <pre className="patch">
+    <pre className="patch" tabIndex={0} role="region" aria-label="文件差异，可用方向键滚动">
       {lines.map((line, index) => {
         let tone = "";
         if (line.startsWith("+++") || line.startsWith("---")) tone = "meta";

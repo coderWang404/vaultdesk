@@ -97,6 +97,47 @@ describe("automatic source sync", () => {
     expect(fs.existsSync(path.join(ctx.vaultPath, "packages", "gh-standalone", ".env"))).toBe(false);
   });
 
+  it("updates code that reads credentials without treating expressions as secrets", async () => {
+    const ctx = setup();
+    const script = [
+      "api_key = backend_elevenlabs.read_elevenlabs_api_key(args.api_key_env)",
+      "api_key = backend_openai.read_openai_api_key(args.openai_api_key_env)",
+      "api_key = process.env.SERVICE_API_KEY",
+      "token = SERVICE_ACCESS_TOKEN_ENV_NAME",
+      "api_key = provider_configuration.api_key",
+    ].join("\n");
+    fs.writeFileSync(path.join(ctx.upstreamSkill, "credentials.py"), script);
+    git(ctx.upstream, ["add", "."]);
+    git(ctx.upstream, ["commit", "-m", "read credentials from environment"]);
+    const report = await autoSyncVault(ctx.vaultPath, ctx);
+    expect(report.sources.find((source) => source.name === "gh-standalone")?.status).toBe("updated");
+    expect(fs.readFileSync(path.join(ctx.agentsSkillsDir, "gh-standalone", "credentials.py"), "utf8")).toBe(script);
+    expect(git(ctx.remote, ["rev-parse", "refs/heads/main"]).trim()).toBe(git(ctx.vaultPath, ["rev-parse", "HEAD"]).trim());
+  });
+
+  it.each([
+    'api_key = "ExampleCredential1234567890abcdef"',
+    "API_KEY=ExampleCredential1234567890abcdef",
+    "API_KEY=EXAMPLECREDENTIAL1234567890ABCDEF",
+    "API_KEY=ExampleCredential1234567890.abcdef",
+    '{"api_key": "ExampleCredential1234567890abcdef"}',
+  ])("still blocks a literal credential assignment: %s", async (assignment) => {
+    const ctx = setup();
+    fs.writeFileSync(path.join(ctx.upstreamSkill, "config.txt"), assignment + "\n");
+    git(ctx.upstream, ["add", "."]);
+    git(ctx.upstream, ["commit", "-m", "add synthetic credential"]);
+    const before = git(ctx.vaultPath, ["rev-parse", "HEAD"]).trim();
+    const content = fs.readFileSync(ctx.workingFile, "utf8");
+    const report = await autoSyncVault(ctx.vaultPath, ctx);
+    const result = report.sources.find((source) => source.name === "gh-standalone");
+    expect(result?.status).toBe("error");
+    expect(result?.message).toContain("credential assignment pattern");
+    expect(result?.message).not.toContain("ExampleCredential1234567890abcdef");
+    expect(git(ctx.vaultPath, ["rev-parse", "HEAD"]).trim()).toBe(before);
+    expect(fs.readFileSync(ctx.workingFile, "utf8")).toBe(content);
+    expect(fs.existsSync(path.join(ctx.agentsSkillsDir, "gh-standalone", "config.txt"))).toBe(false);
+  });
+
   it("rolls back Vault files when the managed master has unknown ownership", async () => {
     const ctx = setup();
     const master = path.join(ctx.agentsSkillsDir, "gh-standalone");
@@ -439,6 +480,7 @@ describe("automatic source sync", () => {
 
   it("pauses an entire plugin update when it introduces an unadopted skill", async () => {
     const base = tempDir("auto-plugin");
+    const options = { agentsSkillsDir: path.join(base, "agents"), backupRoot: path.join(base, "backups"), pendingRoot: path.join(base, "pending") };
     const vaultPath = path.join(base, "vault");
     const upstream = path.join(base, "upstream");
     const remote = path.join(base, "remote.git");
@@ -464,7 +506,7 @@ describe("automatic source sync", () => {
     git(upstream, ["add", "."]);
     git(upstream, ["commit", "-m", "v2"]);
 
-    const report = await autoSyncVault(vaultPath, { agentsSkillsDir: path.join(base, "agents") });
+    const report = await autoSyncVault(vaultPath, options);
     const result = report.sources.find((source) => source.name === "pending-kit");
     expect(result?.status).toBe("skipped");
     expect(result?.pendingSkills).toEqual(["skills/second"]);
@@ -472,7 +514,7 @@ describe("automatic source sync", () => {
     expect(fs.readFileSync(workingSkill, "utf8")).toBe(firstSkill);
     expect(fs.existsSync(path.join(vaultPath, "plugins", "pending-kit", "skills", "second"))).toBe(false);
     expect(git(vaultPath, ["rev-parse", "HEAD"]).trim()).toBe(beforeHead);
-    const adopted = await adoptPendingSkills(vaultPath, "pending-kit", ["skills/second"], { agentsSkillsDir: path.join(base, "agents") });
+    const adopted = await adoptPendingSkills(vaultPath, "pending-kit", ["skills/second"], options);
     expect(adopted.status).toBe("updated");
     expect(fs.readFileSync(workingSkill, "utf8")).toContain("Updated helper");
     expect(fs.existsSync(path.join(vaultPath, "plugins", "pending-kit", "skills", "second", "SKILL.md"))).toBe(true);

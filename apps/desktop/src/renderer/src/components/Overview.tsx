@@ -37,7 +37,7 @@ export function Overview({
   onInstall: () => void;
   onImport: () => void;
 }) {
-  const updates = vault.sources.filter((source) => source.status === "update-available");
+  const updates = vault.sources.filter((source) => source.status === "update-available" && source.updateMode !== "frozen");
   const problems = vault.sources.filter(
     (source) => source.status === "error" || source.status === "auth-failed",
   );

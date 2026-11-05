@@ -1,3 +1,24 @@
+# VaultDesk v1.2.14 release
+
+Local acceptance and installation completed on 2026-11-05. Release artifacts: [v1.2.14](https://github.com/coderWang404/vaultdesk/releases/tag/v1.2.14).
+
+The update dialog now gives the file list and patch independent, bounded scroll areas, keeping update options below them. Patch scrolling supports the keyboard; line numbers and dark-theme notifications have readable contrast. Commit-message input appears only when committing, and copy distinguishes a local commit from a push.
+
+Sources and Settings explain automatic, review and paused modes. Bulk preview/apply excludes paused sources; an explicitly named manual update remains available without changing the source mode. Overview counts follow the same pause policy. Automatic commit scanning checks complete credential values rather than prefixes of credential-reading expressions, while keeping literal/private-key/generated-file protection.
+
+Validation: workspace typecheck, 195 tests in 30 files, 12 CLI E2E scenarios, all 23 desktop E2E scenarios, dual-theme axe checks, and mounted-DMG app/CLI/MCP acceptance passed. A plugin-adoption unit fixture now isolates its backup/lock/pending directories from the user's background worker. Desktop windows stayed hidden.
+
+| Field | Value |
+| --- | --- |
+| File | release/VaultDesk-1.2.14-arm64.dmg |
+| Size | 124,947,662 bytes |
+| SHA-256 | 2dfb87e54bd7b3a4d2b6251e006285b1985b90cbb2add725aa727d5ded5137e7 |
+| app.asar SHA-256 | 884ecad2aa9161dc198448830d772e932a6b2da915deb145ad47e1833f7d97eb |
+| CLI SHA-256 | c6a008052d1f0185ba20424b5ef840a450ee1079a56f19b8743c7f6802f91c38 |
+| Signing | Ad-hoc, not notarized |
+
+The installed app, CLI and LaunchAgent report 1.2.14, with one GUI and one worker. The previous application was moved to Trash. The real private Vault validated with zero errors/warnings; intended frozen/uninstalled skills stayed paused, and the previously blocked PPT Master automatic update completed and pushed successfully.
+
 # VaultDesk v1.2.13 release
 
 Status: published and installed on 2026-11-02. Commit `14232f34507a62f493ebedead35004dff93b66a9` is tagged `v1.2.13`; GitHub CI run `41421794367` passed all three jobs. The public DMG and SHA-256 file are available from the [GitHub Release](https://github.com/coderWang404/vaultdesk/releases/tag/v1.2.13); the DMG was downloaded again and matched the tested artifact byte-for-byte.

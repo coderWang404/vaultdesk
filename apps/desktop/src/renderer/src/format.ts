@@ -15,6 +15,21 @@ export function shortSha(value: string | undefined, length = 7): string {
   return value ? value.slice(0, length) : "—";
 }
 
+export const sourceUpdateModes: Record<SourceRecord["updateMode"], { label: string; hint: string }> = {
+  auto: {
+    label: "自动更新",
+    hint: "后台检查并更新仓库，同步到开启跟随更新的登记目标，再提交和推送。",
+  },
+  "review-before-apply": {
+    label: "人工审核",
+    hint: "后台只检查和提示；查看差异后，由你手动应用更新并选择是否同步、提交。",
+  },
+  frozen: {
+    label: "暂停",
+    hint: "跳过后台和批量更新，保留当前版本；仍可从该来源菜单手动更新一次。",
+  },
+};
+
 export function formatDate(value: string | undefined): string {
   if (!value) return "从未";
   const date = new Date(value);

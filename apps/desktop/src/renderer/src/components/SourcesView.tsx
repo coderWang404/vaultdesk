@@ -4,11 +4,13 @@ import {
   relativeTime,
   shortSha,
   sourceShapeLabel,
+  sourceUpdateModes,
   statusLabel,
   statusTone,
 } from "../format";
 import { Icon } from "./icons";
 import { ActionMenu, Button, Callout, EmptyState, SectionHeader, StatusMark, StatusPill } from "./ui";
+import { UpdateModeGuide } from "./UpdateModeGuide";
 
 type Filter = "all" | "github" | "local";
 
@@ -77,6 +79,8 @@ export function SourcesView({
           </>
         }
       />
+
+      <UpdateModeGuide />
 
       {vault.format === "v1" ? (
         <Callout tone="warn" title="v1 仓库只读">
@@ -187,19 +191,25 @@ export function SourcesView({
                   )}
                 </p>
                 {source.origin === "github" ? (
-                  <label className="source-update-mode" onClick={(event) => event.stopPropagation()}>
-                    <span>更新方式</span>
-                    <select
-                      value={source.updateMode}
-                      aria-label={`${source.name} 的更新方式`}
-                      disabled={vault.format === "v1" || modeChanging !== null}
-                      onChange={(event) => onUpdateMode(source.name, event.target.value as SourceRecord["updateMode"])}
-                    >
-                      <option value="auto">自动更新</option>
-                      <option value="review-before-apply">人工审核</option>
-                      <option value="frozen">暂停</option>
-                    </select>
-                  </label>
+                  <>
+                    <label className="source-update-mode" onClick={(event) => event.stopPropagation()}>
+                      <span>更新方式</span>
+                      <select
+                        value={source.updateMode}
+                        aria-label={`${source.name} 的更新方式`}
+                        aria-describedby={`source-mode-${source.name}`}
+                        disabled={vault.format === "v1" || modeChanging !== null}
+                        onChange={(event) => onUpdateMode(source.name, event.target.value as SourceRecord["updateMode"])}
+                      >
+                        <option value="auto">自动更新</option>
+                        <option value="review-before-apply">人工审核</option>
+                        <option value="frozen">暂停</option>
+                      </select>
+                    </label>
+                    <p className="source-mode-hint" id={`source-mode-${source.name}`}>
+                      {sourceUpdateModes[source.updateMode].hint}
+                    </p>
+                  </>
                 ) : null}
                 {source.lastError ? (
                   <p className="source-row-error" title={source.lastError}>
@@ -230,7 +240,7 @@ export function SourcesView({
                 <ActionMenu label={"更多来源操作：" + source.name}>
                   {source.status === "update-available" ? (
                     <button onClick={() => onUpdate(source.name)} disabled={vault.format === "v1"}>
-                      应用更新
+                      {source.updateMode === "frozen" ? "手动更新一次" : "应用更新"}
                     </button>
                   ) : null}
                   {source.origin === "github" ? (

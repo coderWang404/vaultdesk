@@ -148,7 +148,7 @@ export async function updateSources(inputPath: string, options: UpdateOptions = 
     throw new VaultDeskError("git-not-clean", "Commit or stash local changes before updating.");
   }
 
-  const selected = selectSources(snapshot, options.names);
+  const selected = selectUpdateSources(snapshot, options.names);
   const warnings: string[] = [];
   const github = selected.filter((source) => source.origin === "github");
   for (const source of selected) {
@@ -373,7 +373,7 @@ export async function previewUpdate(
   names?: string[],
 ): Promise<{ changes: { name: string; commit: string; diff: SourceDiff }[]; warnings: string[] }> {
   const snapshot = await openVault(inputPath);
-  const selected = selectSources(snapshot, names).filter((source) => source.origin === "github");
+  const selected = selectUpdateSources(snapshot, names).filter((source) => source.origin === "github");
   const changes: { name: string; commit: string; diff: SourceDiff }[] = [];
   const warnings: string[] = [];
   for (const source of selected) {
@@ -384,6 +384,11 @@ export async function previewUpdate(
     }
   }
   return { changes, warnings };
+}
+
+/** A named manual update is explicit; bulk updates must preserve paused sources. */
+function selectUpdateSources(snapshot: VaultSnapshot, names?: string[]) {
+  return selectSources(snapshot, names).filter((source) => names?.length || source.updateMode !== "frozen");
 }
 
 export function updateSummary(changes: UpdateChange[]): { files: number; binary: number } {

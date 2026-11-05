@@ -21,6 +21,8 @@
   --danger: #a23229;
   --danger-wash: rgba(162, 50, 41, 0.1);
   --danger-on: #fff7ef;
+  --toast-background: #26221c;
+  --toast-foreground: #f4ecdb;
   --surface-tint: rgba(255, 255, 255, 0.3);
   --surface-hover: #fffdf9;
   --surface-input: rgba(255, 255, 255, 0.72);
@@ -2116,6 +2118,48 @@ kbd {
   outline-offset: 2px;
 }
 
+.source-mode-hint {
+  margin-top: 5px;
+  color: var(--ink-muted);
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.source-mode-guide {
+  margin-bottom: 16px;
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: var(--surface-tint);
+  font-size: 13px;
+  line-height: 1.65;
+}
+
+.source-mode-guide summary {
+  cursor: pointer;
+  font-weight: 600;
+}
+
+.source-mode-guide dl {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  gap: 8px 16px;
+  margin: 12px 0;
+}
+
+.source-mode-guide dt {
+  font-weight: 600;
+}
+
+.source-mode-guide dd {
+  margin: 0;
+  color: var(--ink-muted);
+}
+
+.source-mode-guide p {
+  color: var(--ink-muted);
+}
+
 .source-row-stats {
   display: flex;
   flex-wrap: wrap;
@@ -3413,6 +3457,7 @@ kbd {
 .modal-footer {
   flex: 0 0 auto;
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   justify-content: flex-end;
   gap: 8px;
@@ -3463,12 +3508,15 @@ kbd {
 .update-diff-layout {
   display: grid;
   grid-template-columns: 270px minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr);
   gap: 12px;
-  min-height: 370px;
-  max-height: 56vh;
+  height: clamp(240px, 48vh, 560px);
+  min-width: 0;
+  min-height: 0;
 }
 
 .update-diff-layout {
+  height: clamp(240px, 42vh, 480px);
   margin-bottom: 14px;
 }
 
@@ -3479,6 +3527,7 @@ kbd {
   overflow-y: auto;
   padding: 5px;
   min-height: 0;
+  min-width: 0;
 }
 
 .diff-summary {
@@ -3652,7 +3701,7 @@ kbd {
 }
 
 .patch-line.meta {
-  color: #938a78;
+  color: #b0a58f;
 }
 
 .patch-number {
@@ -3660,8 +3709,13 @@ kbd {
   flex: 0 0 auto;
   text-align: right;
   padding-right: 9px;
-  color: #6e6759;
+  color: #b0a58f;
   user-select: none;
+}
+
+.patch:focus-visible {
+  outline: 2px solid #d6ccb8;
+  outline-offset: -3px;
 }
 
 .patch-text {
@@ -3696,7 +3750,11 @@ kbd {
 
 .update-options {
   border-top: 1px solid var(--line);
-  padding-top: 10px;
+  padding-top: 14px;
+}
+
+.update-options .field {
+  margin-top: 10px;
 }
 
 .install-fields {
@@ -4910,8 +4968,8 @@ kbd {
   gap: 8px;
   padding: 9px 10px;
   border-radius: 8px;
-  background: var(--ink);
-  color: #f4ecdb;
+  background: var(--toast-background);
+  color: var(--toast-foreground);
   box-shadow: var(--shadow-md);
   font-size: 11.5px;
   line-height: 1.5;

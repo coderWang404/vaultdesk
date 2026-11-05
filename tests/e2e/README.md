@@ -58,6 +58,7 @@ macOS desktop session; the default suites need no network.
 | Grouped installation targets, search, filters and keyboard | Canonical directory grouping, unique skill counts, source/skill/ID/path search, attention and pause filters, keyboard collapse, search visibility, empty-state reset, and narrow light/dark accessibility. |
 | Cross-vault search, settings validation and persistence | `Cmd+K` palette across two vaults, keyboard selection, jump to skill, settings validation and restart persistence. |
 | Manual source check and automatic update mode | Source checking and explicit update modes remain separate operations. |
+| Update dialog layout, scrolling and paused bulk sources | 61-file diff at 1000×760 in light/dark themes; independent file/code scrolling, keyboard scrolling, 125% zoom, accessible options, paused bulk exclusion and explicit one-time preview. |
 | All registered vaults sync and keyboard tabs | Sync includes registered Vaults, including those without an open tab; tab navigation remains keyboard accessible. |
 | Headless background worker startup and disable | The worker starts independently of the GUI and respects the background-sync setting. |
 | Closed GUI window reopens | Single-instance handoff reopens the GUI without duplicating the worker. |

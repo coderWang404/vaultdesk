@@ -85,7 +85,7 @@ export function UpdateModal({
   return (
     <Modal
       title={source ? `应用更新 · ${source}` : "应用上游更新"}
-      subtitle="先抓取到缓存，确认后写入仓库并按选项构建、同步到登记目标。"
+      subtitle="本次为手动更新，不改变来源的更新方式。确认后写入仓库，并按下方选项同步和提交。"
       onClose={onClose}
       width="xwide"
       dismissable={!applying}
@@ -122,7 +122,7 @@ export function UpdateModal({
               ? "v1 仓库只读。先迁移到 v2。"
               : !vault.git.isRepo
                 ? "更新要求仓库已纳入 Git。"
-                : "工作区存在未提交变更，先提交或暂存后再更新。"}
+                : "工作区存在未提交变更，请先到 Git 页面提交现有改动，再更新。"}
           </p>
         </Callout>
       ) : null}
@@ -141,10 +141,21 @@ export function UpdateModal({
       ) : preview ? (
         preview.changes.length === 0 ? (
           <Callout tone="ok" title="没有可应用的更新">
-            <p>所选来源的上游提交与工作副本一致。</p>
+            <p>{!source && vault.sources.some((entry) => entry.origin === "github" && entry.updateMode === "frozen")
+              ? "已跳过暂停的来源；其余来源没有可应用的更新。"
+              : "所选来源的上游提交与工作副本一致。"}</p>
           </Callout>
         ) : (
           <>
+            {source && vault.sources.find((entry) => entry.name === source)?.updateMode === "frozen" ? (
+              <Callout tone="warn" title="该来源已暂停">
+                <p>这次只手动更新所选来源，不会恢复后台更新或自动分发。</p>
+              </Callout>
+            ) : !source && vault.sources.some((entry) => entry.origin === "github" && entry.updateMode === "frozen") ? (
+              <Callout title="已跳过暂停的来源">
+                <p>批量更新不会包含暂停的来源。如需只更新一次，请从该来源的菜单打开。</p>
+              </Callout>
+            ) : null}
             <div className="update-summary-row">
               <span>{preview.changes.length} 个来源</span>
               <span>{fileCount} 个文件</span>
@@ -199,26 +210,26 @@ export function UpdateModal({
             </div>
 
             <div className="update-options">
-              <Field label="提交信息（可选）">
+              <Toggle
+                checked={commit}
+                onChange={setCommit}
+                label="同时创建 Git 提交"
+                hint="只提交本次更新涉及的文件；不会自动推送到远端。"
+                disabled={!vault.git.isRepo}
+              />
+              {commit ? <Field label="提交信息（可选）">
                 <input
                   className="input"
                   value={message}
                   onChange={(event) => setMessage(event.target.value)}
                   placeholder={`chore: update ${preview.changes.map((entry) => entry.name).join(", ")}`}
                 />
-              </Field>
-              <Toggle
-                checked={commit}
-                onChange={setCommit}
-                label="同时创建 Git 提交"
-                hint="只暂存本次写入涉及的路径。"
-                disabled={!vault.git.isRepo}
-              />
+              </Field> : null}
               <Toggle
                 checked={install}
                 onChange={setInstall}
                 label="更新后同步到登记目标"
-                hint="只处理 vault.yml 中标记 install_after_update 的目标。"
+                hint="同步开启跟随更新的已登记技能目标；不会安装到新的目录。"
               />
               <Toggle
                 checked={force}

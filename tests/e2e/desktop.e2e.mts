@@ -1170,6 +1170,105 @@ async function externalFlow(suite: Suite): Promise<void> {
   );
 }
 
+async function updateDialogLayout(suite: Suite): Promise<void> {
+  const workspace = suite.workspace("update-layout");
+  const vaultPath = path.join(workspace.root, "update-vault");
+  makeUpstreamRepo(workspace, "active-source", { alpha: "Active skill." });
+  makeUpstreamRepo(workspace, "paused-source", { beta: "Paused skill." });
+  equal(runCli(["vault", "init", vaultPath, "--git", "--yes"], { workspace }).status, 0, "init update vault");
+  for (const name of ["active-source", "paused-source"]) {
+    const added = runCli(["source", "add", "--repo", `e2e/${name}`, "--name", name, "--vault", vaultPath, "--yes"], { workspace });
+    equal(added.status, 0, `import ${name}: ${added.stderr}`);
+    const metadata = path.join(vaultPath, "sources", `${name}.yml`);
+    fs.writeFileSync(metadata, read(metadata).replace("update_mode: auto", `update_mode: ${name === "paused-source" ? "frozen" : "review-before-apply"}`));
+  }
+  commitAll(vaultPath, "import active and paused sources");
+  advanceUpstreamRepo(workspace, "active-source", (source) => {
+    const root = path.join(source, "skills", "alpha");
+    writeSkill(root, "alpha", "Active skill updated.", "LONG-PATCH " + "wide table cell | ".repeat(100));
+    for (let index = 0; index < 60; index++) {
+      const name = `references/long-reference-file-${String(index).padStart(2, "0")}.md`;
+      fs.mkdirSync(path.dirname(path.join(root, name)), { recursive: true });
+      fs.writeFileSync(path.join(root, name), `Reference ${index}\n`);
+    }
+  });
+  advanceUpstreamRepo(workspace, "paused-source", (source) => {
+    writeSkill(path.join(source, "skills", "beta"), "beta", "Paused skill updated.");
+  });
+  const launched = await suite.launch({ workspace, initialVault: vaultPath });
+  const page = launched.page;
+  await page.setViewportSize({ width: 1000, height: 760 });
+  await openSection(page, "来源");
+  await page.getByRole("button", { name: "检查", exact: true }).click();
+  await waitForText(page, "发现 2 个来源有可用更新", 60_000);
+  await openSection(page, "总览");
+  await page.getByRole("button", { name: "预览更新计划", exact: true }).click();
+  const modal = await dialog(page);
+  await modal.locator(".update-diff-layout").waitFor({ timeout: 60_000 });
+  await modal.getByText("已跳过暂停的来源", { exact: true }).waitFor();
+  equal((await modal.locator(".diff-source").allTextContents()).length, 1, "bulk preview has one source");
+  assert((await modal.locator(".diff-source").innerText()).includes("active-source"), "paused source excluded");
+  await modal.locator(".toggle-row").filter({ hasText: "同时创建 Git 提交" }).click();
+  equal(await modal.getByRole("checkbox", { name: /同时创建 Git 提交/ }).isChecked(), true, "commit switch works");
+  await modal.getByPlaceholder("chore: update active-source").fill("chore: reviewed active source");
+  await page.evaluate(fs.readFileSync(axeSourcePath, "utf8"));
+  const artifacts = path.join(repoRoot, "tests/e2e/artifacts");
+  fs.mkdirSync(artifacts, { recursive: true });
+  for (const colorScheme of ["light", "dark"] as const) {
+    await page.emulateMedia({ colorScheme, reducedMotion: "reduce" });
+    await page.waitForFunction((theme) => document.documentElement.dataset.theme === theme, colorScheme);
+    const geometry = await modal.evaluate((element) => {
+      const layout = element.querySelector(".update-diff-layout")!;
+      const files = element.querySelector(".diff-files")!;
+      const viewer = element.querySelector(".diff-viewer")!;
+      const options = element.querySelector(".update-options")!;
+      const patch = element.querySelector(".patch")!;
+      return {
+        layoutBottom: layout.getBoundingClientRect().bottom,
+        filesBottom: files.getBoundingClientRect().bottom,
+        viewerBottom: viewer.getBoundingClientRect().bottom,
+        optionsTop: options.getBoundingClientRect().top,
+        filesScroll: files.scrollHeight > files.clientHeight,
+        patchScroll: patch.scrollWidth > patch.clientWidth,
+        horizontalOverflow: element.scrollWidth > element.clientWidth,
+      };
+    });
+    assert(geometry.filesBottom <= geometry.layoutBottom + 1, "file list stays inside grid");
+    assert(geometry.viewerBottom <= geometry.layoutBottom + 1, "patch stays inside grid");
+    assert(geometry.optionsTop >= geometry.layoutBottom + 10, "options do not overlap the diff");
+    assert(geometry.filesScroll && geometry.patchScroll, "long files and lines scroll independently");
+    equal(geometry.horizontalOverflow, false, "modal fits narrow viewport");
+    await modal.locator(".modal-body").evaluate((element) => { element.scrollTop = 0; });
+    equal(await auditPage(page, `update dialog ${colorScheme}`), 0, "update dialog accessibility");
+    await modal.locator(".modal-body").evaluate((element) => { element.scrollTop = 0; });
+    await modal.screenshot({ path: path.join(artifacts, `update-dialog-${colorScheme}.png`) });
+    await modal.locator(".toggle-row").filter({ hasText: "更新后同步到登记目标" }).click();
+    equal(await modal.getByRole("checkbox", { name: /更新后同步到登记目标/ }).isChecked(), true, "sync switch works");
+    await modal.locator(".toggle-row").filter({ hasText: "更新后同步到登记目标" }).click();
+  }
+  await modal.locator(".patch").focus();
+  await page.keyboard.press("ArrowRight");
+  await waitFor(async () => await modal.locator(".patch").evaluate((element) => element.scrollLeft > 0), "patch can scroll with the keyboard");
+  await launched.app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]?.webContents.setZoomFactor(1.25));
+  const zoomLayout = await modal.evaluate((element) => ({
+    diff: element.querySelector(".update-diff-layout")!.getBoundingClientRect().bottom,
+    options: element.querySelector(".update-options")!.getBoundingClientRect().top,
+  }));
+  assert(zoomLayout.options >= zoomLayout.diff + 10, "125% zoom keeps options below the diff");
+  await launched.app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]?.webContents.setZoomFactor(1));
+  await modal.getByRole("button", { name: "取消", exact: true }).click();
+  await modal.waitFor({ state: "hidden" });
+  await openSection(page, "来源");
+  const pausedRow = page.locator(".source-row").filter({ hasText: "paused-source" });
+  await pausedRow.locator(".row-menu summary").click();
+  await pausedRow.getByRole("button", { name: "手动更新一次", exact: true }).click();
+  const pausedModal = await dialog(page);
+  await pausedModal.getByText("该来源已暂停", { exact: true }).waitFor({ timeout: 60_000 });
+  assert((await pausedModal.locator(".diff-source").innerText()).includes("paused-source"), "explicit update permits a paused source");
+  await pausedModal.getByRole("button", { name: "取消", exact: true }).click();
+  equal(git(vaultPath, ["status", "--porcelain"]).trim(), "", "preview does not write managed files");
+}
+
 async function manualSourceCheck(suite: Suite): Promise<void> {
   const workspace = suite.workspace("auto-check");
   const vaultPath = path.join(workspace.root, "auto-vault");
@@ -1198,6 +1297,8 @@ async function manualSourceCheck(suite: Suite): Promise<void> {
   await new Promise((resolve) => setTimeout(resolve, 1_000));
   equal(await lastChecked(), before, "development GUI does not schedule a background check");
   const mode = launched.page.locator(".source-row").filter({ hasText: "auto-repo" }).locator("select");
+  await launched.page.locator(".source-mode-guide summary").click();
+  await launched.page.locator(".source-mode-guide").getByText("后台只检查和提示；查看差异后，由你手动应用更新并选择是否同步、提交。", { exact: true }).waitFor();
   equal(await mode.inputValue(), "auto", "Git source defaults to automatic mode");
   await mode.selectOption("review-before-apply");
   await waitFor(async () => (await mode.inputValue()) === "review-before-apply", "source review mode saved");
@@ -2606,6 +2707,7 @@ async function main(): Promise<void> {
   await run("tool page, filters, copy and search routing", toolsFlow);
   await run("external skill record, ownership filter and search routing", externalFlow);
   await run("manual source check and automatic update mode", manualSourceCheck);
+  await run("update dialog layout, scrolling and paused bulk sources", updateDialogLayout);
   await run("all registered vaults sync and keyboard tabs", registeredVaultSync);
   await run("headless background worker startup and disable", headlessBackgroundWorker);
   await run("closed GUI window reopens through the single-instance handoff", reopenClosedGuiWindow);

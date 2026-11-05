@@ -62,6 +62,7 @@ patterns, but Vault contents should still never be used as secret storage.
 
 1. Read `source list --json` for origin and mode. Remote `auto` sources use `source auto-sync --yes` or the installed app's background worker: update, managed distribution, commit, and push run as one source transaction. This command can process every auto source, so use it only within that scope.
 2. For manual review, run `source check --json` and `source diff <name>`, then `source update <name> --yes`. Checking writes ignored local state only. A manual update refreshes Vault content; it is not the automatic distribution transaction.
+   Bulk manual updates skip frozen sources; explicitly naming a frozen source permits one manual update without changing its mode.
 3. After a manual update, run `source distribute <source> --yes` to refresh the shared skill master and active registered skill targets, or the registered plugin file targets. This also handles local sources after an intentional Vault edit. Respect `install_after_update=false`; unknown ownership or manual target edits require review, never forced replacement.
 4. Verify target files with `target verify <id>` for skills and `agent catalog --json` for plugin targets. Confirm runtime prerequisites and any agent reload/activation separately. Commit and push only when authorized, or report the remaining Vault changes.
 

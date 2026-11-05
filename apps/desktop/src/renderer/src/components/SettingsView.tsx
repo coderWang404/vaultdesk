@@ -6,6 +6,7 @@ import { relativeTime } from "../format";
 import type { AppInfo } from "../types";
 import { Icon } from "./icons";
 import { PresetVerifyModal } from "./modals/PresetVerifyModal";
+import { UpdateModeGuide } from "./UpdateModeGuide";
 import { Button, Callout, Field, SectionHeader, StatusPill } from "./ui";
 
 type ThemePreference = "system" | "light" | "dark";
@@ -271,6 +272,7 @@ export function SettingsView({
                 ? "后台服务尚未运行。请保存设置重试；若仍失败，请查看系统日志。"
                 : "来源新增技能会提示接纳；手动改动或目标冲突不会被覆盖。本地来源有编辑时，请到来源页手动分发。"}
           </p>
+          <UpdateModeGuide />
           <Button size="sm" variant="quiet" icon="refresh" loading={syncing} onClick={() => void onAutoSync()} >
             立即检查并同步全部仓库
           </Button>

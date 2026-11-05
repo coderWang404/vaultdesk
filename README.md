@@ -18,7 +18,7 @@
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-Apache--2.0-blue.svg" alt="License: Apache-2.0"></a>
   <img src="https://img.shields.io/badge/platform-macOS%2013%2B-lightgrey.svg" alt="Platform: macOS 13+">
   <img src="https://img.shields.io/badge/node-22%2B-339933.svg" alt="Node.js 22+">
-  <img src="https://img.shields.io/badge/version-1.2.13-brightgreen.svg" alt="Version 1.2.13">
+  <img src="https://img.shields.io/badge/version-1.2.14-brightgreen.svg" alt="Version 1.2.14">
 </p>
 
 <p align="center">
@@ -26,7 +26,7 @@
 </p>
 
 > [!NOTE]
-> VaultDesk 1.2.13 is available as an Apple Silicon DMG from [GitHub Releases](https://github.com/coderWang404/vaultdesk/releases/tag/v1.2.13). The build is ad-hoc signed and is not notarized. The CLI is bundled with the app and does not depend on a source checkout or a separate Node.js installation.
+> VaultDesk 1.2.14 is available as an Apple Silicon DMG from [GitHub Releases](https://github.com/coderWang404/vaultdesk/releases/tag/v1.2.14). The build is ad-hoc signed and is not notarized. The CLI is bundled with the app and does not depend on a source checkout or a separate Node.js installation.
 
 ## Contents
 
@@ -123,7 +123,7 @@ Both screenshots use a demo vault built from the public fixtures. No personal sk
 - **Build:** Node.js 22+, pnpm 11.5.2, Git on `PATH`
 - **Source-built CLI:** Node.js 22+; CI also builds and tests on Ubuntu
 
-Download the Apple Silicon desktop DMG from [GitHub Releases](https://github.com/coderWang404/vaultdesk/releases/tag/v1.2.13), drag **VaultDesk.app** to **Applications**, and open that installed copy. Use **Settings → Command line and MCP → Install command-line tool**, even before opening a Vault. The bundled CLI is installed safely at `~/.local/bin/vaultdesk`; it does not require the source repository or a separate Node.js runtime. If your terminal cannot find `vaultdesk`, use `~/.local/bin/vaultdesk` or add `~/.local/bin` to PATH. For MCP clients, copy the absolute-path configuration from Settings after selecting a Vault. Intel users can build the desktop app from source.
+Download the Apple Silicon desktop DMG from [GitHub Releases](https://github.com/coderWang404/vaultdesk/releases/tag/v1.2.14), drag **VaultDesk.app** to **Applications**, and open that installed copy. Use **Settings → Command line and MCP → Install command-line tool**, even before opening a Vault. The bundled CLI is installed safely at `~/.local/bin/vaultdesk`; it does not require the source repository or a separate Node.js runtime. If your terminal cannot find `vaultdesk`, use `~/.local/bin/vaultdesk` or add `~/.local/bin` to PATH. For MCP clients, copy the absolute-path configuration from Settings after selecting a Vault. Intel users can build the desktop app from source.
 
 ### Desktop from source
 
@@ -139,7 +139,7 @@ To package an ad-hoc signed DMG:
 
 ```bash
 pnpm package:mac
-# release/VaultDesk-1.2.13-<arch>.dmg
+# release/VaultDesk-1.2.14-<arch>.dmg
 ```
 
 The build is ad-hoc signed and not notarized. On first launch, right-click the app and choose **Open**, or allow it in **System Settings → Privacy & Security**.
@@ -188,6 +188,16 @@ vaultdesk source update some-source --vault "$VAULT" --yes
 `source update` refreshes Vault content and defaults to no distribution. Run `source distribute <source> --yes` afterward to refresh the shared skill master and active registered skill targets, or the registered plugin file targets. This also distributes intentional changes to local sources. Automatic sync performs remote updates and managed distribution as a source transaction. Neither path takes over an agent-owned plugin installation or enables a plugin in the agent.
 
 ## Automatic sync
+
+The Sources page describes the current mode next to each source. Sources and Settings also include an expandable mode guide.
+
+| Mode | Checking and writes |
+| --- | --- |
+| Automatic (`auto`) | Check upstream, update the vault and active registered destinations, then commit and push. |
+| Review (`review-before-apply`) | Check and report only; review the diff and apply manually, optionally distributing and committing. |
+| Paused (`frozen`) | Skip background and bulk updates. An explicitly selected source can be updated once without resuming automatic updates. |
+
+Check queries upstream without applying changes. Sync now follows each source's mode. A manual update never changes that mode, and creating a commit does not push it.
 
 The macOS app installed at `/Applications/VaultDesk.app` registers a per-user background worker by default. It checks every registered vault at login, after network recovery, and hourly, even while the app window is closed. Settings let you pause it, run a check manually, inspect activity, and change the interval and backup retention. Development builds and apps launched from a mounted DMG do not register this worker.
 
@@ -503,15 +513,15 @@ Release QA results are recorded in [docs/QA-CURRENT.md](docs/QA-CURRENT.md); [do
 
 | Area | State |
 | --- | --- |
-| Desktop app and CLI | 1.2.13; Apple Silicon DMG published, CLI bundled and installable from Settings |
+| Desktop app and CLI | 1.2.14; Apple Silicon DMG published, CLI bundled and installable from Settings |
 | Tool cards and MCP view | Runtime checks and cross-category MCP discovery in v1.2.3; Miniconda base is the preferred Python in v1.2.4; agent catalog and read-only MCP discovery in v1.2.5 |
 | External skill records | Included in v1.2.0 |
 | DMG | Apple Silicon release; ad-hoc signed, not notarized |
 | GitHub Release / Homebrew / npm | GitHub Release published; Homebrew and npm not published |
 | Automatic source sync | Available in the installed macOS app; per-source auto/review/pause controls |
-| Windows and Linux desktop | Not included in v1.2.13 |
+| Windows and Linux desktop | Not included in v1.2.14 |
 
-The desktop app is macOS-only at 1.2.13. The source CLI is tested on macOS and Ubuntu; the DMG CLI uses Electron's bundled Node runtime.
+The desktop app is macOS-only at 1.2.14. The source CLI is tested on macOS and Ubuntu; the DMG CLI uses Electron's bundled Node runtime.
 
 ## Contributing
 

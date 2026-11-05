@@ -1,7 +1,7 @@
 # VaultDesk 设计定稿
 
-- 状态：当前源码版本为 1.1.0；1.0.0 的本地构建与验证属于历史快照。工具卡、MCP、外部技能记录与界面重做纳入本轮发布；插件登记设计见 `docs/PLUGINS.md`，SkillDeck 互操作结论见 `docs/SKILLDECK-INTEROP.md`，发布记录见 `docs/RELEASE.md`，最终验收见 `docs/QA-CURRENT.md`
-- 日期：2026-10-29
+- 状态：当前源码版本为 1.2.14；下方 1.0/1.1 的状态与设计记录属于历史快照。当前行为以源码、中英文 README、`docs/AGENT-MANAGEMENT-AUDIT.md` 和最新 `docs/QA-CURRENT.md` 为准。
+- 日期：2026-11-05（历史阶段另标日期）
 - 产品名：VaultDesk
 - CLI：`vaultdesk`
 - 仓库：`github.com/coderWang404/vaultdesk`

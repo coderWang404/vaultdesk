@@ -1,7 +1,8 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useId, useMemo, useRef, useState } from "react";
 import type { ExternalSkillRecord, SkillRecord, VaultSnapshot } from "@vaultdesk/core";
 import type { ToolPreset } from "@vaultdesk/schema";
 import { externalStatusLabel, externalStatusTone, originLabel } from "../format";
+import type { Selection } from "../types";
 import { Icon } from "./icons";
 import { ActionMenu, Button, EmptyState, SectionHeader, StatusMark, StatusPill } from "./ui";
 import { TargetsView } from "./TargetsView";
@@ -26,9 +27,18 @@ function roleLabel(skill: SkillRecord): string {
   return "成员";
 }
 
+function readCollapsedSources(key: string): Set<string> {
+  try {
+    const value: unknown = JSON.parse(window.localStorage.getItem(key) ?? "[]");
+    return new Set(Array.isArray(value) ? value.filter((name): name is string => typeof name === "string") : []);
+  } catch {
+    return new Set();
+  }
+}
+
 export function SkillsView({
   vault,
-  selected,
+  selection,
   onSelect,
   onSelectExternal,
   onImport,
@@ -39,7 +49,7 @@ export function SkillsView({
   onFork,
 }: {
   vault: VaultSnapshot;
-  selected: string | null;
+  selection: Selection;
   onSelect: (skill: SkillRecord) => void;
   onSelectExternal: (skill: ExternalSkillRecord) => void;
   onImport: () => void;
@@ -62,13 +72,37 @@ export function SkillsView({
   const [typeFilter, setTypeFilter] = useState<TypeFilter>("all");
   const [onlyInstalled, setOnlyInstalled] = useState(false);
   const [selectedForInstall, setSelectedForInstall] = useState<Set<string>>(new Set());
-  const previousSelected = useRef(selected);
+  const storageKey = `vaultdesk.skills.collapsed:${vault.path}`;
+  const [savedCollapsed, setSavedCollapsed] = useState(() => readCollapsedSources(storageKey));
+  const filterContext = JSON.stringify([query.trim().toLowerCase(), typeFilter, onlyInstalled]);
+  const filtering = Boolean(query.trim()) || typeFilter !== "all" || onlyInstalled;
+  const [filteredFold, setFilteredFold] = useState({ context: "", sources: new Set<string>() });
+  const collapsed = filtering
+    ? filteredFold.context === filterContext ? filteredFold.sources : new Set<string>()
+    : savedCollapsed;
+  const selected = selection.kind === "skill" || selection.kind === "external" ? selection.name : null;
+  const previousSelection = useRef<Selection | null>(null);
 
   useEffect(() => {
-    const changed = previousSelected.current !== selected;
-    previousSelected.current = selected;
-    if (changed && selected && pane !== "library") setPane("library");
-  }, [selected, pane]);
+    try { window.localStorage.setItem(storageKey, JSON.stringify([...savedCollapsed])); }
+    catch { /* Folding remains available when storage is unavailable. */ }
+  }, [storageKey, savedCollapsed]);
+
+  useEffect(() => {
+    setFilteredFold({ context: filterContext, sources: new Set() });
+  }, [filterContext]);
+
+  function updateCollapsed(next: Set<string>): void {
+    if (filtering) setFilteredFold({ context: filterContext, sources: next });
+    else setSavedCollapsed(next);
+  }
+
+  function toggleSource(name: string): void {
+    const next = new Set(collapsed);
+    if (next.has(name)) next.delete(name);
+    else next.add(name);
+    updateCollapsed(next);
+  }
   const startInstall = (names: string[]): void => {
     setSelectedForInstall(new Set());
     onInstall(names);
@@ -135,6 +169,8 @@ export function SkillsView({
       }))
       .sort((a, b) => a.sourceName.localeCompare(b.sourceName));
   }, [skills, sourceByName]);
+  const collapsibleGroups = groups.filter((group) => group.source?.kind === "suite" || group.source?.kind === "collection");
+  const allCollapsed = collapsibleGroups.length > 0 && collapsibleGroups.every((group) => collapsed.has(group.sourceName));
   const issuesBySource = useMemo(() => {
     const result = new Map<string, number>();
     const rootsBySource = new Map<string, string[]>();
@@ -179,6 +215,33 @@ export function SkillsView({
       }))
       .sort((a, b) => a.owner.localeCompare(b.owner));
   }, [externalSkills]);
+
+  useEffect(() => {
+    if (previousSelection.current === selection) return;
+    previousSelection.current = selection;
+    if (!selected) return;
+    setPane("library");
+    const skill = vault.skills.find((entry) => entry.name === selected);
+    if (skill) {
+      setSavedCollapsed((current) => {
+        if (!current.has(skill.sourceName)) return current;
+        const next = new Set(current);
+        next.delete(skill.sourceName);
+        return next;
+      });
+      setFilteredFold((current) => {
+        if (!current.sources.has(skill.sourceName)) return current;
+        const next = new Set(current.sources);
+        next.delete(skill.sourceName);
+        return { ...current, sources: next };
+      });
+    }
+    if (!skills.some((entry) => entry.name === selected) && !externalSkills.some((entry) => entry.name === selected)) {
+      setQuery("");
+      setTypeFilter("all");
+      setOnlyInstalled(false);
+    }
+  }, [selection, selected, vault.skills, skills, externalSkills]);
 
   return (
     <div className="view skills-view">
@@ -281,6 +344,23 @@ export function SkillsView({
         {selectedForInstall.size > 0 ? (
           <button className="text-link" onClick={() => setSelectedForInstall(new Set())}>清除选择</button>
         ) : null}
+        {collapsibleGroups.length > 0 ? (
+          <Button
+            size="sm"
+            variant="ghost"
+            aria-label={allCollapsed ? "展开全部套件和合集" : "收起全部套件和合集"}
+            onClick={() => {
+              const next = new Set(collapsed);
+              for (const group of collapsibleGroups) {
+                if (allCollapsed) next.delete(group.sourceName);
+                else next.add(group.sourceName);
+              }
+              updateCollapsed(next);
+            }}
+          >
+            {allCollapsed ? "展开全部" : "收起全部"}
+          </Button>
+        ) : null}
         <span className="toolbar-count">
           {skills.length + externalSkills.length} 个技能 · {groups.length} 个来源
           {selectedForInstall.size > 0 ? ` · 已选 ${selectedForInstall.size}` : ""}
@@ -329,6 +409,8 @@ export function SkillsView({
               key={group.sourceName}
               group={group}
               issues={issuesBySource.get(group.sourceName) ?? 0}
+              expanded={!collapsed.has(group.sourceName)}
+              onToggle={() => toggleSource(group.sourceName)}
               selection={{ selected, onSelect, onInstall: startInstall, selectedForInstall, setSelectedForInstall, onEditor, onFork }}
             />
           ))}
@@ -425,6 +507,8 @@ function ExternalGroup({
 function SourceGroup({
   group,
   issues,
+  expanded,
+  onToggle,
   selection,
 }: {
   group: {
@@ -433,6 +517,8 @@ function SourceGroup({
     skills: SkillRecord[];
   };
   issues: number;
+  expanded: boolean;
+  onToggle: () => void;
   selection: {
     selected: string | null;
     onSelect: (skill: SkillRecord) => void;
@@ -445,24 +531,43 @@ function SourceGroup({
 }) {
   const type = group.source?.kind ?? (group.skills.length === 1 ? "standalone" : "collection");
   const origin = group.source?.origin ?? group.skills[0]?.origin ?? "local";
+  const collapsible = type === "suite" || type === "collection";
+  const contentId = useId();
+  const open = !collapsible || expanded;
+  const selectedCount = (group.source?.skills ?? group.skills).filter((skill) => selection.selectedForInstall.has(skill.name)).length;
+  const heading = <>
+    <span className={`origin-glyph small origin-${origin}`} title={originLabel(origin)}>
+      <Icon name={origin === "github" ? "git" : "folder"} size={13} />
+    </span>
+    <strong className="skill-group-name">{group.sourceName}</strong>
+    <span className="type-chip">{TYPE_LABELS[type]}</span>
+    <span className="skill-group-meta">{group.skills.length} 个</span>
+    {selectedCount > 0 ? <span className="skill-group-selected">已选 {selectedCount}</span> : null}
+    {issues > 0 ? (
+      <span className="skill-group-warning" title={`${issues} 条校验问题`}>
+        <Icon name="alert" size={13} />
+        {issues}
+      </span>
+    ) : null}
+  </>;
 
   return (
     <section className="skill-group">
-      <header className="skill-group-header">
-        <span className={`origin-glyph small origin-${origin}`} title={originLabel(origin)}>
-          <Icon name={origin === "github" ? "git" : "folder"} size={13} />
-        </span>
-        <strong className="skill-group-name">{group.sourceName}</strong>
-        <span className="type-chip">{TYPE_LABELS[type]}</span>
-        <span className="skill-group-meta">{group.skills.length} 个</span>
-        {issues > 0 ? (
-          <span className="skill-group-warning" title={`${issues} 条校验问题`}>
-            <Icon name="alert" size={13} />
-            {issues}
-          </span>
-        ) : null}
+      <header className={`skill-group-header ${collapsible ? "is-collapsible" : ""}`}>
+        {collapsible ? <button
+          type="button"
+          className="skill-group-toggle"
+          aria-expanded={open}
+          aria-controls={contentId}
+          onClick={onToggle}
+        >
+          <Icon name={open ? "chevron-down" : "chevron-right"} size={14} />
+          {heading}
+          <span className="skill-group-toggle-label">{open ? "收起" : "展开"}</span>
+        </button> : heading}
       </header>
-      <div className="skill-table skill-table-grouped">
+      <div className="skill-table skill-table-grouped" id={contentId} hidden={!open}>
+        {open ? <>
         <div className="skill-table-head">
           <span>技能</span>
           <span>角色</span>
@@ -488,7 +593,6 @@ function SourceGroup({
                     selection.setSelectedForInstall(next);
                   }}
                 />
-                <span className="sr-only">选择分发</span>
               </label>
               <div>
                 <strong>{skill.name}</strong>
@@ -531,6 +635,7 @@ function SourceGroup({
             </div>
           </div>
         ))}
+        </> : null}
       </div>
     </section>
   );

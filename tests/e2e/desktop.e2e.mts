@@ -2216,6 +2216,107 @@ async function slowOfflineAndRecovery(suite: Suite): Promise<void> {
   }
 }
 
+async function collapsibleSkillGroups(suite: Suite): Promise<void> {
+  const workspace = suite.workspace("skill-folding");
+  const vaultPath = path.join(workspace.root, "fold-vault");
+  const cli = (...args: string[]) => {
+    const result = runCli([...args, "--vault", vaultPath, "--yes"], { workspace });
+    equal(result.status, 0, `skill folding setup: ${result.stderr}`);
+  };
+  cli("vault", "init", vaultPath, "--git", "--name", "fold-vault");
+  const imports = path.join(workspace.root, "imports");
+  writeSkill(path.join(imports, "solo-skill"), "solo-skill", "Standalone skill.");
+  writeSkill(path.join(imports, "suite-tools", "suite-entry"), "suite-entry", "Suite entry.", "Call suite-helper.");
+  writeSkill(path.join(imports, "suite-tools", "suite-helper"), "suite-helper", "Suite helper.");
+  writeSkill(path.join(imports, "collection-tools", "collection-first"), "collection-first", "Collection first.");
+  writeSkill(path.join(imports, "collection-tools", "collection-second"), "collection-second", "Collection second.");
+  cli("source", "add", path.join(imports, "solo-skill"));
+  cli("source", "add", path.join(imports, "suite-tools"), "--kind", "suite", "--entrypoint", "suite-entry");
+  cli("source", "add", path.join(imports, "collection-tools"), "--kind", "collection");
+  commitAll(vaultPath, "import collapsible groups");
+  const otherVault = path.join(workspace.root, "other-fold-vault");
+  fs.cpSync(vaultPath, otherVault, { recursive: true });
+
+  let launched = await suite.launch({ workspace, initialVault: vaultPath });
+  let page = launched.page;
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  await openSkillsPane(page, "library");
+  const sourceGroup = (name: string) => page.locator(".skill-group").filter({ has: page.locator(".skill-group-name").filter({ hasText: new RegExp(`^${name}$`) }) });
+  equal(await page.locator(".skill-table-row").count(), 5, "groups initially expanded");
+  const suiteGroup = sourceGroup("suite-tools");
+  const collection = sourceGroup("collection-tools");
+  await suiteGroup.getByRole("button", { name: /^suite-tools.*收起$/ }).focus();
+  await page.keyboard.press("Enter");
+  equal(await suiteGroup.getByRole("button", { name: /^suite-tools.*展开$/ }).getAttribute("aria-expanded"), "false", "suite collapse announced");
+  equal(await suiteGroup.locator(".skill-table-row").count(), 0, "collapsed members unmounted");
+  await page.keyboard.press("Space");
+  equal(await suiteGroup.locator(".skill-table-row").count(), 2, "Space expands suite");
+  await page.getByLabel("选择分发：collection-first", { exact: true }).check();
+  await collection.getByRole("button", { name: /^collection-tools.*收起$/ }).click();
+  await collection.locator(".skill-group-selected").getByText("已选 1", { exact: true }).waitFor();
+  await collection.getByRole("button", { name: /^collection-tools.*展开$/ }).click();
+  equal(await page.getByLabel("选择分发：collection-first", { exact: true }).isChecked(), true, "folding preserves checked skills");
+  await page.getByRole("button", { name: "收起全部套件和合集", exact: true }).click();
+  equal(await page.locator(".skill-table-row").count(), 1, "collapse all keeps standalone visible");
+  const search = page.getByLabel("搜索技能", { exact: true });
+  await search.fill("suite-helper");
+  equal(await suiteGroup.locator(".skill-table-row").count(), 1, "search reveals matching collapsed group");
+  await suiteGroup.getByRole("button", { name: /^suite-tools.*收起$/ }).click();
+  equal(await suiteGroup.locator(".skill-table-row").count(), 0, "search results can still be folded");
+  await search.fill("suite-entry");
+  equal(await suiteGroup.locator(".skill-table-row").count(), 1, "new search reveals results again");
+  await search.fill("suite-helper");
+  equal(await suiteGroup.locator(".skill-table-row").count(), 1, "returning to a previous query reveals its results");
+  await search.fill("");
+  equal(await page.locator(".skill-table-row").count(), 1, "clearing search restores saved folds");
+  await page.getByRole("button", { name: "清除选择", exact: true }).click();
+  const filter = page.getByRole("group", { name: "技能类型筛选" });
+  await filter.getByRole("button", { name: "套件", exact: true }).click();
+  equal(await suiteGroup.locator(".skill-table-row").count(), 2, "type filter reveals matching suite");
+  await suiteGroup.getByRole("button", { name: /^suite-tools.*收起$/ }).click();
+  await page.getByRole("button", { name: "选择当前结果", exact: true }).click();
+  await page.getByRole("button", { name: "分发已选 · 2", exact: true }).waitFor();
+  await page.getByRole("button", { name: "分发已选 · 2", exact: true }).click();
+  const install = await dialog(page);
+  equal((await install.locator(".install-scope li").allTextContents()).sort().join(","), "suite-entry,suite-helper", "bulk distribution keeps filtered skill scope while folded");
+  await install.getByRole("button", { name: "取消", exact: true }).click();
+  await filter.getByRole("button", { name: "全部", exact: true }).click();
+  await page.getByRole("button", { name: "展开全部套件和合集", exact: true }).click();
+  await page.getByRole("button", { name: "查看详情：suite-helper", exact: true }).click();
+  await suiteGroup.getByRole("button", { name: /^suite-tools.*收起$/ }).click();
+  await page.keyboard.press("Meta+k");
+  const palette = await dialog(page);
+  await palette.getByLabel("搜索技能、插件、MCP 与工具卡").fill("suite-helper");
+  await palette.locator(".palette-hit").first().click();
+  await suiteGroup.getByRole("button", { name: /^suite-tools.*收起$/ }).waitFor();
+  await suiteGroup.locator(".skill-table-row.is-selected").waitFor();
+  await page.getByRole("button", { name: "收起全部套件和合集", exact: true }).click();
+
+  await suite.close(launched);
+  launched = await suite.launch({ workspace, initialVault: otherVault });
+  page = launched.page;
+  await openSkillsPane(page, "library");
+  equal(await page.locator(".skill-table-row").count(), 5, "fold preferences are isolated by vault");
+  await suite.close(launched);
+  launched = await suite.launch({ workspace, initialVault: vaultPath });
+  page = launched.page;
+  await page.setViewportSize({ width: 1000, height: 760 });
+  await openSkillsPane(page, "library");
+  equal(await page.locator(".skill-table-row").count(), 1, "fold preferences survive restart");
+  await page.evaluate(fs.readFileSync(axeSourcePath, "utf8"));
+  const artifacts = path.join(repoRoot, "tests/e2e/artifacts");
+  fs.mkdirSync(artifacts, { recursive: true });
+  for (const colorScheme of ["light", "dark"] as const) {
+    await page.emulateMedia({ colorScheme, reducedMotion: "reduce" });
+    await page.waitForFunction((theme) => document.documentElement.dataset.theme === theme, colorScheme);
+    equal(await auditPage(page, `collapsed skills ${colorScheme}`), 0, "collapsed groups accessibility");
+    await page.screenshot({ path: path.join(artifacts, `skill-groups-collapsed-${colorScheme}.png`) });
+    await page.getByRole("button", { name: "展开全部套件和合集", exact: true }).click();
+    equal(await auditPage(page, `expanded skills ${colorScheme}`), 0, "expanded groups accessibility");
+    await page.getByRole("button", { name: "收起全部套件和合集", exact: true }).click();
+  }
+}
+
 async function desktopScale(suite: Suite): Promise<void> {
   const workspace = suite.workspace("desktop-scale");
   const vaultPath = path.join(workspace.root, "scale-vault");
@@ -2715,6 +2816,7 @@ async function main(): Promise<void> {
   await run("slow check, offline warning and journal recovery banner", slowOfflineAndRecovery);
   await run("custom tool preset installs under a sandboxed HOME", presetInstall);
   await run("300-skill vault renders and searches in the desktop UI", desktopScale);
+  await run("collapsible suite and collection groups, search and persistence", collapsibleSkillGroups);
   await run("axe accessibility audit, focus trap and focus restore", accessibilityAndKeyboard);
   await run("renderer UX regression: source health, keyboard and zoom", rendererUxRegression);
   if (results.some((value) => !value)) process.exitCode = 1;

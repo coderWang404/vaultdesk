@@ -855,7 +855,7 @@ export function App() {
           <SkillsView
             key={activeVault.path}
             vault={activeVault}
-            selected={selection.kind === "skill" || selection.kind === "external" ? selection.name : null}
+            selection={selection}
             onSelect={selectSkill}
             onSelectExternal={selectExternalSkill}
             onImport={openImport}

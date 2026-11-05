@@ -2383,6 +2383,55 @@ kbd {
   text-overflow: ellipsis;
 }
 
+.skill-group-header.is-collapsible {
+  padding: 0;
+}
+
+.skill-group-toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-width: 0;
+  min-height: 42px;
+  padding: 8px 13px;
+  text-align: left;
+  color: var(--ink);
+}
+
+.skill-group-toggle:hover {
+  background: var(--surface-hover);
+}
+
+.skill-group-toggle:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -3px;
+}
+
+.skill-group-toggle > :not(.skill-group-name) {
+  flex-shrink: 0;
+}
+
+.skill-group-toggle .skill-group-name {
+  min-width: 0;
+}
+
+.skill-group-toggle-label {
+  margin-left: auto;
+  color: var(--ink-muted);
+  font-size: 12px;
+}
+
+.skill-group-selected {
+  color: var(--moss);
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.skill-group [hidden] {
+  display: none;
+}
+
 .skill-group-meta {
   font-size: 10px;
   color: var(--ink-faint);

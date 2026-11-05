@@ -1,3 +1,22 @@
+# VaultDesk v1.2.15 release
+
+Local acceptance and installation completed on 2026-11-05. Release artifacts: [v1.2.15](https://github.com/coderWang404/vaultdesk/releases/tag/v1.2.15).
+
+Skill-library suite and collection headers now expand/collapse with click, Enter or Space, with expand/collapse-all controls. Fold preferences persist on this computer per Vault. Search and filters reveal matching groups while retaining the saved unfiltered preference; global search reveals its selected skill, including a previously selected hidden member. Folding preserves checked skills and their header counts, and filtered bulk distribution keeps its exact scope. Removed redundant checkbox-label text that wrapped vertically at narrow widths.
+
+Validation: workspace typecheck, all 24 desktop E2E scenarios, final folding regression, narrow light/dark expanded/collapsed axe scans, screenshots, and mounted-DMG app/CLI/MCP acceptance passed. Tests used isolated Vaults and hidden windows.
+
+| Field | Value |
+| --- | --- |
+| File | release/VaultDesk-1.2.15-arm64.dmg |
+| Size | 124,943,410 bytes |
+| SHA-256 | c2926694f970ddb4829b13de0603ee8ec08b18006faf6ec1d9fe9a2e362e0540 |
+| app.asar SHA-256 | b146ae43f909acd7edf18556b4754d1add6df0b2ac295deb651b140fc2cda5da |
+| CLI SHA-256 | 7006fec08593dae6982491a78085065ec64bae542ced1fdefcc904cc51d5265c |
+| Signing | Ad-hoc, not notarized |
+
+The installed app, CLI and LaunchAgent report 1.2.15 with one GUI and one worker. The previous app was moved to Trash.
+
 # VaultDesk v1.2.14 release
 
 Local acceptance and installation completed on 2026-11-05. Release artifacts: [v1.2.14](https://github.com/coderWang404/vaultdesk/releases/tag/v1.2.14).

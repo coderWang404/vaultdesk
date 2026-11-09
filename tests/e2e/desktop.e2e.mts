@@ -2788,6 +2788,53 @@ async function firstLaunchSettings(suite: Suite): Promise<void> {
   console.log("      first-launch settings and CLI entry are reachable; Vault-dependent actions stay guarded");
 }
 
+async function responsiveVaultRead(suite: Suite): Promise<void> {
+  const workspace = suite.workspace("responsive-read");
+  const vaultPath = path.join(workspace.root, "large-vault");
+  copyFixture("v2-basic", vaultPath);
+  rewriteTargetDest(vaultPath, workspace.agentsSkills);
+  const assets = path.join(vaultPath, "skills/local-notes/assets");
+  fs.mkdirSync(assets, { recursive: true });
+  for (let index = 0; index < 12_000; index += 1) {
+    fs.writeFileSync(path.join(assets, `${index}.txt`), `asset ${index}\n${"x".repeat(1024)}`);
+  }
+  const launched = await suite.launch({ workspace, initialVault: vaultPath, waitForReady: false });
+  const { page } = launched;
+  equal(await page.locator(".boot-screen").count(), 0, "first frame has usable controls");
+  await page.locator(".titlebar-actions").getByRole("button", { name: "设置", exact: true }).click();
+  await page.getByRole("heading", { name: "命令行与 MCP", exact: true }).waitFor();
+  await page.locator(".vault-tab.is-active").waitFor();
+  await page.getByRole("heading", { name: "命令行与 MCP", exact: true }).waitFor();
+  const timings = await page.evaluate(async (path) => {
+    let done = false;
+    const started = performance.now();
+    const read = window.vaultdesk.invoke("vault.reload", { vaultPath: path }).finally(() => { done = true; });
+    const pings: number[] = [];
+    while (!done) {
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      const ping = performance.now();
+      const response = await window.vaultdesk.invoke("app.info", {});
+      if (!response.ok) throw new Error("app.info failed during read");
+      pings.push(performance.now() - ping);
+    }
+    const response = await read;
+    if (!response.ok) throw new Error("vault.reload failed");
+    return { readMs: Math.round(performance.now() - started), maxPingMs: Math.max(...pings), samples: pings.length };
+  }, vaultPath);
+  assert(timings.samples >= 2, `main process answers repeatedly during a large read: ${JSON.stringify(timings)}`);
+  assert(timings.maxPingMs < 250, `main process stays responsive during hashing: ${JSON.stringify(timings)}`);
+  const hash = async (): Promise<string> => page.evaluate(async (path) => {
+    const response = await window.vaultdesk.invoke("vault.reload", { vaultPath: path });
+    if (!response.ok) throw new Error("vault.reload failed");
+    const snapshot = response.data as { skills: { name: string; contentHash: string }[] };
+    return snapshot.skills.find((skill) => skill.name === "local-notes")!.contentHash;
+  }, vaultPath);
+  const before = await hash();
+  fs.writeFileSync(path.join(assets, "0.txt"), "changed outside VaultDesk");
+  assert(await hash() !== before, "next read sees external edits instead of reusing a stale hash");
+  console.log(`      background read ${timings.readMs}ms; ${timings.samples} IPC replies, slowest ${Math.round(timings.maxPingMs)}ms; fresh external changes OK`);
+}
+
 async function main(): Promise<void> {
   const results: boolean[] = [];
   const run = async (name: string, body: (suite: Suite) => Promise<void>): Promise<void> => {
@@ -2796,6 +2843,7 @@ async function main(): Promise<void> {
     results.push(await scenario(name, body));
   };
   await run("first-launch settings and CLI access without a Vault", firstLaunchSettings);
+  await run("responsive startup and large Vault reads stay fresh", responsiveVaultRead);
   await run("v1 read-only open, validation, guard, recents", v1ReadOnly);
   await run("migration blocked when dirty, then applied to vault-v2", migration);
   await run("create vault, local imports, edit, explicit commit and push", writableFlow);

@@ -41,11 +41,9 @@ import {
   restoreBackup,
   registerPluginTarget,
   runPresetVerifyCommand,
-  searchVaults,
   setSourceUpdateMode,
   sourceDiff,
   updateSources,
-  validateVault,
   verifyTarget,
   verifyToolReadiness,
   distributeCurrentSource,
@@ -53,29 +51,34 @@ import {
   writeSettings,
   VaultDeskError,
   type BackupEntry,
+  type VaultSnapshot,
+  type ValidationReport,
+  type SearchReport,
 } from "@vaultdesk/core";
 import { ipcCommands, type IpcCommand, type IpcPayload } from "@vaultdesk/schema";
 import { addRecent, readRecents, removeRecent } from "./recents.js";
 import { readAutoSyncActivity, runAutoSyncAll } from "./background-sync.js";
 import { backgroundStatus, configureLaunchAgent } from "./launch-agent.js";
 import { cliStatus, installCli, mcpClientConfig } from "./cli-launcher.js";
+import type { VaultReader } from "./vault-reader.js";
 
 export interface CommandContext {
   version: string;
   agentSkillDir: string;
   cliBundlePath?: string;
   appExecutable: string;
+  vaultReader: VaultReader;
 }
 
 type Handler<K extends IpcCommand> = (payload: IpcPayload<K>, context: CommandContext) => unknown;
 
 const handlers: { [K in IpcCommand]: Handler<K> } = {
-  "vault.open": async ({ path: vaultPath }) => {
-    const snapshot = await openVault(vaultPath);
+  "vault.open": async ({ path: vaultPath }, context) => {
+    const snapshot = await context.vaultReader.run<VaultSnapshot>({ command: "open", path: vaultPath });
     addRecent(snapshot.path, snapshot.name);
     return snapshot;
   },
-  "vault.reload": ({ vaultPath }) => openVault(vaultPath),
+  "vault.reload": ({ vaultPath }, context) => context.vaultReader.run<VaultSnapshot>({ command: "open", path: vaultPath }),
   "vault.close": async ({ path: vaultPath }) => ({ closed: vaultPath }),
   "vault.create": async ({ path: vaultPath, name, git }) => {
     const result = await initVault(vaultPath, { name, git });
@@ -83,7 +86,7 @@ const handlers: { [K in IpcCommand]: Handler<K> } = {
     addRecent(snapshot.path, snapshot.name);
     return { init: result, snapshot };
   },
-  "vault.validate": ({ vaultPath }) => validateVault(vaultPath),
+  "vault.validate": ({ vaultPath }, context) => context.vaultReader.run<ValidationReport>({ command: "validate", path: vaultPath }),
   "vault.migrationPreview": ({ vaultPath }) => planMigration(vaultPath),
   "vault.migrationApply": ({ vaultPath }) => applyMigration(vaultPath),
 
@@ -247,7 +250,7 @@ const handlers: { [K in IpcCommand]: Handler<K> } = {
     return { ...result, summary: await getGitSummary(vaultPath) };
   },
 
-  "search.query": ({ vaults, query, limit }) => searchVaults({ query, vaults, limit }),
+  "search.query": ({ vaults, query, limit }, context) => context.vaultReader.run<SearchReport>({ command: "search", options: { query, vaults, limit } }),
   "presets.list": () => listPresets(),
   "presets.verifyCommand": async ({ id, confirm }) => {
     if (!confirm) return previewPresetVerify(id);

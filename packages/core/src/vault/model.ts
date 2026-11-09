@@ -25,6 +25,7 @@ import {
   readText,
   relativeSlash,
   sha256,
+  withDirectoryHashCache,
 } from "../fsx.js";
 import { VaultDeskError } from "../errors.js";
 import { getGitSummary } from "../git.js";
@@ -904,6 +905,10 @@ async function loadV1(vaultPath: string): Promise<{
 }
 
 export async function loadVault(inputPath: string): Promise<VaultSnapshot> {
+  return withDirectoryHashCache(() => readVaultSnapshot(inputPath));
+}
+
+async function readVaultSnapshot(inputPath: string): Promise<VaultSnapshot> {
   const vaultPath = canonicalPath(inputPath);
   if (!exists(vaultPath)) {
     throw new VaultDeskError("vault-not-found", `Vault path does not exist: ${inputPath}`);

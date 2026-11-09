@@ -1,10 +1,17 @@
 import { createHash } from "node:crypto";
+import { AsyncLocalStorage } from "node:async_hooks";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
 export const INTERNAL_METADATA = new Set([".source.yml", ".source-commit", ".vault-managed", ".DS_Store"]);
 const DEFAULT_EXCLUDED_DIRS = new Set([".git", "node_modules", ".vault", "__pycache__", ".DS_Store"]);
+const directoryHashes = new AsyncLocalStorage<Map<string, string>>();
+
+/** Reuse hashes only within one read snapshot; writes and later reads stay fresh. */
+export function withDirectoryHashCache<T>(read: () => Promise<T>): Promise<T> {
+  return directoryHashes.run(new Map(), read);
+}
 
 export function expandHome(input: string): string {
   if (input === "~") return os.homedir();
@@ -143,6 +150,14 @@ export function walkFiles(root: string, options: WalkOptions = {}): WalkEntry[] 
 
 export function hashDirectory(root: string, options: WalkOptions = {}): string {
   if (!isDirectory(root)) return "";
+  const cache = directoryHashes.getStore();
+  const key = cache ? JSON.stringify([
+    canonicalPath(root),
+    [...(options.excludeFiles ?? INTERNAL_METADATA)].sort(),
+    [...(options.excludeDirs ?? DEFAULT_EXCLUDED_DIRS)].sort(),
+  ]) : undefined;
+  const cached = key ? cache?.get(key) : undefined;
+  if (cached !== undefined) return cached;
   const hash = createHash("sha256");
   for (const entry of walkFiles(root, options)) {
     hash.update(entry.rel);
@@ -157,7 +172,9 @@ export function hashDirectory(root: string, options: WalkOptions = {}): string {
     }
     hash.update("\0");
   }
-  return `sha256:${hash.digest("hex")}`;
+  const result = `sha256:${hash.digest("hex")}`;
+  if (key) cache?.set(key, result);
+  return result;
 }
 
 export function hashText(value: string): string {

@@ -1,3 +1,24 @@
+# VaultDesk v1.2.16 release
+
+Local acceptance and installation completed on 2026-11-09. Release artifacts: [v1.2.16](https://github.com/coderWang404/vaultdesk/releases/tag/v1.2.16).
+
+VaultDesk paints usable controls immediately and loads optional startup metadata independently. Vault opening, reloading, validation and search run on a lazily started worker thread, with bounded waits and recovery after errors. Loading completion preserves navigation to Settings. Request ordering protects the active opening and recent list.
+
+Directory hashes are reused within each read snapshot using canonical paths and exclusion policies. Shared target directories and symlink aliases are hashed once per snapshot. Later reads and mutation validation remain fresh; no persistent cache or mtime shortcuts are used. A real local Vault reduced reads from 135,014 / 552 MB to 27,706 / 109 MB, with core load time falling from about 2.6 s to 0.8 s. During desktop reload, app.info responded in under 1 ms compared with 2,492 ms before. Cold complete loading can still take seconds; the window is usable while it runs. Detailed observations are in docs/QA-CURRENT.md.
+
+Validation: workspace typecheck, 200 tests in 32 files, 12 CLI E2E scenarios, all 25 desktop E2E scenarios, 20 axe scans with zero violations, and mounted-DMG app/CLI/MCP acceptance passed. The large-directory regression checks responsiveness during hashing, startup navigation and fresh external edits. Tests used isolated Vaults and hidden windows.
+
+| Field | Value |
+| --- | --- |
+| File | release/VaultDesk-1.2.16-arm64.dmg |
+| Size | 124,925,230 bytes |
+| SHA-256 | 9622fdfa8a5dde9375b957fd86a496891eeac454ebbd8a537e9d00f53fed15e9 |
+| app.asar SHA-256 | 9a87a2ffaec257546e22d6d4d3d28c1e12533ae8afb736d76d016aa1bee8eae1 |
+| CLI SHA-256 | f009b080476317848b13e1d3dffa76897d123a9d443f07b3d4c411820dab2b73 |
+| Signing | Ad-hoc, not notarized |
+
+The installed app, CLI and LaunchAgent report 1.2.16 with one GUI and one worker. The previous app was moved to Trash.
+
 # VaultDesk v1.2.15 release
 
 Local acceptance and installation completed on 2026-11-05. Release artifacts: [v1.2.15](https://github.com/coderWang404/vaultdesk/releases/tag/v1.2.15).

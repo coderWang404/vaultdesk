@@ -39,7 +39,7 @@ import { PendingSkillsModal } from "./components/modals/PendingSkillsModal";
 import { RemoveSourceModal } from "./components/modals/RemoveSourceModal";
 import { UpdateModal } from "./components/modals/UpdateModal";
 import { ValidationModal } from "./components/modals/ValidationModal";
-import { Button, ConfirmDialog, Spinner } from "./components/ui";
+import { Button, ConfirmDialog } from "./components/ui";
 import type { AppInfo, InstallIntent, ModalState, Section, Selection, ToastItem } from "./types";
 
 interface RecentEntry {
@@ -105,7 +105,6 @@ export function App() {
   const [info, setInfo] = useState<AppInfo | null>(null);
   const [recents, setRecents] = useState<RecentEntry[]>([]);
   const [recentsLoading, setRecentsLoading] = useState(true);
-  const [booted, setBooted] = useState(false);
   const [opening, setOpening] = useState<string | null>(null);
   const [checking, setChecking] = useState<string | null>(null);
   const [syncing, setSyncing] = useState(false);
@@ -131,6 +130,8 @@ export function App() {
   const vaultsRef = useRef(vaults);
   vaultsRef.current = vaults;
   const bootStarted = useRef(false);
+  const recentRequest = useRef(0);
+  const openRequest = useRef(0);
   const lastBackgroundActivity = useRef<string | null>(null);
 
   const activeVault = useMemo(
@@ -206,13 +207,14 @@ export function App() {
   }, []);
 
   const refreshRecents = useCallback(async () => {
+    const request = ++recentRequest.current;
     try {
       const entries = await call<RecentEntry[]>("app.recents", {});
-      setRecents(entries);
+      if (request === recentRequest.current) setRecents(entries);
     } catch {
       // Recents are a convenience; failure must not block opening a vault.
     } finally {
-      setRecentsLoading(false);
+      if (request === recentRequest.current) setRecentsLoading(false);
     }
   }, []);
 
@@ -232,24 +234,28 @@ export function App() {
 
   const openVault = useCallback(
     async (input: string): Promise<void> => {
+      const request = ++openRequest.current;
+      setSection("overview");
+      setSelection(EMPTY_SELECTION);
       const existing = vaultsRef.current.find((vault) => vault.path === input);
       if (existing) {
         setActivePath(existing.path);
         setSection("overview");
+        setOpening(null);
         return;
       }
       setOpening(input);
       try {
         const snapshot = await call<VaultSnapshot>("vault.open", { path: input });
-        upsert(snapshot, true);
-        setSection("overview");
-        setSelection(EMPTY_SELECTION);
-        notify(`已打开 ${snapshot.name}`, "ok");
+        upsert(snapshot, request === openRequest.current);
+        if (request === openRequest.current) {
+          notify(`已打开 ${snapshot.name}`, "ok");
+        }
         await refreshRecents();
       } catch (reason) {
         notify(errorMessage(reason), "danger");
       } finally {
-        setOpening(null);
+        if (request === openRequest.current) setOpening(null);
       }
     },
     [notify, refreshRecents, upsert],
@@ -585,34 +591,15 @@ export function App() {
   useEffect(() => {
     if (bootStarted.current) return;
     bootStarted.current = true;
-    void (async () => {
-      const [infoResult, settingsResult, presetsResult, recentsResult] = await Promise.allSettled([
-        call<AppInfo>("app.info", {}),
-        call<AppSettings>("app.settings", {}),
-        call<ToolPreset[]>("presets.list", {}),
-        call<RecentEntry[]>("app.recents", {}),
-      ]);
-      if (infoResult.status === "fulfilled") setInfo(infoResult.value);
-      if (settingsResult.status === "fulfilled") setSettings(settingsResult.value);
-      if (presetsResult.status === "fulfilled") setPresets(presetsResult.value);
-      if (recentsResult.status === "fulfilled") setRecents(recentsResult.value);
-      setRecentsLoading(false);
-
-      const initial = window.vaultdesk.initialVault;
-      if (initial) {
-        try {
-          const snapshot = await call<VaultSnapshot>("vault.open", { path: initial });
-          setVaults([snapshot]);
-          setActivePath(snapshot.path);
-          const entries = await call<RecentEntry[]>("app.recents", {});
-          setRecents(entries);
-        } catch (reason) {
-          notify(errorMessage(reason), "danger");
-        }
-      }
-      setBooted(true);
-    })();
-  }, [notify]);
+    // Paint usable controls first; optional metadata must not gate the window
+    // or delay a requested Vault behind unrelated initialization.
+    void call<AppInfo>("app.info", {}).then(setInfo).catch(() => undefined);
+    void call<AppSettings>("app.settings", {}).then(setSettings).catch(() => undefined);
+    void call<ToolPreset[]>("presets.list", {}).then(setPresets).catch(() => undefined);
+    void refreshRecents();
+    const initial = window.vaultdesk.initialVault;
+    if (initial) void openVault(initial);
+  }, [openVault, refreshRecents]);
 
   useEffect(() => {
     const refreshAfterBackgroundSync = async (): Promise<void> => {
@@ -949,16 +936,7 @@ export function App() {
         onSettings={() => changeSection("settings")}
       />
 
-      {!booted ? (
-        <div className="boot-screen">
-          <span className="brand-mark xl">
-            <Icon name="vault" size={30} strokeWidth={1.6} />
-          </span>
-          <h1>VaultDesk</h1>
-          <p>正在准备本地仓库…</p>
-          <Spinner size={18} />
-        </div>
-      ) : activeVault ? (
+      {activeVault ? (
         <div className={sidebarCollapsed ? "workspace is-sidebar-collapsed" : "workspace"}>
           <Sidebar
             drawerOpen={drawerActive}

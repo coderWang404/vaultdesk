@@ -21,9 +21,12 @@ import { buildAppMenu } from "./menu.js";
 import { isTrustedRendererUrl } from "./trusted-url.js";
 import { startBackgroundWorker } from "./background-sync.js";
 import { configureLaunchAgent } from "./launch-agent.js";
+import { VaultReader } from "./vault-reader.js";
 import type { DirectoryDialogOptions } from "../shared/api.js";
 
 const dirname = __dirname;
+const vaultReader = new VaultReader(path.join(dirname, "vault-reader.cjs"));
+app.on("before-quit", () => { void vaultReader.dispose(); });
 const isDev = Boolean(process.env.ELECTRON_RENDERER_URL);
 const isSmoke = process.env.VAULTDESK_SMOKE === "1";
 const isBackgroundWorker = process.argv.includes("--vaultdesk-background-worker");
@@ -89,6 +92,7 @@ function registerIpc(): void {
         agentSkillDir: resolveAgentSkillDir(),
         cliBundlePath: resolveCliBundlePath(),
         appExecutable: process.execPath,
+        vaultReader,
       });
       return { ok: true, data, warnings: warningsOf(data) };
     } catch (error) {

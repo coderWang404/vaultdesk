@@ -18,8 +18,8 @@ export default defineConfig({
     },
     build: {
       rollupOptions: {
-        input: { index: resolve(root, "src/main/index.ts") },
-        output: { format: "cjs", entryFileNames: "[name].cjs" },
+        input: { index: resolve(root, "src/main/index.ts"), "vault-reader": resolve(root, "src/main/vault-reader-worker.ts") },
+        output: { format: "cjs", entryFileNames: "[name].cjs", chunkFileNames: "chunks/[name]-[hash].cjs" },
       },
     },
   },

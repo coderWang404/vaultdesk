@@ -1,6 +1,6 @@
 # VaultDesk 设计定稿
 
-- 状态：当前源码版本为 1.2.15；下方 1.0/1.1 的状态与设计记录属于历史快照。当前行为以源码、中英文 README、`docs/AGENT-MANAGEMENT-AUDIT.md` 和最新 `docs/QA-CURRENT.md` 为准。
+- 状态：当前源码版本为 1.2.16；下方 1.0/1.1 的状态与设计记录属于历史快照。当前行为以源码、中英文 README、`docs/AGENT-MANAGEMENT-AUDIT.md` 和最新 `docs/QA-CURRENT.md` 为准。
 - 日期：2026-11-05（历史阶段另标日期）
 - 产品名：VaultDesk
 - CLI：`vaultdesk`

@@ -240,9 +240,9 @@ function version(): string {
   if (typeof __VAULTDESK_VERSION__ === "string") return __VAULTDESK_VERSION__;
   try {
     const pkg = JSON.parse(fs.readFileSync(new URL("../package.json", import.meta.url), "utf8")) as { version?: string };
-    return pkg.version ?? "1.2.15";
+    return pkg.version ?? "1.2.16";
   } catch {
-    return "1.2.15";
+    return "1.2.16";
   }
 }
 

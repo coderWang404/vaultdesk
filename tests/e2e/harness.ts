@@ -226,6 +226,8 @@ export async function launchApp(options: {
   label?: string;
   /** Keep the Electron window hidden so E2E does not interrupt the user's desktop. */
   visible?: boolean;
+  /** Observe the first frame while the requested Vault is still loading. */
+  waitForReady?: boolean;
 }): Promise<LaunchedApp> {
   const { workspace } = options;
   if (options.settings) writeSettings(workspace, options.settings);
@@ -259,7 +261,10 @@ export async function launchApp(options: {
   const page = await app.firstWindow({ timeout: 45_000 });
   page.setDefaultTimeout(15_000);
   await page.waitForSelector(".app-shell", { timeout: 30_000 });
-  await page.waitForFunction(() => !document.querySelector(".boot-screen"), { timeout: 30_000 });
+  if (options.waitForReady !== false) {
+    await page.waitForFunction(() => !document.querySelector(".boot-screen"), { timeout: 30_000 });
+    if (options.initialVault) await page.locator(".vault-tab.is-active").waitFor({ timeout: 30_000 });
+  }
   return {
     app,
     page,

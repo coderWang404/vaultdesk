@@ -176,6 +176,9 @@ export function BackupsModal({
                           <Icon name="clock" size={14} />
                           <strong>{relativeTime(entry.timestamp)}</strong>
                           <span className="mono">{entry.timestamp}</span>
+                          {entry.timestamp.endsWith("-modified") ? (
+                            <StatusPill tone="warn">手动修改前的副本</StatusPill>
+                          ) : null}
                         </div>
                         <button className="text-link" onClick={() => onReveal(entry.path)}>
                           在 Finder 中显示

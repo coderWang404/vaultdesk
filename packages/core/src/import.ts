@@ -2,6 +2,8 @@ import path from "node:path";
 import YAML from "yaml";
 import { slugSchema } from "@vaultdesk/schema";
 import {
+  SymlinkEscapeError,
+  assertContainedSymlinks,
   copyDirectory,
   exists,
   ensureDir,
@@ -34,6 +36,22 @@ export function slugifyName(value: string): string {
   return slug || "imported-skill";
 }
 
+/**
+ * A skill holding an absolute, dangling, or outward-pointing symlink can never
+ * be distributed to an agent directory, so refuse it before it enters the Vault.
+ */
+export function assertImportableSkillTree(dir: string, label: string): void {
+  try {
+    assertContainedSymlinks(dir);
+  } catch (error) {
+    if (!(error instanceof SymlinkEscapeError)) throw error;
+    throw new VaultDeskError(
+      "path-escape",
+      `${label} cannot be imported: ${error.reason === "unresolved" ? "broken symlink" : "symlink points outside the skill folder"} (${error.rel}). Replace the link with a real file or a relative link inside the folder.`,
+    );
+  }
+}
+
 function candidateFrom(dir: string, root: string): ImportSkillCandidate {
   const skillFile = path.join(dir, "SKILL.md");
   let description: string | undefined;
@@ -46,8 +64,12 @@ function candidateFrom(dir: string, root: string): ImportSkillCandidate {
     // validation reports unreadable skills later
   }
   if (!slugSchema.safeParse(name).success) {
-    throw new VaultDeskError("invalid-input", `Skill name must be a lowercase slug: ${name}`);
+    throw new VaultDeskError(
+      "invalid-input",
+      `Skill name must be a lowercase slug: ${name}. Set "name: ${slugifyName(name)}" in its SKILL.md frontmatter (agent tools expect lowercase letters, digits and hyphens).`,
+    );
   }
+  assertImportableSkillTree(dir, `Skill ${name}`);
   return { name, path: dir, relativePath: relativeSlash(root, dir) || ".", description };
 }
 
@@ -383,6 +405,7 @@ export async function addGithubSource(
       }[] = [];
       for (const candidate of preview.skills) {
         const upstream = path.join(fetched.root, candidate.relativePath);
+        assertImportableSkillTree(upstream, `Skill ${candidate.name}`);
         const vendorRel = `third_party/${repoSlug}/${candidate.name}`;
         const vendorAbs = path.join(vaultPath, vendorRel);
         const workingAbs =

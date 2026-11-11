@@ -16,7 +16,7 @@ import {
   checkSources,
   commitPaths,
   detectLocalPlugin,
-  distributeCurrentSource,
+  distributeCurrentSourceDetailed,
   expandHome,
   externalSkillCardPath,
   forkSkill,
@@ -129,6 +129,7 @@ const BOOLEAN_FLAGS = new Set([
   "install",
   "force",
   "delete-files",
+  "keep-distributed",
   "dry-run",
   "full",
   "git",
@@ -240,9 +241,9 @@ function version(): string {
   if (typeof __VAULTDESK_VERSION__ === "string") return __VAULTDESK_VERSION__;
   try {
     const pkg = JSON.parse(fs.readFileSync(new URL("../package.json", import.meta.url), "utf8")) as { version?: string };
-    return pkg.version ?? "1.2.16";
+    return pkg.version ?? "1.2.17";
   } catch {
-    return "1.2.16";
+    return "1.2.17";
   }
 }
 
@@ -282,13 +283,16 @@ Commands:
   source pending <name>            Show unregistered upstream skill paths
   source adopt <name> --path <path>... --yes
                                    Accept selected new skills from a Git source
-  source distribute <name> --yes   Distribute a current source to managed targets
+  source distribute <name> --yes [--force]
+                                   Distribute a current source to managed targets;
+                                   --force saves and replaces copies modified in place
   source mode <name> --mode <mode> --yes
                                    Set auto, review-before-apply or frozen
   source add <path> [--plugin|--no-plugin]
                                    Import a local folder, plugin root, or skill suite
   source add --repo owner/name     Add a GitHub source or plugin (preview by default)
-  source remove <name>             Remove a source registration
+  source remove <name> [--delete-files] [--keep-distributed]
+                                   Remove a source and its distributed copies
   source fork <skill> [--as name]  Fork a GitHub skill into a local skill
   plugin list                      List registered plugins, assets, and status
   plugin show <name>               Show one plugin, its manifests, and contained skills
@@ -345,6 +349,8 @@ Safety:
   Manual writes require --yes. GitHub-origin skills are read-only until forked.
   Auto sources update registered destinations in the background; review and frozen modes do not.
   Automatic sync never overwrites unknown or manually edited directories.
+  Replacing a locally modified managed copy always saves it first; only the newest saved copy is kept.
+  Automatic sync pauses while the Vault has unpushed commits.
   External skills are owned by their tools; VaultDesk records the path and only observes it.
   MCP stdio exposes read-only catalog queries; it never installs, starts, or edits agent configuration.
 `;
@@ -412,7 +418,7 @@ function shapeText(shape: SourceRecord["shape"], kind?: SourceRecord["kind"]): s
 function printSnapshot(snapshot: VaultSnapshot): string[] {
   const lines: string[] = [];
   const mode = snapshot.readOnly ? "read-only" : "writable";
-  lines.push(bold(`${snapshot.name}`) + `  ${dim(`v${snapshot.schemaVersion} · ${mode}`)}`);
+  lines.push(bold(`${snapshot.name}`) + `  ${dim(`${snapshot.format} · ${mode}`)}`);
   lines.push(dim(snapshot.path));
   lines.push("");
   const git = snapshot.git;
@@ -1212,11 +1218,24 @@ async function dispatch(parsed: Parsed): Promise<CommandResult> {
       if (action === "distribute") {
         const name = rest[0];
         if (!name || rest.length !== 1) throw new VaultDeskError("invalid-input", "source distribute requires one source name.");
+        const force = hasFlag(options, "force");
         if (!parsed.yes) {
-          return { data: { source: name, preview: true }, warnings: [], human: [bold(`Distribute current source ${name}`), notice(parsed)] };
+          return { data: { source: name, force, preview: true }, warnings: [], human: [
+            bold(`Distribute current source ${name}`),
+            ...(force ? [yellow("--force: managed copies that were modified in place are saved to the backup root, then replaced. Only the newest saved copy of each is kept.")] : []),
+            notice(parsed),
+          ] };
         }
-        const changedPaths = await distributeCurrentSource(vaultPath, name);
-        return { data: { source: name, changedPaths }, warnings: [], human: [green(`Distributed ${name} to ${changedPaths.length} managed paths.`), ...changedPaths] };
+        const { changedPaths, overrideBackups } = await distributeCurrentSourceDetailed(vaultPath, name, { force });
+        return {
+          data: { source: name, changedPaths, overrideBackups },
+          warnings: overrideBackups.length > 0 ? [`Replaced ${overrideBackups.length} locally modified copies; the previous content was saved.`] : [],
+          human: [
+            green(`Distributed ${name} to ${changedPaths.length} managed paths.`),
+            ...changedPaths,
+            ...(overrideBackups.length > 0 ? ["", yellow("Saved the replaced, locally modified copies to:"), ...overrideBackups] : []),
+          ],
+        };
       }
       if (action === "update") {
         const names = rest.length > 0 ? rest : undefined;
@@ -1357,12 +1376,20 @@ async function dispatch(parsed: Parsed): Promise<CommandResult> {
         const referencing = snapshot.targets.filter((target) => target.names.includes(name) || target.skills.some((skill) => source.skills.some((entry) => entry.name === skill)));
         if (!parsed.yes || hasFlag(options, "dry-run")) {
           return {
-            data: { source, referencingTargets: referencing.map((target) => target.id), deleteFiles: hasFlag(options, "delete-files") },
+            data: {
+              source,
+              referencingTargets: referencing.map((target) => target.id),
+              deleteFiles: hasFlag(options, "delete-files"),
+              removeDistributed: !hasFlag(options, "keep-distributed"),
+            },
             warnings: [],
             human: [
               bold(`Remove source ${name}`),
               `Metadata ${source.metadataPath ?? "-"}`,
               `Workspace ${hasFlag(options, "delete-files") ? "delete working and vendor copies" : "keep working and vendor copies"}`,
+              hasFlag(options, "keep-distributed")
+                ? yellow("Distributed files stay in agent directories as unmanaged leftovers (--keep-distributed).")
+                : "Distributed remove this Vault's copies and links from agent directories (real folders are saved to the backup root first)",
               referencing.length > 0
                 ? yellow(`Referenced by targets: ${referencing.map((target) => target.id).join(", ")}`)
                 : dim("No install targets reference this source."),
@@ -1371,11 +1398,24 @@ async function dispatch(parsed: Parsed): Promise<CommandResult> {
             ],
           };
         }
-        const result = await removeSource(vaultPath, name, { deleteFiles: hasFlag(options, "delete-files") });
+        const result = await removeSource(vaultPath, name, {
+          deleteFiles: hasFlag(options, "delete-files"),
+          removeDistributed: !hasFlag(options, "keep-distributed"),
+        });
         return {
           data: result,
-          warnings: [],
-          human: [green(`Removed source ${name}.`), ...result.removedPaths],
+          warnings: result.distributed.kept.length > 0
+            ? [`Left ${result.distributed.kept.length} paths in place because this Vault does not own them.`]
+            : [],
+          human: [
+            green(`Removed source ${name}.`),
+            ...result.removedPaths,
+            ...(result.distributed.removed.length > 0
+              ? [`Removed ${result.distributed.removed.length} distributed paths from agent directories:`, ...result.distributed.removed]
+              : []),
+            ...(result.distributed.backups.length > 0 ? ["Saved copies:", ...result.distributed.backups] : []),
+            ...(result.distributed.kept.length > 0 ? [yellow("Not owned by this Vault, left in place:"), ...result.distributed.kept] : []),
+          ],
         };
       }
       if (action === "fork") {
@@ -1652,10 +1692,16 @@ async function dispatch(parsed: Parsed): Promise<CommandResult> {
           };
         }
         const commit = await commitPaths(vaultPath, paths, message);
+        const tracked = Boolean(snapshot.git.upstream && snapshot.git.remote);
         return {
-          data: { commit, message, paths },
-          warnings: [],
-          human: [green(`Committed ${commit.slice(0, 12)}.`), dim("Not pushed.")],
+          data: { commit, message, paths, pushed: false },
+          warnings: tracked ? ["Automatic source updates stay paused until this commit is pushed."] : [],
+          human: [
+            green(`Committed ${commit.slice(0, 12)}.`),
+            tracked
+              ? yellow("Not pushed. Automatic source updates stay paused until you run: vaultdesk git push --yes")
+              : dim("Not pushed."),
+          ],
         };
       }
       if (action === "push") {

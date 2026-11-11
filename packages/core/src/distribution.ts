@@ -2,7 +2,7 @@ import { createHash, randomUUID } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import { VaultDeskError } from "./errors.js";
-import { canonicalPath, expandHome, hashDirectory, nowIso, walkFiles } from "./fsx.js";
+import { SymlinkEscapeError, assertContainedSymlinks, canonicalPath, copyTree, expandHome, hashDirectory, isLockOwnerAlive, nowIso, processStartToken, sha256, walkFiles } from "./fsx.js";
 import { defaultBackupBase } from "./install.js";
 import { readVaultFile, writeVaultFile } from "./vault/config.js";
 import { loadVault } from "./vault/model.js";
@@ -17,10 +17,18 @@ export interface DistributionOptions {
   backupRoot?: string;
   retention?: number;
   retentionDays?: number;
+  /**
+   * Replace managed copies that were modified in place (for example by a skill
+   * that writes files into its own folder). Each replaced copy is saved first;
+   * only its newest saved copy is kept. Ownership conflicts are never forced.
+   */
+  force?: boolean;
 }
 
 export interface DistributionTransaction {
   changedPaths: string[];
+  /** Saved copies of locally modified slots that a forced distribution replaced. */
+  overrideBackups: string[];
   rollback(): void;
   finalize(): void;
 }
@@ -76,28 +84,22 @@ function copyContent(source: string, destination: string): void {
   if (!fs.lstatSync(source).isDirectory()) {
     throw new VaultDeskError("path-escape", "Managed source must be a real directory: " + source);
   }
-  const sourceRoot = fs.realpathSync(source);
-  for (const file of walkFiles(source, { excludeFiles: IGNORE_FILES, excludeDirs: IGNORE_DIRS })) {
-    if (file.kind !== "symlink") continue;
-    const link = fs.readlinkSync(file.abs);
-    let resolved: string;
-    try { resolved = fs.realpathSync(file.abs); }
-    catch { throw new VaultDeskError("path-escape", "Skill symlink is unresolved: " + file.rel); }
-    if (path.isAbsolute(link) || (resolved !== sourceRoot && !resolved.startsWith(sourceRoot + path.sep))) {
-      throw new VaultDeskError("path-escape", "Skill symlink escapes its root: " + file.rel);
-    }
+  try { assertContainedSymlinks(source, { excludeFiles: IGNORE_FILES, excludeDirs: IGNORE_DIRS }); }
+  catch (error) {
+    if (error instanceof SymlinkEscapeError) throw new VaultDeskError("path-escape", error.message);
+    throw error;
   }
-  fs.cpSync(source, destination, {
-    recursive: true, dereference: false,
-    filter: (file) => {
-      if (file === source) return true;
-      const name = path.basename(file);
-      return !IGNORE_FILES.has(name) && !IGNORE_DIRS.has(name) && !name.endsWith(".pyc");
-    },
+  copyTree(source, destination, (file) => {
+    if (file === source) return true;
+    const name = path.basename(file);
+    return !IGNORE_FILES.has(name) && !IGNORE_DIRS.has(name) && !name.endsWith(".pyc");
   });
 }
 
-function assertOwnedDir(slot: string, vault: string, name: string, markerName: string, targetId?: string, allowLegacyTarget = false): Marker {
+function assertOwnedDir(
+  slot: string, vault: string, name: string, markerName: string, targetId?: string, allowLegacyTarget = false,
+  onModified?: (slot: string) => void,
+): Marker {
   if (isLink(slot) || !fs.existsSync(slot) || !fs.statSync(slot).isDirectory()) {
     throw new VaultDeskError("conflict", "Unowned distribution slot: " + slot);
   }
@@ -110,7 +112,11 @@ function assertOwnedDir(slot: string, vault: string, name: string, markerName: s
   }
   const current = contentHash(slot);
   if (!marker.hash || (marker.hash !== current && marker.hash !== hashDirectory(slot))) {
-    throw new VaultDeskError("conflict", "Managed distribution slot was manually modified: " + slot);
+    if (!onModified) {
+      throw new VaultDeskError("conflict", "Managed distribution slot was manually modified: " + slot +
+        ". Review it, then re-run the distribution with force to save a copy and replace it.");
+    }
+    onModified(slot);
   }
   return marker;
 }
@@ -199,7 +205,7 @@ function safeName(name: string): string {
 function backupSlot(slot: string, backup: string): void {
   fs.mkdirSync(path.dirname(backup), { recursive: true });
   if (isLink(slot)) fs.symlinkSync(fs.readlinkSync(slot), backup);
-  else fs.cpSync(slot, backup, { recursive: true, dereference: false });
+  else copyTree(slot, backup);
 }
 
 function pruneBackups(root: string, keep: number, days: number): void {
@@ -221,16 +227,23 @@ function acquireLock(base: string): () => void {
   try { fd = fs.openSync(lock, "wx", 0o600); }
   catch (error) {
     if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
-    const old = readMarker(lock) as { pid?: number; started?: number } | undefined;
-    let alive = false;
-    if (old?.pid) { try { process.kill(old.pid, 0); alive = true; } catch { /* process ended */ } }
-    if (alive || !old?.started || Date.now() - old.started < 2 * 60 * 60 * 1000) {
-      throw new VaultDeskError("conflict", "Another distribution transaction is active.");
+    const old = readMarker(lock) as { pid?: number; started?: number; pidStarted?: unknown } | undefined;
+    // A lock whose owner has exited is a leftover from a crash and is released at
+    // once. An unreadable lock may still be mid-write, so it gets a short grace.
+    let active: boolean;
+    if (typeof old?.pid === "number") {
+      active = isLockOwnerAlive(old.pid, typeof old.pidStarted === "string" ? old.pidStarted : undefined);
+    } else {
+      let ageMs = Number.POSITIVE_INFINITY;
+      try { ageMs = Date.now() - fs.statSync(lock).mtimeMs; } catch { /* lock vanished */ }
+      active = ageMs < 5_000;
     }
+    if (active) throw new VaultDeskError("conflict", "Another distribution transaction is active.");
     fs.rmSync(lock, { force: true });
     fd = fs.openSync(lock, "wx", 0o600);
   }
-  fs.writeFileSync(fd, JSON.stringify({ pid: process.pid, started: Date.now() }) + "\n");
+  const pidStarted = processStartToken(process.pid);
+  fs.writeFileSync(fd, JSON.stringify({ pid: process.pid, started: Date.now(), ...(pidStarted ? { pidStarted } : {}) }) + "\n");
   fs.closeSync(fd);
   return () => fs.rmSync(lock, { force: true });
 }
@@ -247,6 +260,13 @@ export async function beginManagedDistribution(
   const changed: PlannedSlot[] = [];
   const vaultId = createHash("sha256").update(vault).digest("hex").slice(0, 12);
   const historyRoot = path.join(base, vaultId);
+  const overrideBackups: string[] = [];
+  const saveOverride = options.force ? (slot: string): void => {
+    const saved = path.join(base, "overrides", vaultId, sha256(slot).slice(0, 12) + "-" + path.basename(slot));
+    fs.rmSync(saved, { recursive: true, force: true });
+    backupSlot(slot, saved);
+    overrideBackups.push(saved);
+  } : undefined;
   const txnRoot = path.join(historyRoot, new Date().toISOString().replace(/[^0-9]/g, "") + "-" + randomUUID().slice(0, 8));
   let closed = false;
   const rollback = (): void => {
@@ -294,7 +314,7 @@ export async function beginManagedDistribution(
           throw new VaultDeskError("path-escape", "Plugin target is inside Vault: " + target.dest);
         }
         const slot = path.join(dest, safeName(sourceName));
-        if (hasEntry(slot)) assertOwnedDir(slot, vault, sourceName, PLUGIN_MARKER, target.id);
+        if (hasEntry(slot)) assertOwnedDir(slot, vault, sourceName, PLUGIN_MARKER, target.id, false, saveOverride);
         const stage = stageFor(slot);
         copyContent(source.workingPath, stage);
         writeMarker(path.join(stage, PLUGIN_MARKER), {
@@ -311,7 +331,7 @@ export async function beginManagedDistribution(
         safeName(skill.name);
         if (!fs.existsSync(path.join(skill.workingPath, "SKILL.md"))) continue;
         const master = path.join(root, skill.name);
-        const prior = hasEntry(master) ? assertOwnedDir(master, vault, skill.name, MARKER) : undefined;
+        const prior = hasEntry(master) ? assertOwnedDir(master, vault, skill.name, MARKER, undefined, false, saveOverride) : undefined;
         const links: TargetLink[] = Array.isArray(prior?.targets) ? [...prior.targets] : [];
         const masterStage = stageFor(master);
         copyContent(skill.workingPath, masterStage);
@@ -344,7 +364,7 @@ export async function beginManagedDistribution(
               const registeredOwners = snapshot.targets.filter((candidate) => candidate.skills.includes(skill.name) &&
                 path.join(canonicalPath(expandHome(candidate.dest)), skill.name) === slot);
               assertOwnedDir(slot, vault, skill.name, MARKER, target.id,
-                registeredOwners.length === 1 && registeredOwners[0]?.id === target.id);
+                registeredOwners.length === 1 && registeredOwners[0]?.id === target.id, saveOverride);
             }
           }
           if (!target.installAfterUpdate && !hasEntry(master)) {
@@ -383,7 +403,7 @@ export async function beginManagedDistribution(
       for (const stage of staged) fs.rmSync(stage, { recursive: true, force: true });
       closed = true;
       releaseLock();
-      return { changedPaths: [], rollback: () => {}, finalize: () => {} };
+      return { changedPaths: [], overrideBackups, rollback: () => {}, finalize: () => {} };
     }
     fs.mkdirSync(txnRoot, { recursive: true });
     for (const [index, plan] of plans.entries()) {
@@ -399,6 +419,7 @@ export async function beginManagedDistribution(
     }
     return {
       changedPaths: plans.map((plan) => plan.slot),
+      overrideBackups,
       rollback,
       finalize: () => {
         if (closed) return;
@@ -545,4 +566,88 @@ export async function removePluginTarget(
     catch { /* pruning must not undo a successful removal */ }
   }
   return { removed: id, filesMoved: moved.map((item) => item.backup) };
+}
+
+export interface RemovedDistribution {
+  /** Paths taken out of agent directories. */
+  removed: string[];
+  /** Saved copies of removed real directories (links are not saved). */
+  backups: string[];
+  /** Paths left in place because this Vault could not prove it owns them. */
+  kept: string[];
+}
+
+/**
+ * Take a removed source's distributed files out of agent directories: the
+ * shared master, links that point at it, tracked copies, and plugin targets.
+ * Only paths whose marker names this Vault are touched. Real directories are
+ * saved first and only the newest saved copy of each is kept.
+ */
+export function removeManagedDistribution(
+  inputPath: string,
+  input: {
+    skillNames: string[];
+    targets: Array<{ id: string; dest: string }>;
+    plugin?: { name: string; targets: Array<{ id: string; dest: string }> };
+  },
+  options: Pick<DistributionOptions, "agentsSkillsDir" | "backupRoot"> = {},
+): RemovedDistribution {
+  const vault = canonicalPath(inputPath);
+  const vaultId = createHash("sha256").update(vault).digest("hex").slice(0, 12);
+  const base = path.join(options.backupRoot || defaultBackupBase(), "removed-sources", vaultId);
+  const result: RemovedDistribution = { removed: [], backups: [], kept: [] };
+  const owns = (slot: string, markerName: string, key: "skill" | "plugin", name: string): boolean => {
+    const marker = readMarker(path.join(slot, markerName));
+    return Boolean(marker?.vault && canonicalPath(marker.vault) === vault && marker[key] === name);
+  };
+  const removeDir = (slot: string): void => {
+    const saved = path.join(base, sha256(slot).slice(0, 12) + "-" + path.basename(slot));
+    fs.rmSync(saved, { recursive: true, force: true });
+    backupSlot(slot, saved);
+    fs.rmSync(slot, { recursive: true, force: true });
+    result.removed.push(slot);
+    result.backups.push(saved);
+  };
+
+  const root = agentsRoot(options);
+  for (const name of input.skillNames) {
+    safeName(name);
+    const master = path.join(root, name);
+    const masterOwned = hasEntry(master) && !isLink(master) && owns(master, MARKER, "skill", name);
+    const recorded = masterOwned ? (readMarker(path.join(master, MARKER))?.targets ?? []) : [];
+    const slots = new Set<string>([
+      ...recorded.map((link) => link.path),
+      ...input.targets.map((target) => path.join(canonicalPath(expandHome(target.dest)), name)),
+    ]);
+    slots.delete(master);
+    for (const slot of slots) {
+      if (!hasEntry(slot)) continue;
+      if (isLink(slot)) {
+        const resolved = path.resolve(path.dirname(slot), fs.readlinkSync(slot));
+        if (masterOwned && resolved === master) {
+          fs.unlinkSync(slot);
+          result.removed.push(slot);
+        } else {
+          result.kept.push(slot);
+        }
+      } else if (owns(slot, MARKER, "skill", name)) {
+        removeDir(slot);
+      } else {
+        result.kept.push(slot);
+      }
+    }
+    if (masterOwned) removeDir(master);
+    else if (hasEntry(master)) result.kept.push(master);
+  }
+
+  if (input.plugin) {
+    safeName(input.plugin.name);
+    for (const target of input.plugin.targets) {
+      const slot = path.join(canonicalPath(expandHome(target.dest)), input.plugin.name);
+      if (!hasEntry(slot)) continue;
+      if (!isLink(slot) && owns(slot, PLUGIN_MARKER, "plugin", input.plugin.name)) removeDir(slot);
+      else result.kept.push(slot);
+    }
+  }
+  return result;
 }

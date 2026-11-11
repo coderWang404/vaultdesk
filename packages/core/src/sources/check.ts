@@ -11,6 +11,29 @@ import { gitLsRemote } from "../git.js";
 export interface CheckOptions {
   names?: string[];
   persist?: boolean;
+  /** Delay before the single retry of a failed network check. Tests pass 0. */
+  retryDelayMs?: number;
+}
+
+const NETWORK_RETRY_DELAY_MS = 3_000;
+
+const MAX_NETWORK_RETRIES_PER_CHECK = 3;
+
+/**
+ * A dropped connection is usually momentary, so a network failure gets one
+ * more attempt. The budget keeps a real outage from doubling the whole check.
+ */
+async function lsRemoteWithRetry(
+  remote: string, ref: string, cwd: string, delayMs: number, budget: { left: number },
+): Promise<string> {
+  try {
+    return await gitLsRemote(remote, ref, cwd);
+  } catch (error) {
+    if (!(error instanceof VaultDeskError) || error.code !== "network" || budget.left <= 0) throw error;
+    budget.left -= 1;
+    await new Promise((resolve) => setTimeout(resolve, delayMs));
+    return gitLsRemote(remote, ref, cwd);
+  }
 }
 
 export async function checkSources(vaultPath: string, options: CheckOptions = {}): Promise<CheckReport> {
@@ -20,6 +43,7 @@ export async function checkSources(vaultPath: string, options: CheckOptions = {}
   const warnings: string[] = [];
 
   const cache = new Map<string, { commit?: string; error?: VaultDeskError }>();
+  const retryBudget = { left: MAX_NETWORK_RETRIES_PER_CHECK };
   for (const source of selected) {
     if (source.origin === "local") {
       results.push({
@@ -34,7 +58,7 @@ export async function checkSources(vaultPath: string, options: CheckOptions = {}
     let resolved = cache.get(key);
     if (!resolved) {
       try {
-        const commit = await gitLsRemote(remoteFor(source), source.ref, vaultPath);
+        const commit = await lsRemoteWithRetry(remoteFor(source), source.ref, vaultPath, options.retryDelayMs ?? NETWORK_RETRY_DELAY_MS, retryBudget);
         resolved = { commit };
       } catch (error) {
         resolved = { error: error instanceof VaultDeskError ? error : new VaultDeskError("network", String(error)) };

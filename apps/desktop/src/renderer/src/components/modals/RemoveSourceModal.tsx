@@ -6,6 +6,7 @@ import { Button, Callout, Modal, Toggle } from "../ui";
 interface RemoveResult {
   name: string;
   removedPaths: string[];
+  distributed: { removed: string[]; backups: string[]; kept: string[] };
 }
 
 export function RemoveSourceModal({
@@ -25,6 +26,7 @@ export function RemoveSourceModal({
   );
   const [typed, setTyped] = useState("");
   const [deleteFiles, setDeleteFiles] = useState(false);
+  const [removeDistributed, setRemoveDistributed] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -42,10 +44,15 @@ export function RemoveSourceModal({
         vaultPath: vault.path,
         name: source,
         deleteFiles,
+        removeDistributed,
         confirm: true,
       });
       onDone(
-        `已移除来源 ${result.name}${result.removedPaths.length > 0 ? `，删除 ${result.removedPaths.length} 个目录` : "，工作副本保留"}`,
+        [
+          `已移除来源 ${result.name}${result.removedPaths.length > 0 ? `，删除 ${result.removedPaths.length} 个目录` : "，工作副本保留"}`,
+          result.distributed.removed.length > 0 ? `清理 ${result.distributed.removed.length} 个已分发路径` : "",
+          result.distributed.kept.length > 0 ? `${result.distributed.kept.length} 个路径不属于本仓库，已保留` : "",
+        ].filter(Boolean).join("；"),
       );
     } catch (reason) {
       setError(errorMessage(reason));
@@ -57,7 +64,7 @@ export function RemoveSourceModal({
   return (
     <Modal
       title={`移除来源 · ${source}`}
-      subtitle="移除元数据，并清理分发目标与 lock 中的引用。已分发文件不会被自动删除。"
+      subtitle="移除元数据，并清理分发目标与 lock 中的引用。默认同时清理已分发到各目标目录的文件。"
       onClose={onClose}
       dismissable={!busy}
       footer={
@@ -92,13 +99,19 @@ export function RemoveSourceModal({
             </Callout>
 
             {installedOnly.length > 0 ? (
-              <Callout tone="danger" title="目标目录中的副本不会被删除">
+              <Callout
+                tone={removeDistributed ? "warn" : "danger"}
+                title={removeDistributed ? "目标目录中的副本会被清理" : "目标目录中的副本不会被删除"}
+              >
                 <p>
                   {installedOnly.length} 个技能已分发到
                   {[...new Set(installedOnly.flatMap((skill) => skill.installed.map((entry) => entry.targetId)))].join(
                     "、",
                   )}
-                  。目标目录中的文件会保留，需要时请手动清理。
+                  。
+                  {removeDistributed
+                    ? "本仓库写入的主副本、链接和受管副本会被移除；真实目录会先存一份备份（只保留最新一份）。不属于本仓库的路径不会动。"
+                    : "目标目录中的文件会保留并失去管理，需要时请手动清理。"}
                 </p>
               </Callout>
             ) : null}
@@ -126,7 +139,14 @@ export function RemoveSourceModal({
               checked={deleteFiles}
               onChange={setDeleteFiles}
               label="同时删除仓库内的工作副本与 vendor 目录"
-              hint="只删仓库内目录，目标目录不受影响。"
+              hint="只影响仓库内目录。"
+            />
+
+            <Toggle
+              checked={removeDistributed}
+              onChange={setRemoveDistributed}
+              label="同时清理已分发到目标目录的文件"
+              hint="关闭后，已分发的文件会留在各目标目录中，不再受管理。"
             />
 
             {deleteFiles ? (

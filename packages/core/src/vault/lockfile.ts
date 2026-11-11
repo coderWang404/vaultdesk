@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
-import { canonicalPath, ensureDir, expandHome, nowIso, readText, removePath, sha256 } from "../fsx.js";
+import { canonicalPath, ensureDir, expandHome, isLockOwnerAlive, nowIso, processStartToken, readText, removePath, sha256 } from "../fsx.js";
 import { VaultDeskError } from "../errors.js";
 
 export interface VaultLockHandle {
@@ -20,7 +20,11 @@ export function acquireWriteLock(vaultPath: string): VaultLockHandle {
   const file = lockPath(vaultPath);
   ensureDir(path.dirname(file));
   const owner = randomUUID();
-  const payload = JSON.stringify({ pid: process.pid, owner, vault: path.resolve(vaultPath), created_at: nowIso() });
+  const pidStarted = processStartToken(process.pid);
+  const payload = JSON.stringify({
+    pid: process.pid, owner, vault: path.resolve(vaultPath), created_at: nowIso(),
+    ...(pidStarted ? { pid_started: pidStarted } : {}),
+  });
 
   const tryAcquire = (): boolean => {
     try {
@@ -37,17 +41,9 @@ export function acquireWriteLock(vaultPath: string): VaultLockHandle {
   if (!tryAcquire()) {
     let stale = false;
     try {
-      const raw = JSON.parse(readText(file)) as { pid?: number; created_at?: string };
-      let alive = false;
-      if (typeof raw.pid === "number") {
-        try {
-          process.kill(raw.pid, 0);
-          alive = true;
-        } catch (error) {
-          alive = (error as NodeJS.ErrnoException).code === "EPERM";
-        }
-      }
-      stale = !alive;
+      const raw = JSON.parse(readText(file)) as { pid?: number; pid_started?: unknown };
+      stale = typeof raw.pid !== "number" ||
+        !isLockOwnerAlive(raw.pid, typeof raw.pid_started === "string" ? raw.pid_started : undefined);
     } catch {
       stale = true;
     }

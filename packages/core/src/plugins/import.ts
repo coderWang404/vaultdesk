@@ -12,6 +12,7 @@ import {
   writeTextAtomic,
 } from "../fsx.js";
 import { VaultDeskError } from "../errors.js";
+import { assertImportableSkillTree } from "../import.js";
 import { slugifyName } from "../import.js";
 import { Journal } from "../journal.js";
 import { fetchUpstream } from "../sources/fetch.js";
@@ -369,6 +370,7 @@ export async function applyPluginImport(
       journal.start("copy");
       const target = path.join(vaultPath, "plugins", preview.suggestedName);
       if (exists(target)) throw new VaultDeskError("path-conflict", `Target already exists: ${target}`);
+      assertImportableSkillTree(preview.rootPath, `Plugin ${preview.suggestedName}`);
       copyDirectory(preview.rootPath, target);
       journal.done("copy", "plugin root");
 
@@ -437,6 +439,7 @@ export async function addGithubPlugin(
       for (const target of [vendor, working]) {
         if (exists(target)) throw new VaultDeskError("path-conflict", `Target already exists: ${target}`);
       }
+      assertImportableSkillTree(preview.rootPath, `Plugin ${preview.suggestedName}`);
       copyDirectory(preview.rootPath, vendor);
       copyDirectory(preview.rootPath, working);
       journal.done("copy", "plugin root");

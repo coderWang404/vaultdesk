@@ -44,6 +44,7 @@ export const ipcCommands = {
   "source.distribute": z.object({
     vaultPath,
     name: slugSchema,
+    force: z.boolean().default(false),
     confirm: z.literal(true),
   }),
   "source.forkPreview": z.object({
@@ -83,6 +84,7 @@ export const ipcCommands = {
     vaultPath,
     name: slugSchema,
     deleteFiles: z.boolean().default(false),
+    removeDistributed: z.boolean().default(true),
     confirm: z.literal(true),
   }),
   "build.run": z.object({ vaultPath }),

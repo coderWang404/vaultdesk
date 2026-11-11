@@ -18,7 +18,7 @@
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-Apache--2.0-blue.svg" alt="许可证：Apache-2.0"></a>
   <img src="https://img.shields.io/badge/platform-macOS%2013%2B-lightgrey.svg" alt="平台：macOS 13+">
   <img src="https://img.shields.io/badge/node-22%2B-339933.svg" alt="Node.js 22+">
-  <img src="https://img.shields.io/badge/version-1.2.16-brightgreen.svg" alt="版本 1.2.16">
+  <img src="https://img.shields.io/badge/version-1.2.17-brightgreen.svg" alt="版本 1.2.17">
 </p>
 
 <p align="center">
@@ -26,7 +26,7 @@
 </p>
 
 > [!NOTE]
-> VaultDesk 1.2.16 已在 [GitHub Releases](https://github.com/coderWang404/vaultdesk/releases/tag/v1.2.16) 提供 Apple Silicon DMG。构建采用 ad-hoc 签名，未公证；CLI 随应用内置，不依赖源码目录或额外 Node.js。
+> 源码版本为 1.2.17（可用 `pnpm package:mac` 自行构建）。最新已发布版本 VaultDesk 1.2.16 已在 [GitHub Releases](https://github.com/coderWang404/vaultdesk/releases/tag/v1.2.16) 提供 Apple Silicon DMG。构建采用 ad-hoc 签名，未公证；CLI 随应用内置，不依赖源码目录或额外 Node.js。
 
 ## 目录
 
@@ -139,7 +139,7 @@ pnpm dev
 
 ```bash
 pnpm package:mac
-# release/VaultDesk-1.2.16-<arch>.dmg
+# release/VaultDesk-1.2.17-<arch>.dmg
 ```
 
 构建产物使用 ad-hoc 签名，没有公证。第一次启动时右键点击应用并选择 **打开**，或者在 **系统设置 → 隐私与安全性** 中放行。
@@ -189,6 +189,10 @@ vaultdesk source update some-source --vault "$VAULT" --yes
 
 `source update` 刷新 Vault 内容，默认不分发。完成后用 `source distribute <来源> --yes` 刷新共享技能主库与开启同步的登记技能目标，或登记的插件文件目标；有意修改本地来源后也使用这条命令分发。自动同步则将远程更新和受管分发放在同一来源事务中。两种方式都不会接管 agent 安装器拥有的插件目录，也不会替 agent 启用插件。
 
+受管副本被就地改动时（例如技能把运行产物写进了自己的目录），`source distribute` 会拒绝并保留原文件。确认可以替换后加 `--force`：先把被改动的副本存到备份目录，再用 Vault 内容替换；每个副本只保留最新一份备份。归属不明或属于其他 Vault 的目录不会被强制替换。
+
+`source remove <来源> --yes` 默认同时清理该来源已分发的文件：共享主库、指向它的链接、受管副本和插件文件目标。真实目录先存一份备份（只保留最新一份），不属于本 Vault 的同名路径原样保留。加 `--keep-distributed` 可只移除登记。
+
 ## 自动同步
 
 来源页会直接显示当前方式的说明；来源页和设置中都可展开完整说明。
@@ -203,7 +207,7 @@ vaultdesk source update some-source --vault "$VAULT" --yes
 
 安装在 `/Applications/VaultDesk.app` 的 macOS 版本默认注册用户级后台任务：登录后、恢复网络后以及每小时检查所有仍登记的 vault；应用窗口关闭后仍可运行。可在「设置」中暂停、手动同步、查看活动记录并调整间隔与备份保留期。开发版和挂载 DMG 中的应用不会注册该后台任务。
 
-远程 Git 来源默认使用 `auto`，也可逐来源切换为人工审核或暂停。技能自动更新按来源同步 Vault 内容、`~/.agents/skills` 主库与已登记目标；插件自动更新同步插件目录与明确登记的插件文件目标。技能目标优先使用逐技能符号链接，不支持时复制；`install_after_update=false` 的目标保持暂停。手动修改、未知归属或同名冲突会阻止该来源并保留原文件。成功后仅提交本轮改动并普通推送；推送失败保留本地提交并提示，不强推。新增上游技能等待接纳，上游删除不会自动删掉现有副本。
+远程 Git 来源默认使用 `auto`，也可逐来源切换为人工审核或暂停。技能自动更新按来源同步 Vault 内容、`~/.agents/skills` 主库与已登记目标；插件自动更新同步插件目录与明确登记的插件文件目标。技能目标优先使用逐技能符号链接，不支持时复制；`install_after_update=false` 的目标保持暂停。手动修改、未知归属或同名冲突会阻止该来源并保留原文件。成功后仅提交本轮改动并普通推送；推送失败保留本地提交并提示，不强推。Vault 存在未推送的提交时自动更新暂停，活动记录会给出未推送提交数，`vaultdesk git push --yes` 后恢复。上游检查遇到网络失败会立即重试一次，仍失败则约 5 分钟后重跑（最多连续 3 次），不必等到下一个整点。新增上游技能等待接纳，上游删除不会自动删掉现有副本。
 
 CLI 可用 `source pending <来源>` 查看待接纳技能，`source adopt <来源> --path <上游相对路径> --yes` 明确接纳，`source distribute <来源> --yes` 初始化或刷新受管分发。插件目标可通过 `plugin target add|list|remove` 登记和管理。
 
@@ -424,7 +428,7 @@ build/external-skills.json # 生成的外部技能观察索引
 .vault/state.json          # 本机状态，已被 gitignore
 ```
 
-VaultDesk 用 `.vault-managed` 标记受管技能副本与主库目录，用 `.vaultdesk-plugin-managed` 标记插件文件目标；逐技能链接记录在主库标记中。手动技能安装可备份明确选定的未托管槽位；自动分发遇到未知归属或手动修改会停止，不会覆盖。
+VaultDesk 用 `.vault-managed` 标记受管技能副本与主库目录，用 `.vaultdesk-plugin-managed` 标记插件文件目标；逐技能链接记录在主库标记中。手动技能安装会备份明确选定的未托管槽位，也会在替换被就地改动的受管副本前先存一份备份（每个技能只保留最新一份）；自动分发遇到未知归属或手动修改会停止，不会覆盖。
 
 ## 架构
 
@@ -477,7 +481,7 @@ VaultDesk 用 `.vault-managed` 标记受管技能副本与主库目录，用 `.v
 - **工具卡记录运行条件。** 不下载、不安装、不执行工具卡命令，也不向 agent 注册；用户主动验证时，可运行内置的限时 Python 依赖查询。
 - **外部技能属于它的工具。** VaultDesk 读取并计算路径 hash，报告漂移，从不写入。`adopt` 只删除 vault 自己的内容和本 vault 的标记。
 - **一个路径一个所有者。** 受管技能与外部技能不能共用路径；其他所有者的标记会阻止 `adopt`。
-- **自动同步不覆盖未托管目录。** 手动安装可在明确确认后备份旧目录；自动同步遇到未知归属或手动修改时暂停受影响来源。自动分发备份最多保留最近 3 次或 7 天。
+- **自动同步不覆盖未托管目录。** 手动安装可在明确确认后备份旧目录；自动同步遇到未知归属或手动修改时暂停受影响来源。自动分发备份最多保留最近 3 次或 7 天；被改动副本的替换备份只保留最新一份。
 - **自动提交先做敏感内容检查。** 检出高置信度凭据路径、私钥、Python 缓存或 token 形态时，会在提交推送前暂停来源，只报告路径和风险类型。这能降低误上传风险，但不是完整的泄密检测保证。
 - **Git 暂存是显式的。** VaultDesk 只提交自己改过的路径，从不执行 `git add -A`，并拒绝 vault 之外或 `.git` 之下的路径。
 - **校验的范围是明确的。** `target verify` 证明预期文件存在且 hash 一致，不能证明某个 agent 已经加载了技能。
@@ -505,15 +509,15 @@ CI 会运行类型检查、单元与集成测试，并在 macOS 和 Ubuntu 上�
 
 | 范围 | 状态 |
 | --- | --- |
-| 桌面应用与 CLI | 1.2.16；Apple Silicon DMG 已发布，CLI 随应用提供并可从设置安装 |
+| 桌面应用与 CLI | 源码为 1.2.17；最新已发布的 Apple Silicon DMG 为 1.2.16，CLI 随应用提供并可从设置安装 |
 | 工具卡与 MCP 页面 | v1.2.3 加入运行环境检查和跨类别 MCP 展示；v1.2.4 默认优先使用 Miniconda base；v1.2.5 增加 agent catalog 与只读 MCP 发现入口 |
 | 外部技能记录 | 已包含在 v1.2.0 |
 | DMG | Apple Silicon 版本已发布，ad-hoc 签名，未公证 |
 | GitHub Release / Homebrew / npm | GitHub Release 已发布；Homebrew 与 npm 未发布 |
 | 来源自动同步 | 已在 macOS 安装版提供，支持逐来源自动/审核/暂停 |
-| Windows 与 Linux 桌面端 | v1.2.16 未包含 |
+| Windows 与 Linux 桌面端 | v1.2.17 未包含 |
 
-桌面应用在 1.2.16 只支持 macOS。源码 CLI 已在 macOS 和 Ubuntu 上测试；DMG 内置 CLI 使用 Electron 自带 Node 运行时。
+桌面应用在 1.2.17 只支持 macOS。源码 CLI 已在 macOS 和 Ubuntu 上测试；DMG 内置 CLI 使用 Electron 自带 Node 运行时。
 
 ## 参与贡献
 

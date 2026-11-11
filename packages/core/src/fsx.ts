@@ -1,3 +1,4 @@
+import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { AsyncLocalStorage } from "node:async_hooks";
 import fs from "node:fs";
@@ -64,6 +65,69 @@ export function writeTextAtomic(filePath: string, content: string): void {
 
 export function writeJsonAtomic(filePath: string, value: unknown): void {
   writeTextAtomic(filePath, JSON.stringify(value, null, 2) + "\n");
+}
+
+/** True when a process with this pid exists (even if owned by another user). */
+export function isProcessAlive(pid: number): boolean {
+  if (!Number.isInteger(pid) || pid <= 0) return false;
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (error) {
+    return (error as NodeJS.ErrnoException).code === "EPERM";
+  }
+}
+
+const startTokens = new Map<number, string | undefined>();
+
+/**
+ * An opaque token for when a process started, identical for every caller that
+ * asks about the same process. Undefined when the system cannot report it.
+ */
+export function processStartToken(pid: number): string | undefined {
+  if (pid === process.pid && startTokens.has(pid)) return startTokens.get(pid);
+  let token: string | undefined;
+  try {
+    const ps = fs.existsSync("/bin/ps") ? "/bin/ps" : "ps";
+    // A fixed time zone and locale make the text identical across processes.
+    token = execFileSync(ps, ["-o", "lstart=", "-p", String(pid)], {
+      encoding: "utf8",
+      timeout: 3_000,
+      stdio: ["ignore", "pipe", "ignore"],
+      env: { PATH: process.env.PATH ?? "/usr/bin:/bin", LC_ALL: "C", TZ: "UTC" },
+    }).trim().replace(/\s+/g, " ") || undefined;
+  } catch {
+    token = undefined;
+  }
+  if (pid === process.pid) startTokens.set(pid, token);
+  return token;
+}
+
+/**
+ * True when the process that wrote a lock is still running. The owner records
+ * its start token in the lock; if the pid is alive but its start token differs,
+ * the operating system gave that number to a later, unrelated process and the
+ * lock is a leftover. Without a recorded token, a live pid counts as the owner.
+ */
+export function isLockOwnerAlive(pid: number, recordedStartToken?: string): boolean {
+  if (!isProcessAlive(pid)) return false;
+  if (!recordedStartToken) return true;
+  const current = processStartToken(pid);
+  return current === undefined || current === recordedStartToken;
+}
+
+/**
+ * Recursive copy that keeps every symlink target exactly as written.
+ * Plain fs.cpSync rewrites relative links into absolute paths that point back
+ * at the copy source, which changes content hashes and breaks moved copies.
+ */
+export function copyTree(source: string, destination: string, filter?: (source: string) => boolean): void {
+  fs.cpSync(source, destination, {
+    recursive: true,
+    dereference: false,
+    verbatimSymlinks: true,
+    ...(filter ? { filter } : {}),
+  });
 }
 
 export function removePath(target: string): void {
@@ -148,6 +212,38 @@ export function walkFiles(root: string, options: WalkOptions = {}): WalkEntry[] 
   return results.sort((a, b) => a.rel.localeCompare(b.rel));
 }
 
+export class SymlinkEscapeError extends Error {
+  readonly rel: string;
+  readonly reason: "unresolved" | "escapes";
+  constructor(rel: string, reason: "unresolved" | "escapes") {
+    super(reason === "unresolved" ? `Skill symlink is unresolved: ${rel}` : `Skill symlink escapes its root: ${rel}`);
+    this.name = "SymlinkEscapeError";
+    this.rel = rel;
+    this.reason = reason;
+  }
+}
+
+/**
+ * Throw when a tree holds a symlink that is absolute, dangling, or resolves
+ * outside the tree. Such a link cannot be distributed to an agent directory.
+ */
+export function assertContainedSymlinks(root: string, options: WalkOptions = {}): void {
+  const realRoot = fs.realpathSync(root);
+  for (const file of walkFiles(root, options)) {
+    if (file.kind !== "symlink") continue;
+    const link = fs.readlinkSync(file.abs);
+    let resolved: string;
+    try {
+      resolved = fs.realpathSync(file.abs);
+    } catch {
+      throw new SymlinkEscapeError(file.rel, "unresolved");
+    }
+    if (path.isAbsolute(link) || (resolved !== realRoot && !resolved.startsWith(realRoot + path.sep))) {
+      throw new SymlinkEscapeError(file.rel, "escapes");
+    }
+  }
+}
+
 export function hashDirectory(root: string, options: WalkOptions = {}): string {
   if (!isDirectory(root)) return "";
   const cache = directoryHashes.getStore();
@@ -212,7 +308,7 @@ export function movePath(source: string, destination: string): void {
   try {
     fs.renameSync(source, destination);
   } catch {
-    fs.cpSync(source, destination, { recursive: true, dereference: false });
+    copyTree(source, destination);
     removePath(source);
   }
 }

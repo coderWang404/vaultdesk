@@ -1,6 +1,5 @@
-import fs from "node:fs";
 import path from "node:path";
-import { ensureDir, isDirectory, isFile, listDirectory, movePath, removePath, writeJsonAtomic } from "./fsx.js";
+import { copyTree, ensureDir, isDirectory, isFile, isProcessAlive, listDirectory, movePath, removePath, writeJsonAtomic } from "./fsx.js";
 import { VaultDeskError } from "./errors.js";
 import { loadVault } from "./vault/model.js";
 import { detectVaultFormat } from "./vault/model.js";
@@ -27,11 +26,31 @@ export async function buildVault(inputPath: string, options: { allowV1?: boolean
   return buildSnapshot(snapshot);
 }
 
+const STALE_STAGING_MS = 60 * 60 * 1000;
+
+/** Remove staging directories left behind by a build that crashed or was killed. */
+function sweepStaleStaging(buildDir: string): void {
+  for (const entry of listDirectory(buildDir)) {
+    const match = /^\.staging-(\d+)-(\d+)$/.exec(entry.name);
+    if (!match || !entry.isDirectory()) continue;
+    const pid = Number(match[1]);
+    const startedAt = Number(match[2]);
+    if (pid === process.pid) continue;
+    if (isProcessAlive(pid) && Date.now() - startedAt < STALE_STAGING_MS) continue;
+    try {
+      removePath(path.join(buildDir, entry.name));
+    } catch {
+      // A leftover staging directory must never fail the current build.
+    }
+  }
+}
+
 export function buildSnapshot(snapshot: VaultSnapshot): BuildResult {
   const vaultPath = snapshot.path;
   const buildRoot = path.join(vaultPath, "build", "skills");
   const staging = path.join(vaultPath, "build", `.staging-${process.pid}-${Date.now()}`);
 
+  sweepStaleStaging(path.join(vaultPath, "build"));
   removePath(staging);
   ensureDir(staging);
 
@@ -48,16 +67,9 @@ export function buildSnapshot(snapshot: VaultSnapshot): BuildResult {
         throw new VaultDeskError("validation-failed", `SKILL.md is missing for ${skill.name}`);
       }
       const destination = path.join(staging, skill.name);
-      fs.cpSync(skill.workingPath, destination, {
-        recursive: true,
-        dereference: false,
-        filter: (source) => {
-          const base = path.basename(source);
-          if ([".git", "node_modules", ".source.yml", ".source-commit", ".vault-managed", ".DS_Store"].includes(base)) {
-            return false;
-          }
-          return true;
-        },
+      copyTree(skill.workingPath, destination, (source) => {
+        const base = path.basename(source);
+        return ![".git", "node_modules", ".source.yml", ".source-commit", ".vault-managed", ".DS_Store"].includes(base);
       });
       hashes[skill.name] = hashDirectory(destination);
       artifacts[skill.name] = path.join(buildRoot, skill.name);

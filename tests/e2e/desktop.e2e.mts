@@ -1609,13 +1609,29 @@ async function installFlow(suite: Suite): Promise<void> {
     false,
     "registered target backup stays restorable in all-target view",
   );
-  await backups.locator(".backup-skill").filter({ hasText: "alpha" }).getByRole("button", { name: "恢复" }).click();
+  // Reinstalling over the hand-edited managed copy saved it first, so alpha now
+  // has two snapshots: the original unmanaged one and the pre-reinstall edit.
+  const modifiedEntry = backups.locator(".backup-entry").filter({ hasText: "手动修改前的副本" });
+  equal(await modifiedEntry.count(), 1, "hand-edited managed copy is saved once before reinstall");
+  const modifiedStamps = fs.readdirSync(backupsForTarget).filter((name) => name.endsWith("-modified"));
+  equal(modifiedStamps.length, 1, "one modified-copy snapshot on disk");
+  assert(
+    read(path.join(backupsForTarget, modifiedStamps[0] as string, "alpha", "SKILL.md")).includes("LOCAL-DRIFT"),
+    "modified-copy snapshot keeps the local edit",
+  );
+  const unmanagedAlphaRestore = backups
+    .locator(".backup-entry")
+    .filter({ hasNotText: "手动修改前的副本" })
+    .locator(".backup-skill")
+    .filter({ hasText: "alpha" })
+    .getByRole("button", { name: "恢复" });
+  await unmanagedAlphaRestore.click();
   const restoreConfirm = page.getByRole("dialog", { name: "恢复 alpha？" });
   await waitForText(page, "恢复 alpha？");
   await page.keyboard.press("Escape");
   await restoreConfirm.waitFor({ state: "hidden" });
   equal(await page.getByRole("dialog").count(), 1, "Escape closes only the top confirmation dialog");
-  await backups.locator(".backup-skill").filter({ hasText: "alpha" }).getByRole("button", { name: "恢复" }).click();
+  await unmanagedAlphaRestore.click();
   await waitForText(page, "恢复 alpha？");
   await restoreConfirm.getByRole("button", { name: "恢复" }).click();
   await waitForText(page, "恢复完成", 30_000);

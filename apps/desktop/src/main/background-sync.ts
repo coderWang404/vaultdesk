@@ -5,6 +5,7 @@ import { autoSyncVault, readSettings, VaultDeskError } from "@vaultdesk/core";
 import { readRecents } from "./recents.js";
 import { AutoSyncScheduler, type SyncTrigger } from "./auto-sync-scheduler.js";
 import { configureLaunchAgent } from "./launch-agent.js";
+import { trimActivityLog } from "./activity-log.js";
 
 export interface AutoSyncActivity {
   at: string;
@@ -22,8 +23,11 @@ export interface AutoSyncRunSummary {
   checkedVaults: number;
   updated: number;
   errors: number;
+  /** Upstream checks that failed on the network during this run. */
+  networkErrors: number;
   entries: AutoSyncActivity[];
 }
+
 
 function activityPath(): string {
   return path.join(app.getPath("userData"), "auto-sync-activity.jsonl");
@@ -43,6 +47,7 @@ function appendActivity(entries: AutoSyncActivity[]): void {
   const file = activityPath();
   fs.mkdirSync(path.dirname(file), { recursive: true });
   fs.appendFileSync(file, entries.map((entry) => JSON.stringify(entry)).join("\n") + "\n", { mode: 0o600 });
+  trimActivityLog(file);
 }
 
 export function readAutoSyncActivity(limit = 30): AutoSyncActivity[] {
@@ -110,6 +115,11 @@ export async function runAutoSyncAll(
   const vaults = validVaultPaths(onlyVaultPath);
   let updated = 0;
   let errors = 0;
+  let networkErrors = 0;
+  // Sources with nothing to do by design are returned to the caller. Background
+  // runs keep them out of the log, where they used to crowd out every real
+  // event; a run the user started by hand records the full picture.
+  const recorded: AutoSyncActivity[] = [];
   for (const vault of vaults) {
     try {
       const report = await autoSyncVault(vault.path, {
@@ -119,30 +129,35 @@ export async function runAutoSyncAll(
       });
       updated += report.updated;
       errors += report.errors;
+      networkErrors += report.networkErrors;
       for (const source of report.sources) {
-        entries.push({
+        const entry: AutoSyncActivity = {
           at: new Date().toISOString(), trigger,
           vaultPath: vault.path, vaultName: vault.name,
           source: source.name, status: source.status,
           ...(source.message ? { message: safeMessage(source.message) } : {}),
           ...(source.commit ? { commit: source.commit } : {}),
           ...(source.pendingSkills?.length ? { pendingSkills: source.pendingSkills } : {}),
-        });
+        };
+        entries.push(entry);
+        if (!source.routine || trigger === "manual") recorded.push(entry);
       }
     } catch (reason) {
       const legacy = reason instanceof VaultDeskError && reason.code === "not-writable-v1";
       if (!legacy) errors += 1;
-      entries.push({
+      const entry: AutoSyncActivity = {
         at: new Date().toISOString(), trigger,
         vaultPath: vault.path, vaultName: vault.name,
         source: "仓库", status: legacy ? "skipped" : "error",
         message: legacy ? "v1 仓库尚未迁移，已跳过自动同步。" : safeMessage(reason),
-      });
+      };
+      entries.push(entry);
+      recorded.push(entry);
     }
   }
-  appendActivity(entries);
+  appendActivity(recorded);
   if (showFailureNotification) notifyFailures(entries);
-  return { checkedVaults: vaults.length, updated, errors, entries };
+  return { checkedVaults: vaults.length, updated, errors, networkErrors, entries };
 }
 
 /** A LaunchAgent keeps this headless process alive during the login session. */
@@ -158,7 +173,8 @@ export function startBackgroundWorker(): void {
       return;
     }
     void scheduler.maybeRun(trigger, net.isOnline(), async () => {
-      await runAutoSyncAll(undefined, trigger, true);
+      const summary = await runAutoSyncAll(undefined, trigger, true);
+      return { retrySoon: summary.networkErrors > 0 };
     }).catch((error) => console.error("Background sync failed", safeMessage(error)));
   };
 

@@ -3,6 +3,7 @@ import path from "node:path";
 import {
   canonicalPath,
   copyDirectory,
+  copyTree,
   hashDirectory,
   hashText,
   isDirectory,
@@ -107,12 +108,12 @@ function copyUpstreamSkill(
   if (skill.vendorPath) {
     removePath(skill.vendorPath);
     fs.mkdirSync(path.dirname(skill.vendorPath), { recursive: true });
-    fs.cpSync(upstream, skill.vendorPath, { recursive: true, dereference: false });
+    copyTree(upstream, skill.vendorPath);
     vendorWritten = true;
   }
   removePath(skill.workingPath);
   fs.mkdirSync(path.dirname(skill.workingPath), { recursive: true });
-  fs.cpSync(upstream, skill.workingPath, { recursive: true, dereference: false });
+  copyTree(upstream, skill.workingPath);
   return { vendorWritten, workingWritten: true };
 }
 

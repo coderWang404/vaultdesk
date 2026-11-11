@@ -710,20 +710,30 @@ function PluginInspector({
     }
   }
 
-  async function distributeTarget(): Promise<void> {
+  async function distributeTarget(force = false): Promise<void> {
     setTargetBusy("sync");
     setTargetError(null);
     setTargetMessage(null);
     try {
-      const result = await call<{ name: string; changedPaths: string[] }>("source.distribute", {
+      const result = await call<{ name: string; changedPaths: string[]; overrideBackups: string[] }>("source.distribute", {
         vaultPath: vault.path,
         name: plugin.name,
+        force,
         confirm: true,
       });
       await onRefresh();
-      setTargetMessage(result.changedPaths.length > 0 ? `已同步 ${result.changedPaths.length} 个受管路径。` : "目标内容已是最新。");
+      setTargetMessage(
+        (result.changedPaths.length > 0 ? `已同步 ${result.changedPaths.length} 个受管路径。` : "目标内容已是最新。") +
+          (result.overrideBackups.length > 0 ? `被修改的旧副本已备份到 ${result.overrideBackups.join("、")}。` : ""),
+      );
     } catch (reason) {
-      setTargetError(errorMessage(reason));
+      const message = errorMessage(reason);
+      if (!force && message.includes("was manually modified") &&
+          window.confirm("目标目录中的受管副本被修改过。先备份（只保留最新一份）再用仓库内容替换它？")) {
+        await distributeTarget(true);
+        return;
+      }
+      setTargetError(message);
     } finally {
       setTargetBusy(null);
     }

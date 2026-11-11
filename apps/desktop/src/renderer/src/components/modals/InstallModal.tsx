@@ -425,7 +425,9 @@ function InstallModalContent({
                 <StatusPill tone={slotActionTone(slot.action)}>{slotStateLabel(slot.state)}</StatusPill>
                 <span className="muted-small">
                   {slot.action === "backup-and-replace"
-                    ? "先备份"
+                    ? slot.state === "managed"
+                      ? "已被修改，先备份"
+                      : "先备份"
                     : slot.action === "replace-symlink"
                       ? "只删链接"
                       : slot.action === "replace-managed"

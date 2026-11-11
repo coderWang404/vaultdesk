@@ -18,7 +18,7 @@
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-Apache--2.0-blue.svg" alt="License: Apache-2.0"></a>
   <img src="https://img.shields.io/badge/platform-macOS%2013%2B-lightgrey.svg" alt="Platform: macOS 13+">
   <img src="https://img.shields.io/badge/node-22%2B-339933.svg" alt="Node.js 22+">
-  <img src="https://img.shields.io/badge/version-1.2.16-brightgreen.svg" alt="Version 1.2.16">
+  <img src="https://img.shields.io/badge/version-1.2.17-brightgreen.svg" alt="Version 1.2.17">
 </p>
 
 <p align="center">
@@ -26,7 +26,7 @@
 </p>
 
 > [!NOTE]
-> VaultDesk 1.2.16 is available as an Apple Silicon DMG from [GitHub Releases](https://github.com/coderWang404/vaultdesk/releases/tag/v1.2.16). The build is ad-hoc signed and is not notarized. The CLI is bundled with the app and does not depend on a source checkout or a separate Node.js installation.
+> The source tree is at 1.2.17 (build it with `pnpm package:mac`). The latest published build, VaultDesk 1.2.16, is available as an Apple Silicon DMG from [GitHub Releases](https://github.com/coderWang404/vaultdesk/releases/tag/v1.2.16). The build is ad-hoc signed and is not notarized. The CLI is bundled with the app and does not depend on a source checkout or a separate Node.js installation.
 
 ## Contents
 
@@ -139,7 +139,7 @@ To package an ad-hoc signed DMG:
 
 ```bash
 pnpm package:mac
-# release/VaultDesk-1.2.16-<arch>.dmg
+# release/VaultDesk-1.2.17-<arch>.dmg
 ```
 
 The build is ad-hoc signed and not notarized. On first launch, right-click the app and choose **Open**, or allow it in **System Settings → Privacy & Security**.
@@ -189,6 +189,10 @@ vaultdesk source update some-source --vault "$VAULT" --yes
 
 `source update` refreshes Vault content and defaults to no distribution. Run `source distribute <source> --yes` afterward to refresh the shared skill master and active registered skill targets, or the registered plugin file targets. This also distributes intentional changes to local sources. Automatic sync performs remote updates and managed distribution as a source transaction. Neither path takes over an agent-owned plugin installation or enables a plugin in the agent.
 
+When a managed copy was modified in place (for example a skill wrote its output into its own folder), `source distribute` refuses and leaves the files alone. Once you have confirmed it can be replaced, add `--force`: the modified copy is saved to the backup root first, then replaced with the Vault content, and only the newest saved copy of each is kept. Directories of unknown ownership, or owned by another Vault, are never force-replaced.
+
+`source remove <source> --yes` also removes that source's distributed files by default: the shared master, links pointing at it, tracked copies, and plugin file targets. Real directories are saved first (newest copy only), and same-named paths this Vault does not own stay in place. Pass `--keep-distributed` to remove only the registration.
+
 ## Automatic sync
 
 The Sources page describes the current mode next to each source. Sources and Settings also include an expandable mode guide.
@@ -203,7 +207,7 @@ Check queries upstream without applying changes. Sync now follows each source's 
 
 The macOS app installed at `/Applications/VaultDesk.app` registers a per-user background worker by default. It checks every registered vault at login, after network recovery, and hourly, even while the app window is closed. Settings let you pause it, run a check manually, inspect activity, and change the interval and backup retention. Development builds and apps launched from a mounted DMG do not register this worker.
 
-Remote Git sources default to `auto`, with per-source review and pause modes. For each successful skill update, VaultDesk syncs the vault, the `~/.agents/skills` master, and registered destinations together; plugin updates sync the plugin root and explicitly registered plugin file targets. Individual skill symlinks are preferred, with tracked copies where links are unavailable. Targets with `install_after_update=false` remain paused. Local edits, unknown ownership, and name collisions block the affected source without overwriting files. VaultDesk commits only files from that update and pushes normally; a failed push keeps the local commit and reports the problem. New upstream skills await adoption, while upstream deletions never automatically remove local copies.
+Remote Git sources default to `auto`, with per-source review and pause modes. For each successful skill update, VaultDesk syncs the vault, the `~/.agents/skills` master, and registered destinations together; plugin updates sync the plugin root and explicitly registered plugin file targets. Individual skill symlinks are preferred, with tracked copies where links are unavailable. Targets with `install_after_update=false` remain paused. Local edits, unknown ownership, and name collisions block the affected source without overwriting files. VaultDesk commits only files from that update and pushes normally; a failed push keeps the local commit and reports the problem. Automatic updates pause while the Vault has unpushed commits; the activity log states how many, and `vaultdesk git push --yes` resumes them. A network failure during an upstream check is retried once immediately; if it still fails, the sync re-runs about five minutes later (at most three times in a row) instead of waiting for the next hour. New upstream skills await adoption, while upstream deletions never automatically remove local copies.
 
 Use `source pending <source>` to list skills awaiting adoption, `source adopt <source> --path <upstream-relative-path> --yes` to accept a selected skill, and `source distribute <source> --yes` to initialize or refresh managed destinations. Register plugin destinations through `plugin target add|list|remove`.
 
@@ -434,7 +438,7 @@ build/external-skills.json # generated external observation index
 .vault/state.json          # local machine state, gitignored
 ```
 
-VaultDesk uses `.vault-managed` for managed skill copies/master directories and `.vaultdesk-plugin-managed` for plugin file targets. Per-skill links are recorded in the master marker. Manual skill installation can back up an explicitly selected unmanaged slot; automatic distribution stops on unknown ownership or manual edits instead of overwriting them.
+VaultDesk uses `.vault-managed` for managed skill copies/master directories and `.vaultdesk-plugin-managed` for plugin file targets. Per-skill links are recorded in the master marker. Manual skill installation backs up an explicitly selected unmanaged slot, and saves a managed copy that was modified in place before replacing it (newest copy per skill only); automatic distribution stops on unknown ownership or manual edits instead of overwriting them.
 
 ## Architecture
 
@@ -515,15 +519,15 @@ Release QA results are recorded in [docs/QA-CURRENT.md](docs/QA-CURRENT.md); [do
 
 | Area | State |
 | --- | --- |
-| Desktop app and CLI | 1.2.16; Apple Silicon DMG published, CLI bundled and installable from Settings |
+| Desktop app and CLI | 1.2.17 in source; latest published Apple Silicon DMG is 1.2.16, CLI bundled and installable from Settings |
 | Tool cards and MCP view | Runtime checks and cross-category MCP discovery in v1.2.3; Miniconda base is the preferred Python in v1.2.4; agent catalog and read-only MCP discovery in v1.2.5 |
 | External skill records | Included in v1.2.0 |
 | DMG | Apple Silicon release; ad-hoc signed, not notarized |
 | GitHub Release / Homebrew / npm | GitHub Release published; Homebrew and npm not published |
 | Automatic source sync | Available in the installed macOS app; per-source auto/review/pause controls |
-| Windows and Linux desktop | Not included in v1.2.16 |
+| Windows and Linux desktop | Not included in v1.2.17 |
 
-The desktop app is macOS-only at 1.2.16. The source CLI is tested on macOS and Ubuntu; the DMG CLI uses Electron's bundled Node runtime.
+The desktop app is macOS-only at 1.2.17. The source CLI is tested on macOS and Ubuntu; the DMG CLI uses Electron's bundled Node runtime.
 
 ## Contributing
 

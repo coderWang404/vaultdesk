@@ -135,7 +135,9 @@ describe("install slots and backups", () => {
 
     const second = await installSkills(vaultPath, { names, dest, id: "test-target", backupRoot });
     expect(second.verification.filesInPlace).toBe(true);
-    expect(second.backups).toHaveLength(0);
+    // The hand-edited managed copy is saved before it is replaced.
+    expect(second.backups.map((backup) => backup.skill)).toEqual(["gh-pack-alpha"]);
+    expect(fs.readFileSync(path.join(second.backups[0]?.to as string, "SKILL.md"), "utf8")).toContain("description: edited");
 
     const restored = await restoreBackup(vaultPath, {
       targetId: "test-target",

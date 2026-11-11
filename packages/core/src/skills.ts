@@ -29,6 +29,7 @@ import { Journal } from "./journal.js";
 import { readVaultFile, writeVaultFile } from "./vault/config.js";
 import { readLock, writeLock, readState, writeState } from "./vault/state.js";
 import type { AdoptPreview, ForkPreview, SkillRecord, VaultSnapshot } from "./types.js";
+import { removeManagedDistribution, type RemovedDistribution } from "./distribution.js";
 
 function findSkill(snapshot: VaultSnapshot, name: string): { skill: SkillRecord; source: VaultSnapshot["sources"][number] } {
   for (const source of snapshot.sources) {
@@ -418,6 +419,13 @@ export async function adoptExternalSkill(
           return { ...target, names: next };
         })
         .filter((target) => target.names.length > 0);
+      if (source.shape === "plugin" && file.plugin_targets) {
+        // A plugin target that names a removed plugin would otherwise dangle forever.
+        file.plugin_targets = file.plugin_targets
+          .map((target) => ({ ...target, names: target.names.filter((name) => name !== source.name) }))
+          .filter((target) => target.names.length > 0);
+        if (file.plugin_targets.length === 0) delete file.plugin_targets;
+      }
       writeVaultFile(vaultPath, file);
       if (source.metadataPath && isFile(source.metadataPath)) fs.unlinkSync(source.metadataPath);
       const lock = readLock(vaultPath);
@@ -473,11 +481,23 @@ function pruneEmptySourceDirs(start: string, vaultPath: string, removedPaths: st
   }
 }
 
+export interface RemoveSourceOptions {
+  /** Also delete the working and vendor copies inside the Vault. */
+  deleteFiles?: boolean;
+  /**
+   * Remove this source's distributed files from agent directories (default).
+   * Pass false to leave them in place as unmanaged leftovers.
+   */
+  removeDistributed?: boolean;
+  agentsSkillsDir?: string;
+  backupRoot?: string;
+}
+
 export async function removeSource(
   inputPath: string,
   sourceName: string,
-  options: { deleteFiles?: boolean } = {},
-): Promise<{ name: string; removedPaths: string[] }> {
+  options: RemoveSourceOptions = {},
+): Promise<{ name: string; removedPaths: string[]; distributed: RemovedDistribution }> {
   const vaultPath = canonicalPath(inputPath);
   const snapshot = await openVault(vaultPath);
   if (snapshot.format !== "v2") throw new VaultDeskError("not-writable-v1", "Migrate this vault before removing sources.");
@@ -486,14 +506,41 @@ export async function removeSource(
 
   return withWriteLock(vaultPath, async () => {
     const journal = Journal.begin(vaultPath, "remove", [
+      { id: "distributed", label: "Remove distributed files" },
       { id: "metadata", label: "Remove source metadata" },
       { id: "files", label: "Remove workspace copies" },
       { id: "references", label: "Clean target and lock references" },
       { id: "build", label: "Rebuild artifacts" },
       { id: "validate", label: "Validate vault" },
     ]);
-    let active = "metadata";
+    let active = "distributed";
     try {
+      // Runs first: if an agent directory cannot be cleaned, the Vault is left untouched.
+      let distributed: RemovedDistribution = { removed: [], backups: [], kept: [] };
+      if (options.removeDistributed !== false) {
+        journal.start("distributed");
+        const config = readVaultFile(vaultPath);
+        const skillNames = source.shape === "plugin" ? [] : source.skills.map((skill) => skill.name);
+        distributed = removeManagedDistribution(vaultPath, {
+          skillNames,
+          targets: snapshot.targets
+            .filter((target) => target.skills.some((name) => skillNames.includes(name)))
+            .map((target) => ({ id: target.id, dest: target.dest })),
+          ...(source.shape === "plugin" ? {
+            plugin: {
+              name: source.name,
+              targets: (config.plugin_targets ?? [])
+                .filter((target) => target.names.includes(source.name))
+                .map((target) => ({ id: target.id, dest: target.dest })),
+            },
+          } : {}),
+        }, { agentsSkillsDir: options.agentsSkillsDir, backupRoot: options.backupRoot });
+        journal.done("distributed", `${distributed.removed.length} removed · ${distributed.kept.length} kept`);
+      } else {
+        journal.skipped("distributed", "distributed files kept");
+      }
+
+      active = "metadata";
       journal.start("metadata");
       if (source.metadataPath && isFile(source.metadataPath)) fs.unlinkSync(source.metadataPath);
       journal.done("metadata");
@@ -565,7 +612,7 @@ export async function removeSource(
       }
       journal.done("validate");
       journal.finish();
-      return { name: sourceName, removedPaths };
+      return { name: sourceName, removedPaths, distributed };
     } catch (error) {
       journal.fail(active, (error as Error).message);
       throw error;

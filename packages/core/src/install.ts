@@ -1,7 +1,7 @@
 import { createHash, randomUUID } from "node:crypto";
 import path from "node:path";
 import fs from "node:fs";
-import { canonicalPath, copyDirectory, exists, expandHome, hashDirectory, isDirectory, isInside, nowIso, timestampSlug, movePath, listDirectory, removePath } from "./fsx.js";
+import { canonicalPath, copyDirectory, copyTree, exists, expandHome, hashDirectory, isDirectory, isInside, nowIso, timestampSlug, movePath, listDirectory, removePath } from "./fsx.js";
 import { VaultDeskError } from "./errors.js";
 import type { VaultFile } from "@vaultdesk/schema";
 import type { InstalledSkill, InstallPlan, InstallResult, InstallSlotPlan, SkillRecord, TargetRecord, VaultSnapshot } from "./types.js";
@@ -116,6 +116,28 @@ function isSymlink(target: string): boolean {
   }
 }
 
+/** A managed slot whose files no longer match its marker holds content the Vault does not have. */
+function managedSlotModified(slotPath: string): boolean {
+  try {
+    const marker = JSON.parse(fs.readFileSync(path.join(slotPath, MARKER), "utf8")) as { hash?: unknown };
+    return typeof marker.hash !== "string" || hashDirectory(slotPath) !== marker.hash;
+  } catch {
+    return true;
+  }
+}
+
+const MODIFIED_SUFFIX = "-modified";
+
+/** Keep only the newest saved copy of a locally modified skill: drop older ones once a new one exists. */
+function pruneOlderModifiedBackups(backupRoot: string, keepStamp: string, skills: string[]): void {
+  for (const entry of listDirectory(backupRoot)) {
+    if (!entry.isDirectory() || entry.name === keepStamp || !entry.name.endsWith(MODIFIED_SUFFIX)) continue;
+    const stampDir = path.join(backupRoot, entry.name);
+    for (const skill of skills) removePath(path.join(stampDir, skill));
+    if (listDirectory(stampDir).length === 0) removePath(stampDir);
+  }
+}
+
 function preservedMasterTargets(slotPath: string, vaultPath: string, skillName: string): Array<{ id: string; path: string; mode: "symlink" | "copy" }> | undefined {
   if (path.dirname(slotPath) !== managedAgentsSkillsRoot() || !fs.existsSync(path.join(slotPath, MARKER))) return undefined;
   const marker = JSON.parse(fs.readFileSync(path.join(slotPath, MARKER), "utf8")) as {
@@ -166,7 +188,17 @@ export function planInstall(
     const slot = path.join(dest, skill.name);
     const current = slotState(slot, vaultPath, targetId);
     if (current.state === "managed") {
-      slots.push({ skill: skill.name, slot, state: "managed", action: "replace-managed" });
+      if (managedSlotModified(slot)) {
+        slots.push({
+          skill: skill.name,
+          slot,
+          state: "managed",
+          action: "backup-and-replace",
+          backupPath: path.join(backupRoot, stamp + MODIFIED_SUFFIX, skill.name),
+        });
+      } else {
+        slots.push({ skill: skill.name, slot, state: "managed", action: "replace-managed" });
+      }
     } else if (current.state === "symlink") {
       slots.push({
         skill: skill.name,
@@ -190,6 +222,9 @@ export function planInstall(
 
   if (slots.some((slot) => slot.state === "unmanaged")) {
     warnings.push("Existing unmanaged directories will be moved to the backup root before install.");
+  }
+  if (slots.some((slot) => slot.state === "managed" && slot.action === "backup-and-replace")) {
+    warnings.push("Locally modified managed copies will be moved to the backup root before they are replaced; only the newest backup of each skill is kept.");
   }
 
   return { targetId, dest, slots, warnings };
@@ -309,6 +344,7 @@ export async function installSkills(inputPath: string, options: InstallOptions):
             break;
           case "backup-and-replace": {
             if (!slot.backupPath) throw new VaultDeskError("operation-failed", "Backup path missing");
+            removePath(slot.backupPath);
             movePath(slot.slot, slot.backupPath);
             backups.push({ skill: slot.skill, from: slot.slot, to: slot.backupPath });
             break;
@@ -316,7 +352,7 @@ export async function installSkills(inputPath: string, options: InstallOptions):
           case "create":
             break;
         }
-        fs.cpSync(artifact, slot.slot, { recursive: true, dereference: false });
+        copyTree(artifact, slot.slot);
         const installedAt = nowIso();
         const hash = buildHashes[slot.skill] ?? hashDirectory(slot.slot);
         fs.writeFileSync(
@@ -338,7 +374,12 @@ export async function installSkills(inputPath: string, options: InstallOptions):
 
       const retention = options.retention ?? 10;
       if (backups.length > 0) {
-        planPrune(backupRootFor(freshPlan.targetId, options.backupRoot), retention);
+        const root = backupRootFor(freshPlan.targetId, options.backupRoot);
+        const modified = backups.filter((backup) => path.basename(path.dirname(backup.to)).endsWith(MODIFIED_SUFFIX));
+        if (modified.length > 0) {
+          pruneOlderModifiedBackups(root, path.basename(path.dirname(modified[0]!.to)), modified.map((backup) => backup.skill));
+        }
+        planPrune(root, retention);
       }
 
       const targetHash = `sha256:${createHash("sha256")
@@ -571,7 +612,7 @@ export async function restoreBackup(
       }
     }
     fs.mkdirSync(path.dirname(slot), { recursive: true });
-    fs.cpSync(source, slot, { recursive: true, dereference: false });
+    copyTree(source, slot);
     fs.writeFileSync(
       path.join(slot, MARKER),
       JSON.stringify(

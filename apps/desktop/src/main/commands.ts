@@ -46,7 +46,7 @@ import {
   updateSources,
   verifyTarget,
   verifyToolReadiness,
-  distributeCurrentSource,
+  distributeCurrentSourceDetailed,
   writeSkillContent,
   writeSettings,
   VaultDeskError,
@@ -122,14 +122,15 @@ const handlers: { [K in IpcCommand]: Handler<K> } = {
       retention: settings.backupRetention,
     });
   },
-  "source.distribute": async ({ vaultPath, name }) => {
+  "source.distribute": async ({ vaultPath, name, force }) => {
     const settings = readSettings();
-    const changedPaths = await distributeCurrentSource(vaultPath, name, {
+    const { changedPaths, overrideBackups } = await distributeCurrentSourceDetailed(vaultPath, name, {
       backupRoot: settings.backupRoot,
       retention: settings.backupRetention,
       retentionDays: settings.backupRetentionDays,
+      force,
     });
-    return { name, changedPaths };
+    return { name, changedPaths, overrideBackups };
   },
   "source.forkPreview": ({ vaultPath, skill, as }) => previewFork(vaultPath, skill, as),
   "source.fork": ({ vaultPath, skill, as }) => forkSkill(vaultPath, skill, as),
@@ -158,8 +159,8 @@ const handlers: { [K in IpcCommand]: Handler<K> } = {
     if (!confirm) return previewAddGithub(vaultPath, { repo, ref, path: contentPath, name, kind, entrypoint });
     return addGithubSource(vaultPath, { repo, ref, path: contentPath, name, kind, entrypoint });
   },
-  "source.remove": ({ vaultPath, name, deleteFiles }) =>
-    removeSource(vaultPath, name, { deleteFiles }),
+  "source.remove": ({ vaultPath, name, deleteFiles, removeDistributed }) =>
+    removeSource(vaultPath, name, { deleteFiles, removeDistributed, backupRoot: readSettings().backupRoot }),
 
   "build.run": ({ vaultPath }) => buildVault(vaultPath),
   "target.list": async ({ vaultPath }) => (await openVault(vaultPath)).targets,

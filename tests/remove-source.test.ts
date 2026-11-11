@@ -5,7 +5,7 @@ import { installSkills, openVault, removeSource, validateVault } from "@vaultdes
 import { copyFixture, setTargetDest, tempDir } from "./helpers.js";
 
 describe("source removal", () => {
-  it("removes metadata and workspace files but never touches installed copies", async () => {
+  it("removes metadata, workspace files and its own installed copy, leaving other skills installed", async () => {
     const vaultPath = copyFixture("v2-basic");
     const dest = path.join(tempDir("remove-dest"), "agents");
     const backupRoot = tempDir("remove-backups");
@@ -18,7 +18,7 @@ describe("source removal", () => {
     });
     expect(install.verification.filesInPlace).toBe(true);
 
-    const result = await removeSource(vaultPath, "gh-standalone", { deleteFiles: true });
+    const result = await removeSource(vaultPath, "gh-standalone", { deleteFiles: true, backupRoot });
     expect(result.name).toBe("gh-standalone");
     expect(result.removedPaths.some((entry) => entry.endsWith(path.join("skills", "gh-standalone")))).toBe(true);
     expect(result.removedPaths.some((entry) => entry.endsWith(path.join("third_party", "gh-standalone")))).toBe(true);
@@ -33,8 +33,9 @@ describe("source removal", () => {
     expect(snapshot.targets.find((target) => target.id === "remove-target")?.names).toEqual(["local-notes"]);
     expect(snapshot.targets.find((target) => target.id === "fixture-agents")?.names).not.toContain("gh-standalone");
 
-    expect(fs.readFileSync(path.join(dest, "gh-standalone", "SKILL.md"), "utf8")).toContain("GH Standalone");
-    expect(fs.existsSync(path.join(dest, "gh-standalone", ".vault-managed"))).toBe(true);
+    expect(fs.existsSync(path.join(dest, "gh-standalone"))).toBe(false);
+    expect(result.distributed.removed).toEqual([path.join(fs.realpathSync(dest), "gh-standalone")]);
+    expect(fs.readFileSync(path.join(result.distributed.backups[0] as string, "SKILL.md"), "utf8")).toContain("GH Standalone");
     expect(fs.existsSync(path.join(dest, "local-notes", ".vault-managed"))).toBe(true);
     expect((await validateVault(vaultPath)).ok).toBe(true);
   });

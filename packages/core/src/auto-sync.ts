@@ -4,7 +4,7 @@ import path from "node:path";
 import YAML from "yaml";
 import { sourceFileSchema } from "@vaultdesk/schema";
 import { VaultDeskError } from "./errors.js";
-import { canonicalPath, copyDirectory, expandHome, hashDirectory, hashText, INTERNAL_METADATA, isInside, readText, sha256, writeTextAtomic } from "./fsx.js";
+import { canonicalPath, copyDirectory, expandHome, hashDirectory, hashText, INTERNAL_METADATA, isInside, readText, sha256, writeTextAtomic, copyTree } from "./fsx.js";
 import { commitPaths, currentCommit, getGitSummary, git, push } from "./git.js";
 import { beginManagedDistribution, inspectManagedMaster, inspectManagedPluginTarget, managedAgentsSkillsRoot } from "./distribution.js";
 import { withWriteLock } from "./vault/lockfile.js";
@@ -37,6 +37,8 @@ export interface AutoSyncOptions {
   retentionDays?: number;
   /** Optional local-only storage root for pending automatic pushes. */
   pendingRoot?: string;
+  /** Manual distribution only: save and replace managed copies that were modified in place. */
+  force?: boolean;
 }
 
 export type AutoSyncSourceStatus = "updated" | "current" | "skipped" | "error" | "push-failed";
@@ -47,6 +49,8 @@ export interface AutoSyncSourceResult {
   message?: string;
   commit?: string;
   pendingSkills?: string[];
+  /** Nothing to do by design (a local source has no upstream); not worth recording. */
+  routine?: true;
 }
 
 export interface AutoSyncReport {
@@ -55,6 +59,8 @@ export interface AutoSyncReport {
   sources: AutoSyncSourceResult[];
   updated: number;
   errors: number;
+  /** Sources whose upstream check failed on the network; worth an early retry. */
+  networkErrors: number;
 }
 
 export interface PendingSkill {
@@ -150,6 +156,17 @@ async function retryPendingPush(vaultPath: string, options: AutoSyncOptions): Pr
   });
 }
 
+/** Say exactly what keeps automatic updates paused and how to resume them. */
+function trackingBlockMessage(state: { branch?: string; upstream?: string; remote?: string; ahead?: number; behind?: number }): string {
+  if (state.upstream && state.remote && (state.ahead ?? 0) > 0 && (state.behind ?? 0) === 0) {
+    return `Automatic updates are paused: the Vault has ${state.ahead} unpushed commit(s). Push them (vaultdesk git push --yes) to resume.`;
+  }
+  if (state.upstream && state.remote && (state.behind ?? 0) > 0) {
+    return `Automatic updates are paused: the Vault is ${state.behind} commit(s) behind its remote. Pull or rebase, then push, to resume.`;
+  }
+  return "Automatic update requires a tracking branch with no existing unpushed or incoming Vault commits.";
+}
+
 function uniqueRoots(paths: string[]): string[] {
   const ordered = [...new Set(paths.map((entry) => path.resolve(entry)))].sort((a, b) => a.length - b.length);
   return ordered.filter((entry, index) => !ordered.slice(0, index).some((parent) => entry.startsWith(parent + path.sep)));
@@ -201,7 +218,7 @@ function backUp(paths: string[]): PathBackup {
     for (const [index, target] of paths.entries()) {
       const backup = path.join(root, String(index));
       const existed = fs.existsSync(target) || isSymlink(target);
-      if (existed) fs.cpSync(target, backup, { recursive: true, dereference: false });
+      if (existed) copyTree(target, backup);
       entries.push({ target, backup, existed });
     }
   } catch (error) {
@@ -214,7 +231,7 @@ function backUp(paths: string[]): PathBackup {
         fs.rmSync(entry.target, { recursive: true, force: true });
         if (entry.existed) {
           fs.mkdirSync(path.dirname(entry.target), { recursive: true });
-          fs.cpSync(entry.backup, entry.target, { recursive: true, dereference: false });
+          copyTree(entry.backup, entry.target);
         }
       }
     },
@@ -373,6 +390,12 @@ export async function adoptPendingSkills(
 export async function distributeCurrentSource(
   inputPath: string, sourceName: string, options: AutoSyncOptions = {},
 ): Promise<string[]> {
+  return (await distributeCurrentSourceDetailed(inputPath, sourceName, options)).changedPaths;
+}
+
+export async function distributeCurrentSourceDetailed(
+  inputPath: string, sourceName: string, options: AutoSyncOptions = {},
+): Promise<{ changedPaths: string[]; overrideBackups: string[] }> {
   const vaultPath = canonicalPath(inputPath);
   return withWriteLock(vaultPath, async () => {
     const snapshot = await openVault(vaultPath);
@@ -384,7 +407,7 @@ export async function distributeCurrentSource(
     if (drift) throw new VaultDeskError("conflict", drift);
     const distribution = await beginManagedDistribution(vaultPath, sourceName, options);
     distribution.finalize();
-    return distribution.changedPaths;
+    return { changedPaths: distribution.changedPaths, overrideBackups: distribution.overrideBackups };
   });
 }
 
@@ -419,7 +442,7 @@ function localMasterDrift(snapshot: VaultSnapshot, source: SourceRecord, options
   for (const skill of source.skills) {
     const state = inspectManagedMaster(snapshot.path, skill.name, options.agentsSkillsDir);
     if (state === "unmanaged") return `Local master ${skill.name} has unknown ownership; review before distribution.`;
-    if (state === "modified") return `Local master ${skill.name} was manually modified; preserve it and review before syncing.`;
+    if (state === "modified") return `Local master ${skill.name} was manually modified; preserve it and review before syncing. To save a copy and replace it: vaultdesk source distribute ${source.name} --force --yes.`;
   }
   return undefined;
 }
@@ -653,7 +676,7 @@ async function updateOneSource(
     const baseGit = await getGitSummary(vaultPath);
     if (!baseGit.head || !baseGit.branch || baseGit.branch === "HEAD" || !baseGit.upstream ||
       !baseGit.remote || baseGit.ahead !== 0 || baseGit.behind !== 0) {
-      throw new VaultDeskError("conflict", "Automatic update requires a tracking branch with no existing unpushed or incoming Vault commits.");
+      throw new VaultDeskError("conflict", trackingBlockMessage(baseGit));
     }
     const basePush = await pushDestination(vaultPath);
     const backup = backUp(paths);
@@ -763,7 +786,7 @@ export async function autoSyncVault(inputPath: string, options: AutoSyncOptions 
       ? retried
       : { name: source.name, status: "skipped", message: "Another automatic commit is still pending push." });
     if (!sources.some((source) => source.name === retried.name)) sources.unshift(retried);
-    return { vaultPath, checkedAt: new Date().toISOString(), sources, updated: 0, errors: 1 };
+    return { vaultPath, checkedAt: new Date().toISOString(), sources, updated: 0, errors: 1, networkErrors: 0 };
   }
   const selected = snapshot.sources
     .filter((source) => source.origin === "github" && source.updateMode !== "frozen")
@@ -787,6 +810,7 @@ export async function autoSyncVault(inputPath: string, options: AutoSyncOptions 
   const byName = new Map(checked.results.map((result) => [result.name, result]));
   const results: AutoSyncSourceResult[] = [];
   let pendingBlocked = false;
+  let networkErrors = 0;
 
   for (const source of [...snapshot.sources].sort((a, b) => a.name.localeCompare(b.name))) {
     if (pendingBlocked) {
@@ -797,7 +821,7 @@ export async function autoSyncVault(inputPath: string, options: AutoSyncOptions 
       const drift = localMasterDrift(snapshot, source, options);
       results.push(drift
         ? { name: source.name, status: "error", message: drift }
-        : { name: source.name, status: "skipped", message: "Local source has no remote Git update." });
+        : { name: source.name, status: "skipped", message: "Local source has no remote Git update.", routine: true });
       continue;
     }
     if (source.updateMode === "frozen") {
@@ -806,6 +830,7 @@ export async function autoSyncVault(inputPath: string, options: AutoSyncOptions 
     }
     const check = byName.get(source.name);
     if (!check || check.status === "error" || check.status === "auth-failed") {
+      if (check?.status === "error") networkErrors += 1;
       results.push({ name: source.name, status: "error", message: safeMessage(new VaultDeskError(check?.status === "auth-failed" ? "auth-failed" : "network", check?.message ?? "Source check failed.")) });
       continue;
     }
@@ -820,7 +845,7 @@ export async function autoSyncVault(inputPath: string, options: AutoSyncOptions 
         results.push({
           name: source.name,
           status: "error",
-          message: `Managed distribution drift detected: ${distributionDrift.join("; ")}`,
+          message: `Managed distribution drift detected: ${distributionDrift.join("; ")}. To save a copy and replace modified copies: vaultdesk source distribute ${source.name} --force --yes.`,
         });
         continue;
       }
@@ -887,6 +912,7 @@ export async function autoSyncVault(inputPath: string, options: AutoSyncOptions 
     sources: results,
     updated: results.filter((entry) => entry.status === "updated" || entry.status === "push-failed").length,
     errors: results.filter((entry) => entry.status === "error" || entry.status === "push-failed").length,
+    networkErrors,
   };
 }
 

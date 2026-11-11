@@ -1,3 +1,24 @@
+# VaultDesk v1.2.17 local build
+
+Built, accepted and installed locally on 2026-11-11. The source is pushed to main; it is not tagged or published, so the latest public release is still [v1.2.16](https://github.com/coderWang404/vaultdesk/releases/tag/v1.2.16).
+
+This is a reliability release. Reinstalling over a managed copy that was edited in place now saves that copy first, and only the newest saved copy of each skill is kept. A source whose shared master was edited can be distributed again with `source distribute <name> --force --yes` (or the confirm-and-retry prompt in the desktop app), which saves the edited copy before replacing it. Removing a source also removes the files this Vault distributed for it, unless `--keep-distributed` is passed; paths the Vault cannot prove it owns stay in place.
+
+Locks left by a crashed process are reclaimed as soon as their owner is gone, including when the operating system has reused the process ID. Relative symlinks inside skills survive build, install, distribution and update unchanged, and imports reject symlinks that are broken or point outside the skill. Crashed builds no longer leave staging directories behind. Upstream checks retry once on a network failure and the background worker re-runs about five minutes later, up to three times in a row. The activity log is capped at its newest 1000 lines, background runs no longer record sources that have nothing to do by design, and a Vault with unpushed commits now says why automatic updates are paused and how to resume. `vault status` reports the correct format for v2 vaults.
+
+Validation: workspace typecheck, 220 tests in 33 files, 12 CLI E2E scenarios, all 25 desktop E2E scenarios, 20 axe scans with zero violations, and mounted-DMG app/CLI/MCP acceptance passed. Unit tests now redirect every default VaultDesk directory to a temporary root.
+
+| Field | Value |
+| --- | --- |
+| File | release/VaultDesk-1.2.17-arm64.dmg |
+| Size | 124,937,632 bytes |
+| SHA-256 | 0f7d11e706674e0e8bcf6744e492ce514d04647cfa8e4a9e25194d6f6a6f50d8 |
+| app.asar SHA-256 | c7eaad236c059b475499081b88a4c10c54779e1b6913cba1284ec5066feee3d7 |
+| CLI SHA-256 | 6548f3a624e9161baa0a0f00681918d6b51f468b637e8fa696b6e238bdb20cff |
+| Signing | Ad-hoc, not notarized |
+
+The installed app, CLI and LaunchAgent report 1.2.17 with one GUI and one worker. The previous app was moved to Trash. The real private Vault validated with zero errors or warnings and all 34 registered targets verified with nothing missing or modified.
+
 # VaultDesk v1.2.16 release
 
 Local acceptance and installation completed on 2026-11-09. Release artifacts: [v1.2.16](https://github.com/coderWang404/vaultdesk/releases/tag/v1.2.16).

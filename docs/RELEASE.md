@@ -1,3 +1,24 @@
+# VaultDesk v1.2.18 release
+
+Local acceptance and installation completed on 2026-11-14. Release artifacts: [v1.2.18](https://github.com/coderWang404/vaultdesk/releases/tag/v1.2.18).
+
+The Tools and MCP pages now organize records into a readable inventory. A summary strip shows totals and capability counts; type filters narrow the list; groups separate CLI, MCP, plugin and other records. When a Vault contains more than three cards, each card keeps its title, summary, readiness state and primary run command visible while installation details, checks, requirements, related skills and links stay collapsed until requested. “Expand current results” and “Collapse current results” work with the active filters, and each Vault/mode remembers its card expansion state.
+
+The installed app, CLI and LaunchAgent report 1.2.18 with one GUI and one worker; the previous 1.2.17 app was moved to Trash.
+
+The change is presentation-only: tool cards remain record-only, readiness checks remain explicit, related-skill navigation remains available, and MCP-capable plugins continue to explain that agent registration must be verified in the corresponding agent. The compact layout was checked with a real five-card Vault screenshot and both theme/accessibility regressions.
+
+Validation: workspace typecheck, production build, 12 CLI E2E scenarios, all 25 desktop E2E scenarios, 20 axe scans with zero violations, and mounted-DMG app/CLI/MCP acceptance passed. The Apple Silicon DMG is ad-hoc signed and not notarized.
+
+| Field | Value |
+| --- | --- |
+| File | release/VaultDesk-1.2.18-arm64.dmg |
+| Size | 124,953,902 bytes |
+| SHA-256 | 5e5102358542a53ac3881b492a3d2f6b8b6b9b71100d4b6df371e7044f9f334e |
+| app.asar SHA-256 | b4afd48b2dcaca84d98b57e9087a9e052dc40d37c95cd61ec5d8dbec2dc9c5e0 |
+| CLI SHA-256 | e7088772d5d4e3a36dddf6db225a738c8ac048c6ca3158b997318a649e8bde4d |
+| Signing | Ad-hoc, not notarized |
+
 # VaultDesk v1.2.17 local build
 
 Built, accepted and installed locally on 2026-11-11. The source is pushed to main; it is not tagged or published, so the latest public release is still [v1.2.16](https://github.com/coderWang404/vaultdesk/releases/tag/v1.2.16).

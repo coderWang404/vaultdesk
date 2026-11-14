@@ -5139,6 +5139,22 @@ kbd {
   }
 }
 
+@media (max-width: 720px) {
+  .tool-overview {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .tool-group-head {
+    align-items: center;
+  }
+
+  .tool-expand-all {
+    width: 100%;
+    justify-content: center;
+    margin-left: 0;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,
@@ -5422,6 +5438,132 @@ kbd {
   line-height: 1.55;
 }
 
+.tool-overview {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+  margin: 0 0 12px;
+}
+
+.tool-overview-stat {
+  display: flex;
+  align-items: baseline;
+  gap: 7px;
+  min-width: 0;
+  padding: 9px 11px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: var(--surface-tint);
+}
+
+.tool-overview-stat strong {
+  color: var(--ink);
+  font-size: 18px;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.tool-overview-stat span {
+  overflow: hidden;
+  color: var(--ink-faint);
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tool-filters {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 0 0 18px;
+}
+
+.tool-filter,
+.tool-expand-all {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 30px;
+  padding: 5px 9px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: var(--paper-raised);
+  color: var(--ink-muted);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.tool-filter:hover,
+.tool-expand-all:hover {
+  border-color: var(--line-strong);
+  color: var(--ink);
+}
+
+.tool-filter.is-active {
+  border-color: rgba(176, 69, 48, 0.35);
+  background: var(--accent-wash);
+  color: var(--accent-deep);
+}
+
+.tool-filter em {
+  min-width: 17px;
+  padding: 1px 4px;
+  border-radius: 999px;
+  background: var(--paper-wash);
+  color: var(--ink-faint);
+  font-size: 10px;
+  font-style: normal;
+  text-align: center;
+}
+
+.tool-filter.is-active em {
+  background: var(--paper-raised);
+  color: var(--accent);
+}
+
+.tool-expand-all {
+  margin-left: auto;
+  border-style: dashed;
+  background: transparent;
+}
+
+.tool-groups {
+  display: grid;
+  gap: 20px;
+}
+
+.tool-group {
+  display: grid;
+  gap: 9px;
+}
+
+.tool-group-head {
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 0 2px;
+}
+
+.tool-group-head h2 {
+  margin-top: 2px;
+  color: var(--ink);
+  font-family: var(--sans);
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.tool-group-count {
+  flex: 0 0 auto;
+  padding: 3px 7px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  color: var(--ink-faint);
+  font-size: 10px;
+}
+
 .tool-card {
   display: flex;
   flex-direction: column;
@@ -5433,11 +5575,81 @@ kbd {
   box-shadow: var(--shadow-sm);
 }
 
+.tool-card:hover {
+  border-color: var(--line-strong);
+  box-shadow: var(--shadow-md);
+}
+
 .tool-card-head {
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
   gap: 12px;
+}
+
+.tool-card-toggle {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.tool-card-toggle:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 4px;
+  border-radius: 5px;
+}
+
+.tool-card-toggle > span:last-child {
+  flex: 0 0 auto;
+  margin-top: 4px;
+  color: var(--ink-faint);
+}
+
+.tool-card-details {
+  display: grid;
+  gap: 9px;
+}
+
+.tool-card-compact-meta {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 7px;
+  min-width: 0;
+  color: var(--ink-faint);
+  font-size: 11px;
+}
+
+.tool-card-compact-meta code {
+  min-width: 0;
+  max-width: 100%;
+  padding: 3px 6px;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  background: var(--paper-wash);
+  color: var(--ink-muted);
+  font-size: 10px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tool-card .tool-card-toggle + .tool-card-details {
+  margin-top: 2px;
+  padding-top: 9px;
+  border-top: 1px solid var(--line);
+}
+
+.tool-card:not(:has(.tool-card-toggle)) .tool-card-head {
+  margin-bottom: 1px;
 }
 
 .tool-card-title {

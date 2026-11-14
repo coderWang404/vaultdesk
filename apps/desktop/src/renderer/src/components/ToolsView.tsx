@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { VaultSnapshot } from "@vaultdesk/core";
 import { hasMcpCapability, toolKindLabel } from "../format";
 import { checkPresentation, readinessCheckedAt, readinessKey, readinessPresentation, type ToolReadinessState } from "../readiness";
@@ -8,6 +8,8 @@ import { Button, EmptyState, IconButton, SectionHeader, StatusPill } from "./ui"
 const PROFILE_STORAGE_KEY = "vaultdesk.toolCheckProfiles";
 const INTERPRETER_STORAGE_KEY = "vaultdesk.toolCheckInterpreters";
 const NODE_STORAGE_KEY = "vaultdesk.toolCheckNodes";
+const EXPANDED_STORAGE_KEY = "vaultdesk.toolExpanded.v1";
+type ToolFilter = "all" | "cli" | "mcp" | "plugin" | "other";
 
 function readStoredSelections(key: string): Record<string, string> {
   try {
@@ -18,6 +20,16 @@ function readStoredSelections(key: string): Record<string, string> {
     return Object.fromEntries(Object.entries(parsed).filter(([, value]) => typeof value === "string"));
   } catch {
     return {};
+  }
+}
+
+function readExpandedTools(vaultPath: string, mode: "tools" | "mcp"): Set<string> {
+  try {
+    const raw = window.localStorage.getItem(`${EXPANDED_STORAGE_KEY}:${mode}:${vaultPath}`);
+    const parsed: unknown = raw ? JSON.parse(raw) : [];
+    return new Set(Array.isArray(parsed) ? parsed.filter((value): value is string => typeof value === "string") : []);
+  } catch {
+    return new Set();
   }
 }
 
@@ -42,6 +54,10 @@ export function ToolsView({
   const [profiles, setProfiles] = useState<Record<string, string>>(() => readStoredSelections(PROFILE_STORAGE_KEY));
   const [interpreters, setInterpreters] = useState<Record<string, string>>(() => readStoredSelections(INTERPRETER_STORAGE_KEY));
   const [nodePaths, setNodePaths] = useState<Record<string, string>>(() => readStoredSelections(NODE_STORAGE_KEY));
+  const expansionKey = `${EXPANDED_STORAGE_KEY}:${mode}:${vault.path}`;
+  const expansionKeyRef = useRef(expansionKey);
+  const [toolFilter, setToolFilter] = useState<ToolFilter>("all");
+  const [expandedTools, setExpandedTools] = useState<Set<string>>(() => readExpandedTools(vault.path, mode));
   useEffect(() => {
     try { window.localStorage.setItem(PROFILE_STORAGE_KEY, JSON.stringify(profiles)); } catch { /* Selection persistence is optional. */ }
   }, [profiles]);
@@ -51,16 +67,42 @@ export function ToolsView({
   useEffect(() => {
     try { window.localStorage.setItem(NODE_STORAGE_KEY, JSON.stringify(nodePaths)); } catch { /* Selection persistence is optional. */ }
   }, [nodePaths]);
+  useEffect(() => {
+    if (expansionKeyRef.current === expansionKey) return;
+    expansionKeyRef.current = expansionKey;
+    setToolFilter("all");
+    setExpandedTools(readExpandedTools(vault.path, mode));
+  }, [expansionKey, mode, vault.path]);
+  useEffect(() => {
+    if (expansionKeyRef.current !== expansionKey) return;
+    try {
+      window.localStorage.setItem(expansionKey, JSON.stringify([...expandedTools]));
+    } catch { /* Selection persistence is optional. */ }
+  }, [expandedTools, expansionKey]);
   const isMcp = mode === "mcp";
   const cards = useMemo(
     () => (isMcp ? vault.tools.filter(hasMcpCapability) : vault.tools),
     [isMcp, vault.tools],
   );
 
+  const toolCategory = (tool: VaultSnapshot["tools"][number]): ToolFilter => {
+    if (tool.kind === "mcp" || (isMcp && hasMcpCapability(tool))) return "mcp";
+    if (tool.kind === "cli" || tool.tags.some((tag) => tag.toLowerCase() === "cli")) return "cli";
+    if (tool.kind === "plugin") return "plugin";
+    return "other";
+  };
+
+  const categoryCounts = useMemo(() => {
+    const counts: Record<ToolFilter, number> = { all: cards.length, cli: 0, mcp: 0, plugin: 0, other: 0 };
+    for (const tool of cards) counts[toolCategory(tool)] += 1;
+    return counts;
+  }, [cards, isMcp]);
+
   const tools = useMemo(() => {
     const needle = query.trim().toLowerCase();
-    if (!needle) return cards;
     return cards.filter((tool) => {
+      if (toolFilter !== "all" && toolCategory(tool) !== toolFilter) return false;
+      if (!needle) return true;
       const fields = [
         tool.name,
         tool.title,
@@ -77,7 +119,33 @@ export function ToolsView({
       ];
       return fields.some((field) => field.toLowerCase().includes(needle));
     });
-  }, [cards, query]);
+  }, [cards, query, toolFilter, isMcp]);
+
+  const compactMode = cards.length > 3;
+  const filteredBySearch = Boolean(query.trim()) || toolFilter !== "all";
+  const allCurrentExpanded = compactMode && tools.length > 0 && tools.every((tool) => expandedTools.has(tool.name));
+  useEffect(() => {
+    if (!compactMode) return;
+    if (!filteredBySearch || tools.length > 3) return;
+    setExpandedTools((current) => {
+      const next = new Set(current);
+      for (const tool of tools) next.add(tool.name);
+      return next;
+    });
+  }, [compactMode, filteredBySearch, tools]);
+  const groupedTools = useMemo(() => {
+    const labels: Record<ToolFilter, string> = {
+      all: isMcp ? "MCP 能力" : "全部工具",
+      cli: "CLI 工具",
+      mcp: "MCP 服务",
+      plugin: "插件工具",
+      other: "其他工具",
+    };
+    const order: ToolFilter[] = isMcp ? ["mcp", "cli", "plugin", "other"] : ["cli", "mcp", "plugin", "other"];
+    return order
+      .map((category) => ({ category, label: labels[category], tools: tools.filter((tool) => toolCategory(tool) === category) }))
+      .filter((group) => group.tools.length > 0);
+  }, [isMcp, tools]);
 
   const managedSkillByName = useMemo(
     () => new Map(vault.skills.map((skill) => [skill.name, skill])),
@@ -140,6 +208,65 @@ export function ToolsView({
         </span>
       </div>
 
+      <div className="tool-overview" aria-label="工具分类统计">
+        <div className="tool-overview-stat">
+          <strong>{cards.length}</strong>
+          <span>{isMcp ? "MCP 能力卡" : "工具总数"}</span>
+        </div>
+        <div className="tool-overview-stat">
+          <strong>{categoryCounts.mcp}</strong>
+          <span>MCP</span>
+        </div>
+        <div className="tool-overview-stat">
+          <strong>{categoryCounts.cli}</strong>
+          <span>CLI</span>
+        </div>
+        <div className="tool-overview-stat">
+          <strong>{categoryCounts.plugin}</strong>
+          <span>插件</span>
+        </div>
+      </div>
+
+      {cards.length > 0 ? (
+        <div className="tool-filters" role="group" aria-label="工具类型筛选">
+          {([
+            ["all", "全部", categoryCounts.all],
+            ["mcp", "MCP", categoryCounts.mcp],
+            ["cli", "CLI", categoryCounts.cli],
+            ["plugin", "插件", categoryCounts.plugin],
+            ["other", "其他", categoryCounts.other],
+          ] as const).map(([value, label, count]) => (
+            <button
+              key={value}
+              type="button"
+              className={`tool-filter ${toolFilter === value ? "is-active" : ""}`}
+              aria-pressed={toolFilter === value}
+              onClick={() => setToolFilter(value)}
+            >
+              <span>{label}</span>
+              <em>{count}</em>
+            </button>
+          ))}
+          {compactMode ? (
+            <button
+              type="button"
+              className="tool-expand-all"
+              onClick={() => setExpandedTools((current) => {
+                const next = new Set(current);
+                if (allCurrentExpanded) {
+                  for (const tool of tools) next.delete(tool.name);
+                } else {
+                  for (const tool of tools) next.add(tool.name);
+                }
+                return next;
+              })}
+            >
+              <Icon name={allCurrentExpanded ? "chevron-up" : "chevron-down"} size={13} /> {allCurrentExpanded ? "收起当前结果" : "展开当前结果"}
+            </button>
+          ) : null}
+        </div>
+      ) : null}
+
       {tools.length === 0 ? (
         <EmptyState
           icon={isMcp ? "server" : "terminal"}
@@ -156,15 +283,25 @@ export function ToolsView({
           }
           action={
             cards.length > 0 ? (
-              <Button size="sm" variant="quiet" onClick={() => setQuery("")}>
+              <Button size="sm" variant="quiet" onClick={() => { setQuery(""); setToolFilter("all"); }}>
                 清除筛选
               </Button>
             ) : undefined
           }
         />
       ) : (
-        <div className="tool-grid">
-          {tools.map((tool) => {
+        <div className="tool-groups">
+          {groupedTools.map((group) => (
+            <section className="tool-group" key={group.category}>
+              <div className="tool-group-head">
+                <div>
+                  <span className="eyebrow">工具分类</span>
+                  <h2>{group.label}</h2>
+                </div>
+                <span className="tool-group-count">{group.tools.length} 张</span>
+              </div>
+              <div className="tool-grid">
+          {group.tools.map((tool) => {
             const selectionKey = readinessKey(vault.path, tool.name);
             const availableProfiles = [...new Set(tool.checks.flatMap((check) => check.profiles ?? []))].sort();
             const storedProfile = profiles[selectionKey];
@@ -180,6 +317,7 @@ export function ToolsView({
             const state = readiness[readinessKey(vault.path, tool.name, profile || undefined, pythonPath || undefined, nodePath || undefined)];
             const status = readinessPresentation(tool.checks.length > 0, state);
             const checkedAt = readinessCheckedAt(state?.report);
+            const detailsOpen = !compactMode || expandedTools.has(tool.name);
             return (
             <article className="tool-card" key={tool.name}>
               <header className="tool-card-head">
@@ -204,6 +342,29 @@ export function ToolsView({
               <p className="tool-summary clamp-2" title={tool.summary}>
                 {tool.summary}
               </p>
+              {!detailsOpen ? (
+                <div className="tool-card-compact-meta">
+                  <StatusPill tone={status.tone}>{status.label}</StatusPill>
+                  <span>{tool.checks.length > 0 ? `${tool.checks.length} 项环境检查` : "未声明环境检查"}</span>
+                  {tool.run ? <code title={tool.run}>{tool.run}</code> : null}
+                </div>
+              ) : null}
+              {compactMode ? (
+                <button
+                  type="button"
+                  className="tool-card-toggle"
+                  aria-expanded={detailsOpen}
+                  onClick={() => setExpandedTools((current) => {
+                    const next = new Set(current);
+                    if (next.has(tool.name)) next.delete(tool.name); else next.add(tool.name);
+                    return next;
+                  })}
+                >
+                  <span>{detailsOpen ? "收起详情" : "查看详情"}</span>
+                  <Icon name={detailsOpen ? "chevron-up" : "chevron-down"} size={13} />
+                </button>
+              ) : null}
+              {detailsOpen ? <div className="tool-card-details">
               {capabilities.length > 0 ? (
                 <p className="tool-readiness-hint">
                   能力：{capabilities.join("、")}。VaultDesk 只记录官方安装与运行方式，不会自动安装、注册或启用工具。
@@ -398,9 +559,13 @@ export function ToolsView({
                   </button>
                 ) : null}
               </footer>
+              </div> : null}
             </article>
             );
           })}
+              </div>
+            </section>
+          ))}
         </div>
       )}
 

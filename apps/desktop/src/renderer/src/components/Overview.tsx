@@ -46,6 +46,7 @@ export function Overview({
   const github = vault.sources.filter((source) => source.origin === "github").length;
   const local = vault.sources.length - github;
   const mcpCount = vault.tools.filter(hasMcpCapability).length;
+  const toolCount = vault.tools.filter((tool) => tool.kind !== "mcp").length;
   const featured = [...vault.skills]
     .sort((a, b) => {
       const aInstalled = a.installed.length > 0 ? 1 : 0;
@@ -258,9 +259,9 @@ export function Overview({
             cells={[
               {
                 icon: "terminal",
-                value: vault.counts.tools,
+                value: toolCount,
                 label: "工具",
-                title: "工具套件 · MCP · CLI · 桌面应用",
+                title: "工具套件、CLI、桌面应用（独立 MCP 另计）",
               },
               { icon: "server", value: mcpCount, label: "MCP", title: "具备 MCP 能力的工具卡（含插件形态）" },
               {

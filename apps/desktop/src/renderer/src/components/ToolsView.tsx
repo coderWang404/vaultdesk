@@ -81,7 +81,7 @@ export function ToolsView({
   }, [expandedTools, expansionKey]);
   const isMcp = mode === "mcp";
   const cards = useMemo(
-    () => (isMcp ? vault.tools.filter(hasMcpCapability) : vault.tools),
+    () => (isMcp ? vault.tools.filter(hasMcpCapability) : vault.tools.filter((tool) => tool.kind !== "mcp")),
     [isMcp, vault.tools],
   );
 
@@ -185,7 +185,9 @@ export function ToolsView({
       <SectionHeader title={isMcp ? "MCP" : "工具"} />
 
       <p className="tool-intro">
-        工具卡记录第三方程序与运行条件，不会执行安装。技能是否已分发、工具运行环境是否就绪，分别检查。
+        {isMcp
+          ? "这里集中展示独立 MCP 服务和带 MCP 能力的工具。卡片记录接入方式与运行条件，不会执行安装或注册。"
+          : "这里展示 CLI、插件和桌面应用等工具主入口。独立 MCP 服务集中在 MCP 页面；同时提供 MCP 能力的 CLI 或插件仍保留在这里。"}
       </p>
 
       <div className="toolbar">
@@ -211,7 +213,7 @@ export function ToolsView({
       <div className="tool-overview" aria-label="工具分类统计">
         <div className="tool-overview-stat">
           <strong>{cards.length}</strong>
-          <span>{isMcp ? "MCP 能力卡" : "工具总数"}</span>
+          <span>{isMcp ? "MCP 能力卡" : "工具总数（不含独立 MCP）"}</span>
         </div>
         <div className="tool-overview-stat">
           <strong>{categoryCounts.mcp}</strong>

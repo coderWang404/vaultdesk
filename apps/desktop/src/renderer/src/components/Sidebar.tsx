@@ -55,6 +55,7 @@ export function Sidebar({
           : "尚未检查";
   const errorCount = vault.issues.filter((issue) => issue.severity === "error").length;
   const mcpCount = vault.tools.filter(hasMcpCapability).length;
+  const toolCount = vault.tools.filter((tool) => tool.kind !== "mcp").length;
   const counts: Record<Section, number | string | undefined> = {
     overview: undefined,
     sources: vault.counts.sources,
@@ -64,7 +65,7 @@ export function Sidebar({
         : vault.counts.skills,
     plugins: vault.counts.plugins,
     mcp: mcpCount,
-    tools: vault.counts.tools,
+    tools: toolCount,
     git: vault.git.changes.length || undefined,
     settings: undefined,
   };

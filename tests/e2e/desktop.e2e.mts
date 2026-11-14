@@ -890,14 +890,14 @@ async function toolsFlow(suite: Suite): Promise<void> {
 
   const toolStat = page.locator(".stat-cell").filter({ hasText: "工具" });
   await toolStat.waitFor();
-  equal(await toolStat.locator("strong").innerText(), "3", "overview tool count");
+  equal(await toolStat.locator("strong").innerText(), "2", "overview non-MCP tool count");
   const mcpStat = page.locator(".stat-cell").filter({ hasText: "MCP" });
   equal(await mcpStat.locator("strong").innerText(), "2", "overview MCP capability count");
 
   await openSection(page, "工具");
   const card = page.locator(".tool-card").filter({ hasText: "Kit CLI" });
   await card.waitFor();
-  equal(await page.locator(".tool-card").count(), 3, "fixture tool card count");
+  equal(await page.locator(".tool-card").count(), 2, "fixture non-MCP tool card count");
   const text = await card.innerText();
   assert(text.includes("Kit CLI"), "tool card title");
   assert(text.includes("npm install --global kit-cli"), "tool card install command");
@@ -966,7 +966,7 @@ async function toolsFlow(suite: Suite): Promise<void> {
   await waitForText(page, "没有匹配的工具卡");
   equal(await page.locator(".tool-card").count(), 0, "tool filter empties the grid");
   await page.locator(".empty").getByRole("button", { name: "清除筛选" }).click();
-  await waitFor(async () => (await page.locator(".tool-card").count()) === 3, "tool filter cleared");
+  await waitFor(async () => (await page.locator(".tool-card").count()) === 2, "tool filter cleared");
 
   await card.getByRole("button", { name: "复制安装命令" }).click();
   await waitForText(page, "已复制到剪贴板");

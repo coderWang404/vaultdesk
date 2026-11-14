@@ -1,3 +1,20 @@
+# VaultDesk v1.2.19 release
+
+Local acceptance completed on 2026-11-14. Release artifacts: [v1.2.19](https://github.com/coderWang404/vaultdesk/releases/tag/v1.2.19).
+
+Tool and MCP navigation now follows the card's primary distribution kind. Standalone MCP cards (`kind: mcp`) belong exclusively to the MCP page. CLI, plugin and app cards remain in the Tools page even when they also carry the `mcp` capability tag; those cards are also available in the MCP capability view. This keeps apihub, whose primary interface is an MCP server, out of the general Tools list without losing MCP discovery. Sidebar, overview and Tools page counts use the same non-standalone-MCP rule.
+
+Validation: workspace typecheck, production build, 12 CLI E2E scenarios, all 25 desktop E2E scenarios, 20 axe scans with zero violations, and mounted-DMG app/CLI/MCP acceptance passed. The Apple Silicon DMG is ad-hoc signed and not notarized.
+
+| Field | Value |
+| --- | --- |
+| File | release/VaultDesk-1.2.19-arm64.dmg |
+| Size | 124,953,299 bytes |
+| SHA-256 | 4c11ca14ae804a11dd13e873d03a0cd0eaa3fcc8d3654fbc9e8cd4853baf58af |
+| app.asar SHA-256 | 618b55c9ccf3916078daf7c37d6714e0f9595e35b3bc023c483c7aa51a9f8fa3 |
+| CLI SHA-256 | a46034f09a600e276304f8f98fe5421874eda91b2583f55ca8405d2d5b8fe38e |
+| Signing | Ad-hoc, not notarized |
+
 # VaultDesk v1.2.18 release
 
 Local acceptance and installation completed on 2026-11-14. Release artifacts: [v1.2.18](https://github.com/coderWang404/vaultdesk/releases/tag/v1.2.18).
